@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Maintenance Trend Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; }
+
+  header {
+    background: #243547; padding: 0 32px;
+    display: flex; align-items: center; justify-content: space-between; height: 64px;
+    border-bottom: 3px solid #95C11F;
+  }
+  header h1 { color: white; font-size: 17px; font-weight: bold; }
+  header p { color: #95C11F; font-size: 11px; margin-top: 2px; }
+  .logo-badge { background: #95C11F; color: #243547; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+  .nav-link { color: #C7CFD6; font-size: 12px; text-decoration: none; margin-left: 18px; }
+  .nav-link:hover { color: #95C11F; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
+
+  .state-msg { background: white; border-radius: 10px; padding: 40px; text-align: center; color: #888; font-size: 13px; }
+  .state-msg.error { color: #dc2626; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi { background: white; border-radius: 10px; padding: 20px 22px; border-top: 4px solid #ddd; }
+  .kpi.navy { border-top-color: #243547; }
+  .kpi.red { border-top-color: #dc2626; }
+  .kpi.green { border-top-color: #95C11F; }
+  .kpi.amber { border-top-color: #d97706; }
+  .kpi label { font-size: 10.5px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; }
+  .kpi .val { font-size: 30px; font-weight: bold; color: #243547; margin: 6px 0 4px; }
+  .kpi .delta { font-size: 11.5px; font-weight: bold; }
+  .kpi .delta.up { color: #dc2626; }
+  .kpi .delta.down { color: #16a34a; }
+  .kpi .delta.flat { color: #888; }
+  .kpi .sub { font-size: 11px; color: #aaa; margin-top: 2px; }
+
+  .period-badge { background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; margin-bottom: 18px; }
+
+  .chart-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 24px; }
+  .chart-card { background: white; border-radius: 10px; padding: 20px 22px; }
+  .chart-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .chart-card canvas { display: block; }
+
+  .machine-card { background: white; border-radius: 10px; padding: 20px 22px; margin-bottom: 24px; }
+  .machine-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .machine-card canvas { display: block; }
+  .canvas-wrap { position: relative; height: 420px; }
+  .canvas-wrap.short { height: 220px; }
+
+  footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Maintenance Trend Dashboard</h1>
+    <p>SFC fault downtime vs Agility work order coverage — month over month</p>
+  </div>
+  <div style="display:flex;align-items:center;">
+    <a class="nav-link" href="/">← Run a check</a>
+    <span class="logo-badge" style="margin-left:16px;">CLAMASON</span>
+  </div>
+</header>
+
+<div class="container" id="app">
+  <div class="state-msg" id="state-msg">Loading trend data...</div>
+</div>
+
+<footer>Clamason Maintenance — Internal Tool</footer>
+
+<script>
+const NAVY = '#243547', LIME = '#95C11F', RED = '#dc2626', AMBER = '#d97706';
+
+function fmt(n, d=1) { return (n === null || n === undefined) ? '—' : Number(n).toFixed(d); }
+
+function deltaBadge(curr, prev, higherIsWorse) {
+  if (prev === null || prev === undefined) return '';
+  const diff = curr - prev;
+  if (Math.abs(diff) < 0.05) return `<span class="delta flat">— no change vs prior month</span>`;
+  const worse = higherIsWorse ? diff > 0 : diff < 0;
+  const arrow = diff > 0 ? '▲' : '▼';
+  const cls = worse ? 'up' : 'down';
+  return `<span class="delta ${cls}">${arrow} ${fmt(Math.abs(diff))} vs prior month</span>`;
+}
+
+async function load() {
+  let data;
+  try {
+    const res = await fetch('/api/trend');
+    data = await res.json();
+    if (data.error) throw new Error(data.error);
+  } catch (e) {
+    document.getElementById('state-msg').className = 'state-msg error';
+    document.getElementById('state-msg').textContent = 'Could not load trend data: ' + e.message;
+    return;
+  }
+
+  const runs = data.runs || [];
+  if (runs.length === 0) {
+    document.getElementById('state-msg').textContent =
+      'No saved runs yet. Go run a maintenance check and click "Save to Trend Dashboard" to see history here.';
+    return;
+  }
+
+  render(runs);
+}
+
+function render(runs) {
+  const latest = runs[runs.length - 1];
+  const prev = runs.length > 1 ? runs[runs.length - 2] : null;
+
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="period-badge">Latest period: ${latest.period_label || latest.period}</div>
+
+    <div class="kpi-row">
+      <div class="kpi red">
+        <label>SFC Fault Hours</label>
+        <div class="val">${fmt(latest.maintenance_hrs)}h</div>
+        ${prev ? deltaBadge(latest.maintenance_hrs, prev.maintenance_hrs, true) : '<span class="sub">First recorded month</span>'}
+      </div>
+      <div class="kpi green">
+        <label>Agility Hours Matched</label>
+        <div class="val">${fmt(latest.agility_maintenance_hrs)}h</div>
+        ${prev ? deltaBadge(latest.agility_maintenance_hrs, prev.agility_maintenance_hrs, false) : '<span class="sub">First recorded month</span>'}
+      </div>
+      <div class="kpi navy">
+        <label>WO Coverage Gap</label>
+        <div class="val">${fmt(latest.gap_pct, 1)}%</div>
+        ${prev ? deltaBadge(latest.gap_pct, prev.gap_pct, true) : '<span class="sub">First recorded month</span>'}
+      </div>
+      <div class="kpi amber">
+        <label>Breakdown WOs Raised</label>
+        <div class="val">${latest.wo_count}</div>
+        ${prev ? deltaBadge(latest.wo_count, prev.wo_count, false) : '<span class="sub">First recorded month</span>'}
+      </div>
+    </div>
+
+    <div class="machine-card">
+      <h3>${latest.period_label || latest.period} — Fault Events vs Breakdown WOs by Machine</h3>
+      <div class="canvas-wrap"><canvas id="machineChart"></canvas></div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="chart-card">
+        <h3>Fault Hours vs Agility-Covered Hours</h3>
+        <div class="canvas-wrap short"><canvas id="hoursChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>WO Coverage Gap % — Trend</h3>
+        <div class="canvas-wrap short"><canvas id="gapChart"></canvas></div>
+      </div>
+    </div>
+  `;
+
+  const labels = runs.map(r => r.period_label || r.period);
+
+  new Chart(document.getElementById('gapChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Gap %', data: runs.map(r => r.gap_pct),
+        borderColor: NAVY, backgroundColor: NAVY + '15', fill: true, tension: 0.25,
+        pointBackgroundColor: NAVY, pointRadius: 5,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+    },
+  });
+
+  new Chart(document.getElementById('hoursChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'SFC fault hours', data: runs.map(r => r.maintenance_hrs), borderColor: RED, backgroundColor: RED + '15', fill: true, tension: 0.25, pointRadius: 5 },
+        { label: 'Agility hours matched', data: runs.map(r => r.agility_maintenance_hrs), borderColor: LIME, backgroundColor: LIME + '25', fill: true, tension: 0.25, pointRadius: 5 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
+    },
+  });
+
+  // Small inline plugin: draws the count value at the end of each horizontal
+  // bar (like the earlier presentation chart). No extra CDN dependency —
+  // just a Chart.js plugin hook drawing text after each bar renders.
+  const barValueLabels = {
+    id: 'barValueLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      chart.data.datasets.forEach((dataset, di) => {
+        const meta = chart.getDatasetMeta(di);
+        meta.data.forEach((bar, i) => {
+          const value = dataset.data[i];
+          if (value === null || value === undefined) return;
+          ctx.save();
+          ctx.fillStyle = '#243547';
+          ctx.font = 'bold 11px Arial';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(value), bar.x + 6, bar.y);
+          ctx.restore();
+        });
+      });
+    },
+  };
+
+  const mb = (latest.machine_breakdown || []).slice().sort((a, b) => b.fault_hrs - a.fault_hrs);
+  new Chart(document.getElementById('machineChart'), {
+    type: 'bar',
+    data: {
+      labels: mb.map(m => m.machine),
+      datasets: [
+        { label: 'SFC fault events', data: mb.map(m => m.fault_events), backgroundColor: NAVY, borderRadius: 3 },
+        { label: 'Agility breakdown WOs', data: mb.map(m => m.wo_count), backgroundColor: LIME, borderRadius: 3 },
+      ],
+    },
+    plugins: [barValueLabels],
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 24 } },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: { x: { beginAtZero: true } },
+    },
+  });
+}
+
+load();
+</script>
+</body>
+</html>

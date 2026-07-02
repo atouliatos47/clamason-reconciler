@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Maintenance-Only Downtime Check</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; }
+
+  header {
+    background: #243547; padding: 0 32px;
+    display: flex; align-items: center; justify-content: space-between; height: 60px;
+  }
+  header h1 { color: white; font-size: 16px; font-weight: bold; }
+  header p { color: #95C11F; font-size: 11px; margin-top: 2px; }
+  .logo-badge { background: #95C11F; color: #243547; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+
+  .upload-section { background: white; border-radius: 10px; padding: 28px; margin-bottom: 24px; }
+  .upload-section h2 { font-size: 15px; color: #243547; margin-bottom:4px; }
+  .upload-section p { font-size: 12px; color: #888; margin-bottom: 20px; }
+  .upload-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 20px; }
+  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; transition: all 0.2s; }
+  .upload-card.done { border-color: #95C11F; border-style: solid; background: #f9fdf0; }
+  .upload-card.optional { opacity: 0.85; }
+  .upload-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
+  .upload-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
+  .upload-card input[type=file] { display: none; }
+  .upload-btn { display: inline-block; padding: 8px 18px; background: #243547; color: white; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
+  .upload-btn:hover { background: #95C11F; color: #243547; }
+  .file-status { font-size: 11px; margin-top: 8px; color: #95C11F; font-weight: bold; min-height: 16px; }
+
+  .run-btn { width: 100%; padding: 14px; background: #95C11F; color: #243547; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: opacity 0.2s; }
+  .run-btn:hover { opacity: 0.9; }
+  .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .results { display: none; }
+
+  .statement-box {
+    background: #243547; border-radius: 10px; padding: 24px; margin-bottom: 24px;
+    border-left: 5px solid #95C11F;
+  }
+  .statement-box .label { color: #95C11F; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+  .statement-box p { color: white; font-size: 14px; line-height: 1.9; white-space: pre-line; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+  .sched-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi { background: white; border-radius: 8px; padding: 18px 20px; border-top: 4px solid #ddd; }
+  .kpi.red { border-top-color: #dc2626; }
+  .kpi.green { border-top-color: #95C11F; }
+  .kpi label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi .val { font-size: 26px; font-weight: bold; color: #243547; margin: 4px 0; }
+  .kpi .sub { font-size: 11px; color: #aaa; }
+
+  .table-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
+  .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
+  tr:hover td { background: #fafafa; }
+  .pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; display: inline-block; }
+  .pill-amber { background: #fef3c7; color: #b45309; }
+  .pill-green { background: #dcfce7; color: #16a34a; }
+
+  .loading { text-align: center; padding: 40px; display: none; }
+  .loading.show { display: block; }
+  .spinner { width: 36px; height: 36px; border: 4px solid #ddd; border-top-color: #95C11F; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; display: none; }
+
+  footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+
+  .report-btn { width: 100%; padding: 14px; background: #243547; color: #95C11F; font-size: 15px; font-weight: bold; border: 2px solid #95C11F; border-radius: 8px; cursor: pointer; transition: all 0.2s; margin-top: 8px; display: none; }
+  .report-btn:hover { background: #95C11F; color: #243547; }
+  .report-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Maintenance-Only Downtime Check</h1>
+    <p>SFC daily summary vs Agility breakdown work orders — maintenance hours only</p>
+  </div>
+  <div style="display:flex;align-items:center;">
+    <a href="/dashboard" style="color:#C7CFD6;font-size:12px;text-decoration:none;margin-right:18px;">Trend Dashboard →</a>
+    <span class="logo-badge">CLAMASON</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="upload-section">
+    <h2>Upload Monthly Files</h2>
+    <p>SFC Monthly Downtime Summary xlsx and Agility Down Time Analysis are required. Selective Work Orders is required for an accurate gap figure, but the check will still run without it.</p>
+    <div class="upload-grid">
+      <div class="upload-card" id="card-ds">
+        <h3>📄 SFC Monthly Downtime Summary</h3>
+        <p>UK Monthly Downtime Summary xlsx</p>
+        <label class="upload-btn" for="ds-file">Choose File</label>
+        <input type="file" id="ds-file" accept=".xlsx,.xls" onchange="handleFile(this,'ds','card-ds','ds-status')">
+        <div class="file-status" id="ds-status"></div>
+      </div>
+      <div class="upload-card" id="card-dt">
+        <h3>⏱️ Agility Down Time</h3>
+        <p>Down Time Analysis export (AG3-205) for the same period</p>
+        <label class="upload-btn" for="dt-file">Choose File</label>
+        <input type="file" id="dt-file" accept=".xlsx,.xls" onchange="handleFile(this,'dt','card-dt','dt-status')">
+        <div class="file-status" id="dt-status"></div>
+      </div>
+      <div class="upload-card optional" id="card-wo">
+        <h3>🔧 Agility Work Orders</h3>
+        <p>Selective Work Orders export — required for an accurate gap figure</p>
+        <label class="upload-btn" for="wo-file">Choose File</label>
+        <input type="file" id="wo-file" accept=".xlsx,.xls" onchange="handleFile(this,'wo','card-wo','wo-status')">
+        <div class="file-status" id="wo-status"></div>
+      </div>
+    </div>
+    <div class="error-box" id="error-box"></div>
+    <div class="error-box" id="warning-box" style="background:#fef3c7;border-color:#d97706;color:#92400e;"></div>
+    <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Maintenance Check</button>
+    <button class="report-btn" id="report-btn" onclick="generateReport()">📄 Generate PDF Report</button>
+    <div id="save-row" style="display:none;margin-top:10px;gap:8px;align-items:center;">
+      <input type="text" id="period-label" placeholder="e.g. June 2026" style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+      <button class="report-btn" style="display:inline-block;margin-top:0;width:auto;white-space:nowrap;padding:10px 18px;" id="save-btn" onclick="saveRun()">💾 Save to Trend Dashboard</button>
+    </div>
+    <div id="save-status" style="font-size:12px;margin-top:6px;color:#95C11F;font-weight:bold;"></div>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p style="color:#888;font-size:13px">Processing files...</p>
+  </div>
+
+  <div class="results" id="results">
+
+    <div class="statement-box">
+      <div class="label">📋 Summary</div>
+      <p id="statement-text"></p>
+    </div>
+
+    <div class="kpi-row" id="kpi-row"></div>
+
+    <div class="table-card" style="padding:16px 20px 8px">
+      <h3>Scheduled vs Actual Hours</h3>
+    </div>
+    <div class="sched-row" id="sched-row" style="margin-top:-8px"></div>
+
+    <div class="table-card">
+      <h3>Agility Breakdown Work Orders</h3>
+      <table>
+        <thead>
+          <tr><th>WO</th><th>Asset Code</th><th>Asset Name</th><th>Job Type / Desc</th><th>Downtime</th></tr>
+        </thead>
+        <tbody id="wo-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="table-card">
+      <h3>SFC Maintenance-Attributable Reasons</h3>
+      <table>
+        <thead><tr><th>Reason</th><th>Duration</th></tr></thead>
+        <tbody id="reason-tbody"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+</div>
+
+<footer>Clamason Maintenance — Internal Tool</footer>
+
+<script>
+const files = {};
+
+function handleFile(input, key, cardId, statusId) {
+  const f = input.files[0];
+  if (!f) return;
+  files[key] = f;
+  document.getElementById(cardId).classList.add('done');
+  document.getElementById(statusId).textContent = '✓ ' + f.name;
+  document.getElementById('run-btn').disabled = !(files.ds && files.dt);
+}
+
+async function runCheck() {
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('warning-box').style.display = 'none';
+  document.getElementById('run-btn').disabled = true;
+
+  try {
+    const fd = new FormData();
+    fd.append('daily_summary', files.ds);
+    fd.append('agility_downtime', files.dt);
+    if (files.wo) fd.append('agility_wo', files.wo);
+
+    const res = await fetch('/api/maintenance-check', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+
+    if (d.warning) {
+      const wb = document.getElementById('warning-box');
+      wb.style.display = 'block';
+      wb.textContent = '⚠️ ' + d.warning;
+    }
+
+    render(d);
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('report-btn').style.display = 'block';
+    document.getElementById('save-row').style.display = 'flex';
+    document.getElementById('save-status').textContent = '';
+  } catch (e) {
+    const eb = document.getElementById('error-box');
+    eb.style.display = 'block';
+    eb.textContent = 'Error: ' + e.message;
+  }
+
+  document.getElementById('loading').classList.remove('show');
+  document.getElementById('run-btn').disabled = false;
+}
+
+function render(d) {
+  const s = d.sfc_summary;
+
+  const statement = `SFC logged ${s.total_hrs}h of downtime in total for this period (${s.period || 'period not detected'}).\n\nOf that, ${s.maintenance_hrs}h is attributable to maintenance fault codes (press faults, feeder/decoiler faults, lubrication). Agility shows ${d.agility_maintenance_hrs}h logged against breakdown work orders for the same window.\n\nGap: ${d.gap_hrs}h (${d.gap_pct}%) of maintenance-attributable SFC downtime has no matching breakdown WO in Agility.`;
+  document.getElementById('statement-text').innerText = statement;
+
+  document.getElementById('kpi-row').innerHTML = `
+    <div class="kpi red"><label>SFC Maintenance Hours</label><div class="val">${s.maintenance_hrs}h</div><div class="sub">From daily summary PDF</div></div>
+    <div class="kpi green"><label>Agility Breakdown Hours</label><div class="val">${d.agility_maintenance_hrs}h</div><div class="sub">From Down Time Analysis</div></div>
+    <div class="kpi"><label>Gap</label><div class="val">${d.gap_hrs}h</div><div class="sub">${d.gap_pct}% unaccounted for</div></div>
+  `;
+
+  const sch = s.scheduled_hrs || 0;
+  const mph = s.max_possible_hrs || 0;
+  const poh = s.planned_offline_hrs || 0;
+  const mc  = s.machine_count || 0;
+  const actualRun = Math.max(0, sch - (s.maintenance_hrs || 0) - (s.toolroom_hrs || 0)).toFixed(2);
+  document.getElementById('sched-row').innerHTML = `
+    <div class="kpi"><label>Machines Monitored</label><div class="val">${mc}</div><div class="sub">Period: ${s.period_hrs || 24}h</div></div>
+    <div class="kpi"><label>Max Possible Hours</label><div class="val">${mph}h</div><div class="sub">${mc} machines × ${s.period_hrs || 24}h</div></div>
+    <div class="kpi"><label>Planned Offline</label><div class="val">${poh}h</div><div class="sub">Removed from schedule</div></div>
+    <div class="kpi green"><label>Scheduled to Run</label><div class="val">${sch}h</div><div class="sub">Max − planned offline</div></div>
+    <div class="kpi red"><label>Lost to Maintenance</label><div class="val">${s.maintenance_hrs}h</div><div class="sub">Press faults, feeders, lubrication</div></div>
+    <div class="kpi"><label>Net Available</label><div class="val">${actualRun}h</div><div class="sub">After all losses</div></div>
+  `;
+
+  document.getElementById('wo-tbody').innerHTML = d.matched_wos.length
+    ? d.matched_wos.map(r => `<tr>
+        <td>${r.wo}</td>
+        <td style="color:#888;font-size:11px">${r.asset}</td>
+        <td>${r.asset_name || '—'}</td>
+        <td>${r.job_type || r.desc || '—'}</td>
+        <td><b>${r.downtime_raw || r.downtime_hrs + 'h'}</b></td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px">No breakdown work orders found for this period</td></tr>';
+
+  document.getElementById('reason-tbody').innerHTML = Object.entries(s.reasons)
+    .filter(([k]) => ['FAULT - PRESS','FAULT-FEEDER/DECOILER/STR','FAULT-SHAKER/CONVEYOR','FAULT-FEEDER/DECOILER/STRAIGHTENER','LUBRICATION/OIL REFILL'].includes(k.toUpperCase()))
+    .map(([k, v]) => `<tr><td>${k}</td><td>${v}h</td></tr>`).join('') || '<tr><td colspan="2" style="text-align:center;color:#888;padding:20px">No maintenance-coded reasons found</td></tr>';
+}
+async function generateReport() {
+  const btn = document.getElementById('report-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating PDF...';
+  try {
+    const fd = new FormData();
+    fd.append('daily_summary', files.ds);
+    fd.append('agility_downtime', files.dt);
+    if (files.wo) fd.append('agility_wo', files.wo);
+
+    const res = await fetch('/api/generate-report', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('Server error generating PDF');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  } catch (e) {
+    const eb = document.getElementById('error-box');
+    eb.style.display = 'block';
+    eb.textContent = 'PDF Error: ' + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = '📄 Generate PDF Report';
+}
+
+async function saveRun() {
+  const label = document.getElementById('period-label').value.trim();
+  if (!label) {
+    alert('Enter a period label first, e.g. "June 2026"');
+    return;
+  }
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Saving...';
+  const statusEl = document.getElementById('save-status');
+  statusEl.style.color = '#95C11F';
+  statusEl.textContent = '';
+
+  try {
+    const fd = new FormData();
+    fd.append('daily_summary', files.ds);
+    fd.append('agility_downtime', files.dt);
+    if (files.wo) fd.append('agility_wo', files.wo);
+    fd.append('period_label', label);
+
+    const res = await fetch('/api/save-run', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    statusEl.textContent = `✓ Saved "${d.period_label}" to the trend dashboard (gap: ${d.gap_pct}%)`;
+  } catch (e) {
+    statusEl.style.color = '#dc2626';
+    statusEl.textContent = 'Save failed: ' + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = '💾 Save to Trend Dashboard';
+}
+</script>
+</body>
+</html>
