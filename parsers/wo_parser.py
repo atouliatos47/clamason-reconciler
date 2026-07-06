@@ -55,7 +55,13 @@ def _collect_block_crafts(rows, start_idx):
     return resources, crafts, j
 
 
-def parse_wo_file(filepath):
+def _parse_all_maintenance_wos(filepath):
+    """Shared core: walks every WO block, returns ALL Maintenance/
+    Electrician-craft WOs regardless of job type, plus asset_lookup.
+    Both parse_wo_file() (job-type-restricted, for the monthly board
+    reconciliation) and parse_wo_file_all_types() (every job type, for
+    the Daily View) build on this same walk, so there's only one place
+    that has to get the block-parsing right."""
     import pandas as pd
     df = pd.read_excel(filepath, header=None)
     rows = df.values.tolist()
@@ -91,7 +97,7 @@ def parse_wo_file(filepath):
         i = next_i - 1  # resume scan right after this job's block
 
         is_maintenance_craft = any(c in MAINTENANCE_CRAFTS for c in crafts)
-        if is_maintenance_craft and (not job_type or job_type.lower() in MAINTENANCE_JOB_TYPES):
+        if is_maintenance_craft:
             records.append({
                 'jobNo': job_no,
                 'asset': asset_code,
@@ -106,3 +112,23 @@ def parse_wo_file(filepath):
         i += 1
 
     return records, asset_lookup
+
+
+def parse_wo_file(filepath):
+    """Maintenance/Electrician-craft WOs, restricted to MAINTENANCE_JOB_TYPES
+    only. Used by the monthly board reconciliation — unchanged behavior
+    from before this refactor, verified against real June data."""
+    records, asset_lookup = _parse_all_maintenance_wos(filepath)
+    filtered = [
+        r for r in records
+        if not r['jobType'] or r['jobType'].lower() in MAINTENANCE_JOB_TYPES
+    ]
+    return filtered, asset_lookup
+
+
+def parse_wo_file_all_types(filepath):
+    """Maintenance/Electrician-craft WOs, EVERY job type included — no
+    restriction. Used by the Daily View, which needs to see and bucket
+    Breakdown/Planned/Project-CI/Other itself, not just the monthly
+    reconciler's narrower scope."""
+    return _parse_all_maintenance_wos(filepath)

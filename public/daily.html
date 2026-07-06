@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Daily Maintenance Check</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; }
+
+  header {
+    background: #243547; padding: 0 32px;
+    display: flex; align-items: center; justify-content: space-between; height: 60px;
+    border-bottom: 3px solid #95C11F;
+  }
+  header h1 { color: white; font-size: 16px; font-weight: bold; }
+  header p { color: #95C11F; font-size: 11px; margin-top: 2px; }
+  .logo-badge { background: #95C11F; color: #243547; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+  .nav-link { color: #C7CFD6; font-size: 12px; text-decoration: none; margin-left: 18px; }
+  .nav-link:hover { color: #95C11F; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+
+  .upload-section { background: white; border-radius: 10px; padding: 28px; margin-bottom: 24px; }
+  .upload-section h2 { font-size: 15px; color: #243547; margin-bottom:4px; }
+  .upload-section p { font-size: 12px; color: #888; margin-bottom: 20px; }
+  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; max-width: 360px; transition: all 0.2s; }
+  .upload-card.done { border-color: #95C11F; border-style: solid; background: #f9fdf0; }
+  .upload-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
+  .upload-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
+  .upload-card input[type=file] { display: none; }
+  .upload-btn { display: inline-block; padding: 8px 18px; background: #243547; color: white; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
+  .upload-btn:hover { background: #95C11F; color: #243547; }
+  .file-status { font-size: 11px; margin-top: 8px; color: #95C11F; font-weight: bold; min-height: 16px; }
+
+  .run-btn { padding: 14px 28px; background: #95C11F; color: #243547; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; margin-top: 20px; transition: opacity 0.2s; }
+  .run-btn:hover { opacity: 0.9; }
+  .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; display: none; }
+
+  .results { display: none; }
+
+  .scope-badge { background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; margin-bottom: 16px; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 16px; }
+  .kpi { background: white; border-radius: 8px; padding: 18px 20px; border-top: 4px solid #ddd; }
+  .kpi.red { border-top-color: #dc2626; }
+  .kpi.green { border-top-color: #95C11F; }
+  .kpi.navy { border-top-color: #243547; }
+  .kpi.amber { border-top-color: #d97706; }
+  .kpi.gray { border-top-color: #9ca3af; }
+  .kpi label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi .val { font-size: 26px; font-weight: bold; color: #243547; margin: 4px 0; }
+  .kpi .sub { font-size: 11px; color: #aaa; }
+
+  .mttr-note { background: #fef3c7; border: 1px solid #d97706; border-radius: 8px; padding: 10px 16px; font-size: 12px; color: #92400e; margin-bottom: 24px; }
+
+  .table-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
+  .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
+  tr:hover td { background: #fafafa; }
+  .pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; display: inline-block; white-space: nowrap; }
+  .pill-red { background: #fee2e2; color: #dc2626; }
+  .pill-green { background: #dcfce7; color: #16a34a; }
+  .pill-purple { background: #ede9fe; color: #7c3aed; }
+  .pill-gray { background: #f3f4f6; color: #6b7280; }
+  .pill-navy { background: #e3e8ee; color: #243547; }
+  .filter-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .filter-tab { padding: 6px 14px; border-radius: 14px; font-size: 11px; font-weight: bold; cursor: pointer; background: #f3f4f6; color: #555; border: none; }
+  .filter-tab.active { background: #243547; color: white; }
+
+  footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Daily Maintenance Check</h1>
+    <p>Whole-site WO status — Maintenance &amp; Electrician, updated daily</p>
+  </div>
+  <div style="display:flex;align-items:center;">
+    <a class="nav-link" href="/">Monthly Check</a>
+    <a class="nav-link" href="/dashboard">Trend Dashboard</a>
+    <span class="logo-badge" style="margin-left:16px;">CLAMASON</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="upload-section">
+    <h2>Upload Today's Work Orders</h2>
+    <p>Selective Work Orders export from Agility. Down Time Analysis isn't needed yet — MTTR stays manual until it can be properly cross-referenced for craft.</p>
+    <div class="upload-card" id="card-wo">
+      <h3>🔧 Selective Work Orders</h3>
+      <p>Today's export, any period</p>
+      <label class="upload-btn" for="wo-file">Choose File</label>
+      <input type="file" id="wo-file" accept=".xlsx,.xls" onchange="handleFile(this)">
+      <div class="file-status" id="wo-status"></div>
+    </div>
+    <div class="error-box" id="error-box"></div>
+    <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Daily Check</button>
+  </div>
+
+  <div class="results" id="results">
+
+    <div class="scope-badge" id="scope-badge"></div>
+
+    <div class="kpi-row">
+      <div class="kpi navy"><label>Total WOs</label><div class="val" id="kpi-total">—</div><div class="sub" id="kpi-scope-sub"></div></div>
+      <div class="kpi red"><label>Breakdowns</label><div class="val" id="kpi-breakdowns">—</div><div class="sub" id="kpi-breakdowns-sub"></div></div>
+      <div class="kpi green"><label>Planned Completion</label><div class="val" id="kpi-pct">—</div><div class="sub" id="kpi-pct-sub"></div></div>
+      <div class="kpi amber"><label>Project / CI Open</label><div class="val" id="kpi-project">—</div><div class="sub" id="kpi-project-sub"></div></div>
+    </div>
+
+    <div class="mttr-note">⏱️ MTTR: manual entry for now — not yet calculated automatically (see notes).</div>
+
+    <div class="table-card">
+      <h3>Work Order Detail</h3>
+      <div class="filter-tabs" id="filter-tabs"></div>
+      <table>
+        <thead>
+          <tr><th>Job No</th><th>Asset</th><th>Type</th><th>Description</th><th>Status</th><th>Scope</th></tr>
+        </thead>
+        <tbody id="wo-tbody"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+</div>
+
+<footer>Clamason Maintenance — Internal Tool</footer>
+
+<script>
+let woFile = null;
+let lastResult = null;
+let activeFilter = 'all';
+
+function handleFile(input) {
+  const f = input.files[0];
+  if (!f) return;
+  woFile = f;
+  document.getElementById('card-wo').classList.add('done');
+  document.getElementById('wo-status').textContent = '✓ ' + f.name;
+  document.getElementById('run-btn').disabled = false;
+}
+
+async function runCheck() {
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('run-btn').textContent = '⏳ Checking...';
+
+  try {
+    const fd = new FormData();
+    fd.append('agility_wo', woFile);
+    const res = await fetch('/api/daily-check', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    lastResult = d;
+    render(d);
+    document.getElementById('results').style.display = 'block';
+  } catch (e) {
+    const eb = document.getElementById('error-box');
+    eb.style.display = 'block';
+    eb.textContent = 'Error: ' + e.message;
+  }
+
+  document.getElementById('run-btn').disabled = false;
+  document.getElementById('run-btn').textContent = '🔍 Run Daily Check';
+}
+
+function jobTypeBucket(job, d) {
+  const inList = (list) => list.some(j => j.jobNo === job.jobNo);
+  if (inList(d.breakdowns.jobs)) return 'breakdown';
+  if (inList(d.planned.jobs)) return 'planned';
+  if (inList(d.project_ci.jobs)) return 'project';
+  return 'other';
+}
+
+function pillFor(bucket) {
+  const map = {
+    breakdown: '<span class="pill pill-red">Breakdown</span>',
+    planned: '<span class="pill pill-green">Planned</span>',
+    project: '<span class="pill pill-purple">Project/CI</span>',
+    other: '<span class="pill pill-gray">Other</span>',
+  };
+  return map[bucket] || map.other;
+}
+
+function render(d) {
+  document.getElementById('scope-badge').textContent =
+    `Whole site — ${d.press_machine_wos} on SFC-tracked presses, ${d.sitewide_wos} on other equipment`;
+
+  document.getElementById('kpi-total').textContent = d.total_wos;
+  document.getElementById('kpi-scope-sub').textContent = 'All Maintenance & Electrician WOs';
+
+  document.getElementById('kpi-breakdowns').textContent = d.breakdowns.total;
+  document.getElementById('kpi-breakdowns-sub').textContent = `${d.breakdowns.completed} completed`;
+
+  const pct = d.planned.pct_completion;
+  document.getElementById('kpi-pct').textContent = pct !== null ? pct + '%' : '—';
+  document.getElementById('kpi-pct-sub').textContent = d.planned.total
+    ? `${d.planned.completed} of ${d.planned.total} planned jobs` : 'No planned jobs today';
+
+  document.getElementById('kpi-project').textContent = d.project_ci.open;
+  document.getElementById('kpi-project-sub').textContent = `${d.project_ci.total} total this period`;
+
+  renderFilterTabs(d);
+  renderTable(d);
+}
+
+function renderFilterTabs(d) {
+  const tabs = [
+    { key: 'all', label: `All (${d.total_wos})` },
+    { key: 'breakdown', label: `Breakdowns (${d.breakdowns.total})` },
+    { key: 'planned', label: `Planned (${d.planned.total})` },
+    { key: 'project', label: `Project/CI (${d.project_ci.total})` },
+    { key: 'other', label: `Other (${d.other.total})` },
+  ];
+  document.getElementById('filter-tabs').innerHTML = tabs.map(t =>
+    `<button class="filter-tab ${activeFilter===t.key?'active':''}" onclick="setFilter('${t.key}')">${t.label}</button>`
+  ).join('');
+}
+
+function setFilter(key) {
+  activeFilter = key;
+  renderFilterTabs(lastResult);
+  renderTable(lastResult);
+}
+
+function renderTable(d) {
+  let jobs = d.all_jobs;
+  if (activeFilter !== 'all') {
+    jobs = jobs.filter(j => jobTypeBucket(j, d) === activeFilter);
+  }
+  document.getElementById('wo-tbody').innerHTML = jobs.length ? jobs.map(j => {
+    const bucket = jobTypeBucket(j, d);
+    const statusClass = (j.status||'').toLowerCase().includes('complet') ? 'pill-green' : 'pill-gray';
+    const scopePill = j.known_machine ? '<span class="pill pill-navy">Press</span>' : '<span class="pill pill-gray">Site</span>';
+    return `<tr>
+      <td>${j.jobNo}</td>
+      <td><b>${j.asset}</b><br><span style="color:#888;font-size:11px">${j.assetName||''}</span></td>
+      <td>${pillFor(bucket)}</td>
+      <td>${j.desc||'—'}</td>
+      <td><span class="pill ${statusClass}">${j.status||'—'}</span></td>
+      <td>${scopePill}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:#888;padding:20px">No work orders in this category</td></tr>';
+}
+</script>
+</body>
+</html>

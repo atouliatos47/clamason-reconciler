@@ -83,6 +83,34 @@ SFC_TO_AGILITY = {
 NON_MACHINE_SHEETS = {'spare sfc box'}
 
 
+# --- Daily View job-type buckets --------------------------------------------
+# Confirmed against Agility's actual Job Type dropdown (screenshots) and real
+# WO descriptions (the "Normal Maintenance" investigation). Deliberately a
+# SEPARATE, more complete set of lists from MAINTENANCE_JOB_TYPES above —
+# that one was built narrowly for the monthly board reconciliation. The
+# Daily View needs to bucket every job type Maintenance/Electrician actually
+# raises, not just the ones the board report cares about.
+BREAKDOWN_JOB_TYPE = 'breakdown repair'
+
+PLANNED_JOB_TYPES_DAILY = {
+    'planned service & maintenance',
+    'tool preventative maintenance',
+    'routine minor service',
+}
+
+PROJECT_JOB_TYPES_DAILY = {
+    'modification',
+    'continuous improvement',
+    'efficiency improvement',
+}
+
+# Deliberately excluded from every bucket above — confirmed to be used
+# inconsistently for both planned and reactive work in practice, so it
+# can't be trusted either way until logging discipline improves (see the
+# toolbox-talk email). Falls into the "Other" bucket instead.
+# 'normal maintenance'
+
+
 def is_known_machine(asset_code):
     """True if this Agility asset code maps to an SFC-monitored press."""
     return any(asset_code in codes for codes in SFC_TO_AGILITY.values())
