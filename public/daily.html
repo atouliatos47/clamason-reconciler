@@ -97,13 +97,22 @@
 
   <div class="upload-section">
     <h2>Upload Today's Work Orders</h2>
-    <p>Selective Work Orders export from Agility. Down Time Analysis isn't needed yet — MTTR stays manual until it can be properly cross-referenced for craft.</p>
-    <div class="upload-card" id="card-wo">
-      <h3>🔧 Selective Work Orders</h3>
-      <p>Today's export, any period</p>
-      <label class="upload-btn" for="wo-file">Choose File</label>
-      <input type="file" id="wo-file" accept=".xlsx,.xls" onchange="handleFile(this)">
-      <div class="file-status" id="wo-status"></div>
+    <p>Selective Work Orders export from Agility. Down Time Analysis is optional — add it too if you want a real MTTR for today's breakdowns instead of a manual entry.</p>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+      <div class="upload-card" id="card-wo">
+        <h3>🔧 Selective Work Orders</h3>
+        <p>Today's export, any period</p>
+        <label class="upload-btn" for="wo-file">Choose File</label>
+        <input type="file" id="wo-file" accept=".xlsx,.xls" onchange="handleFile(this,'wo','card-wo','wo-status')">
+        <div class="file-status" id="wo-status"></div>
+      </div>
+      <div class="upload-card" id="card-dt">
+        <h3>⏱️ Agility Down Time</h3>
+        <p>Optional — enables real MTTR for today's breakdowns</p>
+        <label class="upload-btn" for="dt-file">Choose File</label>
+        <input type="file" id="dt-file" accept=".xlsx,.xls" onchange="handleFile(this,'dt','card-dt','dt-status')">
+        <div class="file-status" id="dt-status"></div>
+      </div>
     </div>
     <div class="error-box" id="error-box"></div>
     <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Daily Check</button>
@@ -120,7 +129,7 @@
       <div class="kpi amber"><label>Project / CI Open</label><div class="val" id="kpi-project">—</div><div class="sub" id="kpi-project-sub"></div></div>
     </div>
 
-    <div class="mttr-note">⏱️ MTTR: manual entry for now — not yet calculated automatically (see notes).</div>
+    <div class="mttr-note" id="mttr-note"></div>
 
     <div class="table-card">
       <h3>Work Order Detail</h3>
@@ -140,17 +149,17 @@
 <footer>Clamason Maintenance — Internal Tool</footer>
 
 <script>
-let woFile = null;
+let files = {};
 let lastResult = null;
 let activeFilter = 'all';
 
-function handleFile(input) {
+function handleFile(input, key, cardId, statusId) {
   const f = input.files[0];
   if (!f) return;
-  woFile = f;
-  document.getElementById('card-wo').classList.add('done');
-  document.getElementById('wo-status').textContent = '✓ ' + f.name;
-  document.getElementById('run-btn').disabled = false;
+  files[key] = f;
+  document.getElementById(cardId).classList.add('done');
+  document.getElementById(statusId).textContent = '✓ ' + f.name;
+  document.getElementById('run-btn').disabled = !files.wo;
 }
 
 async function runCheck() {
@@ -160,7 +169,8 @@ async function runCheck() {
 
   try {
     const fd = new FormData();
-    fd.append('agility_wo', woFile);
+    fd.append('agility_wo', files.wo);
+    if (files.dt) fd.append('agility_downtime', files.dt);
     const res = await fetch('/api/daily-check', { method: 'POST', body: fd });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
@@ -212,6 +222,16 @@ function render(d) {
 
   document.getElementById('kpi-project').textContent = d.project_ci.open;
   document.getElementById('kpi-project-sub').textContent = `${d.project_ci.total} total this period`;
+
+  const mttrNote = document.getElementById('mttr-note');
+  if (d.mttr_hrs !== null && d.mttr_hrs !== undefined) {
+    mttrNote.innerHTML = `⏱️ <b>MTTR: ${d.mttr_hrs}h</b> — average of ${d.mttr_matched} matched breakdown${d.mttr_matched===1?'':'s'}` +
+      (d.mttr_unmatched > 0 ? `, ${d.mttr_unmatched} breakdown${d.mttr_unmatched===1?'':'s'} had no matching Down Time Analysis entry` : '');
+  } else if (d.breakdowns.total === 0) {
+    mttrNote.innerHTML = '⏱️ MTTR: no breakdowns today — nothing to average.';
+  } else {
+    mttrNote.innerHTML = '⏱️ MTTR: upload Agility Down Time above for a real calculated figure — manual entry for now.';
+  }
 
   renderFilterTabs(d);
   renderTable(d);
