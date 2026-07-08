@@ -28,7 +28,7 @@
   .upload-section { background: white; border-radius: 10px; padding: 28px; margin-bottom: 24px; }
   .upload-section h2 { font-size: 15px; color: #243547; margin-bottom:4px; }
   .upload-section p { font-size: 12px; color: #888; margin-bottom: 20px; }
-  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; max-width: 360px; transition: all 0.2s; }
+  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; flex: 1; min-width: 240px; transition: all 0.2s; }
   .upload-card.done { border-color: #95C11F; border-style: solid; background: #f9fdf0; }
   .upload-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
   .upload-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
@@ -41,11 +41,24 @@
   .run-btn:hover { opacity: 0.9; }
   .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
+  .action-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .date-field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .date-field label { font-size: 12px; color: #555; }
+  .date-field input[type=date] { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; color: #243547; }
+  .save-btn { padding: 9px 18px; background: #243547; color: white; font-size: 12px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+  .save-btn:hover { background: #1a2735; }
+  .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .clear-btn { padding: 9px 18px; background: white; color: #243547; font-size: 12px; font-weight: bold; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+  .clear-btn:hover { border-color: #243547; }
+  .save-status { font-size: 12px; font-weight: bold; }
+  .save-status.ok { color: #16a34a; }
+  .save-status.err { color: #dc2626; }
+
   .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; display: none; }
 
   .results { display: none; }
 
-  .scope-badge { background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; margin-bottom: 16px; }
+  .scope-badge { background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; }
 
   .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 16px; }
   .kpi { background: white; border-radius: 8px; padding: 18px 20px; border-top: 4px solid #ddd; }
@@ -89,6 +102,7 @@
   <div style="display:flex;align-items:center;">
     <a class="nav-link" href="/">Monthly Check</a>
     <a class="nav-link" href="/dashboard">Trend Dashboard</a>
+    <a class="nav-link" href="/daily-trend">Daily Trend</a>
     <span class="logo-badge" style="margin-left:16px;">CLAMASON</span>
   </div>
 </header>
@@ -120,7 +134,16 @@
 
   <div class="results" id="results">
 
-    <div class="scope-badge" id="scope-badge"></div>
+    <div class="action-row">
+      <div class="scope-badge" id="scope-badge"></div>
+      <div class="date-field">
+        <label for="save-date">Date:</label>
+        <input type="date" id="save-date">
+        <button class="save-btn" id="save-btn" onclick="saveDaily()">💾 Save</button>
+        <button class="clear-btn" id="clear-btn" onclick="clearCheck()">↺ Clear / New Check</button>
+        <span class="save-status" id="save-status"></span>
+      </div>
+    </div>
 
     <div class="kpi-row">
       <div class="kpi navy"><label>Total WOs</label><div class="val" id="kpi-total">—</div><div class="sub" id="kpi-scope-sub"></div></div>
@@ -186,6 +209,69 @@ async function runCheck() {
   document.getElementById('run-btn').disabled = false;
   document.getElementById('run-btn').textContent = '🔍 Run Daily Check';
 }
+
+async function saveDaily() {
+  const dateVal = document.getElementById('save-date').value;
+  const statusEl = document.getElementById('save-status');
+
+  if (!dateVal) {
+    statusEl.textContent = 'Pick a date first';
+    statusEl.className = 'save-status err';
+    return;
+  }
+  if (!files.wo) {
+    statusEl.textContent = 'Selective Work Orders file is missing — choose it again and Run before saving';
+    statusEl.className = 'save-status err';
+    return;
+  }
+
+  const saveBtn = document.getElementById('save-btn');
+  saveBtn.disabled = true;
+  statusEl.textContent = 'Saving…';
+  statusEl.className = 'save-status';
+
+  try {
+    const fd = new FormData();
+    fd.append('agility_wo', files.wo);
+    fd.append('date', dateVal);
+    const res = await fetch('/api/save-daily', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    statusEl.textContent = `✓ Saved for ${d.date}`;
+    statusEl.className = 'save-status ok';
+  } catch (e) {
+    statusEl.textContent = 'Error: ' + e.message;
+    statusEl.className = 'save-status err';
+  }
+
+  saveBtn.disabled = false;
+}
+
+function clearCheck() {
+  files = {};
+  lastResult = null;
+  activeFilter = 'all';
+
+  ['wo', 'dt'].forEach(key => {
+    document.getElementById(key + '-file').value = '';
+  });
+  document.getElementById('card-wo').classList.remove('done');
+  document.getElementById('card-dt').classList.remove('done');
+  document.getElementById('wo-status').textContent = '';
+  document.getElementById('dt-status').textContent = '';
+
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('save-status').textContent = '';
+  document.getElementById('save-status').className = 'save-status';
+
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('save-date').valueAsDate = new Date();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('save-date').valueAsDate = new Date();
+});
 
 function jobTypeBucket(job, d) {
   const inList = (list) => list.some(j => j.jobNo === job.jobNo);

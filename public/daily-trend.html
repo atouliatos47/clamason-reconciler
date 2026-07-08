@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Daily Trend</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; }
+
+  header {
+    background: #243547; padding: 0 32px;
+    display: flex; align-items: center; justify-content: space-between; height: 60px;
+    border-bottom: 3px solid #95C11F;
+  }
+  header h1 { color: white; font-size: 16px; font-weight: bold; }
+  header p { color: #95C11F; font-size: 11px; margin-top: 2px; }
+  .logo-badge { background: #95C11F; color: #243547; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+  .nav-link { color: #C7CFD6; font-size: 12px; text-decoration: none; margin-left: 18px; }
+  .nav-link:hover { color: #95C11F; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+
+  .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; display: none; }
+  .empty-note { background: white; border-radius: 10px; padding: 24px; text-align: center; color: #888; font-size: 13px; margin-bottom: 24px; display: none; }
+
+  .table-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
+  .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; }
+
+  .filter-tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .filter-tab { padding: 6px 14px; border-radius: 14px; font-size: 11px; font-weight: bold; cursor: pointer; background: #f3f4f6; color: #555; border: none; }
+  .filter-tab.active { background: #243547; color: white; }
+
+  canvas { max-height: 320px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
+  tr:hover td { background: #fafafa; }
+
+  footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Daily Trend</h1>
+    <p>Rolled up from saved Daily Check snapshots</p>
+  </div>
+  <div style="display:flex;align-items:center;">
+    <a class="nav-link" href="/">Monthly Check</a>
+    <a class="nav-link" href="/dashboard">Trend Dashboard</a>
+    <a class="nav-link" href="/daily">Daily Check</a>
+    <span class="logo-badge" style="margin-left:16px;">CLAMASON</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="error-box" id="error-box"></div>
+  <div class="empty-note" id="empty-note">No saved snapshots yet — head to <a href="/daily">Daily Check</a>, run a check, and hit Save to start building history here.</div>
+
+  <div class="table-card">
+    <h3>Trend</h3>
+    <div class="filter-tabs" id="granularity-tabs">
+      <button class="filter-tab active" onclick="setGranularity('daily', this)">Daily</button>
+      <button class="filter-tab" onclick="setGranularity('weekly', this)">Weekly</button>
+      <button class="filter-tab" onclick="setGranularity('monthly', this)">Monthly</button>
+    </div>
+    <canvas id="trend-chart"></canvas>
+  </div>
+
+  <div class="table-card">
+    <h3 id="table-title">Daily Detail</h3>
+    <table>
+      <thead>
+        <tr><th>Period</th><th>Total WOs</th><th>Breakdowns</th><th>Planned Completion</th><th>MTTR</th><th>Project/CI Open</th></tr>
+      </thead>
+      <tbody id="trend-tbody"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<footer>Clamason Maintenance — Internal Tool</footer>
+
+<script>
+let trendData = null;
+let granularity = 'daily';
+let chart = null;
+
+async function loadTrend() {
+  try {
+    const res = await fetch('/api/daily-trend');
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    trendData = d;
+    if (!d.daily.length) {
+      document.getElementById('empty-note').style.display = 'block';
+      return;
+    }
+    renderAll();
+  } catch (e) {
+    const eb = document.getElementById('error-box');
+    eb.style.display = 'block';
+    eb.textContent = 'Error loading trend data: ' + e.message;
+  }
+}
+
+function setGranularity(g, btn) {
+  granularity = g;
+  document.querySelectorAll('#granularity-tabs .filter-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderAll();
+}
+
+function rowLabel(row) {
+  return granularity === 'daily' ? row.date : row.label;
+}
+
+function rowPlannedPct(row) {
+  if (granularity === 'daily') {
+    return row.planned_total ? Math.round(row.planned_completed / row.planned_total * 100) : null;
+  }
+  return row.planned_pct;
+}
+
+function renderAll() {
+  if (!trendData) return;
+  const rows = trendData[granularity] || [];
+  renderChart(rows);
+  renderTable(rows);
+}
+
+function renderChart(rows) {
+  const ctx = document.getElementById('trend-chart').getContext('2d');
+  const labels = rows.map(rowLabel);
+  const totalWos = rows.map(r => r.total_wos);
+  const breakdowns = rows.map(r => r.breakdowns_total);
+  const pct = rows.map(rowPlannedPct);
+
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Total WOs', data: totalWos, borderColor: '#243547', backgroundColor: '#243547', yAxisID: 'y', tension: 0.25 },
+        { label: 'Breakdowns', data: breakdowns, borderColor: '#dc2626', backgroundColor: '#dc2626', yAxisID: 'y', tension: 0.25 },
+        { label: 'Planned Completion %', data: pct, borderColor: '#95C11F', backgroundColor: '#95C11F', yAxisID: 'y1', tension: 0.25, borderDash: [4, 3] },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { beginAtZero: true, position: 'left', title: { display: true, text: 'WOs' } },
+        y1: { beginAtZero: true, max: 100, position: 'right', title: { display: true, text: '%' }, grid: { drawOnChartArea: false } },
+      },
+    },
+  });
+}
+
+function renderTable(rows) {
+  document.getElementById('table-title').textContent =
+    granularity === 'daily' ? 'Daily Detail' : granularity === 'weekly' ? 'Weekly Detail' : 'Monthly Detail';
+
+  document.getElementById('trend-tbody').innerHTML = rows.length ? rows.slice().reverse().map(r => {
+    const pct = rowPlannedPct(r);
+    const projectOpen = r.project_ci_total - (r.project_ci_completed || 0);
+    return `<tr>
+      <td>${rowLabel(r)}</td>
+      <td>${r.total_wos}</td>
+      <td>${r.breakdowns_total}</td>
+      <td>${pct !== null ? pct + '%' : '—'}</td>
+      <td>${r.mttr_hrs !== null && r.mttr_hrs !== undefined ? r.mttr_hrs + 'h' : '—'}</td>
+      <td>${projectOpen}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:#888;padding:20px">No data for this view</td></tr>';
+}
+
+loadTrend();
+</script>
+</body>
+</html>

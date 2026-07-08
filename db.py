@@ -106,3 +106,92 @@ def get_all_runs():
             row['created_at'] = row['created_at'].isoformat()
         result.append(row)
     return result
+
+
+def save_daily_snapshot(summary, date):
+    """Store one day's Daily View result. summary is the dict returned
+    by daily.compute_daily_summary(); date is a 'YYYY-MM-DD' string (or
+    a date object) for the day the WOs were pulled for. Re-saving the
+    same date (e.g. a corrected re-upload) overwrites the previous row
+    rather than creating a duplicate — same pattern as save_run()."""
+    row = {
+        'date': date,
+        'total_wos': summary.get('total_wos'),
+        'press_machine_wos': summary.get('press_machine_wos'),
+        'sitewide_wos': summary.get('sitewide_wos'),
+        'breakdowns_total': summary['breakdowns'].get('total'),
+        'breakdowns_completed': summary['breakdowns'].get('completed'),
+        'planned_total': summary['planned'].get('total'),
+        'planned_completed': summary['planned'].get('completed'),
+        'project_ci_total': summary['project_ci'].get('total'),
+        'project_ci_completed': summary['project_ci'].get('completed'),
+        'other_total': summary['other'].get('total'),
+        'mttr_hrs': summary.get('mttr_hrs'),
+        'mttr_matched': summary.get('mttr_matched'),
+        'mttr_unmatched': summary.get('mttr_unmatched'),
+    }
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO daily_snapshots
+                    (date, total_wos, press_machine_wos, sitewide_wos,
+                     breakdowns_total, breakdowns_completed,
+                     planned_total, planned_completed,
+                     project_ci_total, project_ci_completed,
+                     other_total, mttr_hrs, mttr_matched, mttr_unmatched)
+                VALUES
+                    (%(date)s, %(total_wos)s, %(press_machine_wos)s, %(sitewide_wos)s,
+                     %(breakdowns_total)s, %(breakdowns_completed)s,
+                     %(planned_total)s, %(planned_completed)s,
+                     %(project_ci_total)s, %(project_ci_completed)s,
+                     %(other_total)s, %(mttr_hrs)s, %(mttr_matched)s, %(mttr_unmatched)s)
+                ON CONFLICT (date) DO UPDATE SET
+                    total_wos = EXCLUDED.total_wos,
+                    press_machine_wos = EXCLUDED.press_machine_wos,
+                    sitewide_wos = EXCLUDED.sitewide_wos,
+                    breakdowns_total = EXCLUDED.breakdowns_total,
+                    breakdowns_completed = EXCLUDED.breakdowns_completed,
+                    planned_total = EXCLUDED.planned_total,
+                    planned_completed = EXCLUDED.planned_completed,
+                    project_ci_total = EXCLUDED.project_ci_total,
+                    project_ci_completed = EXCLUDED.project_ci_completed,
+                    other_total = EXCLUDED.other_total,
+                    mttr_hrs = EXCLUDED.mttr_hrs,
+                    mttr_matched = EXCLUDED.mttr_matched,
+                    mttr_unmatched = EXCLUDED.mttr_unmatched
+            """, row)
+        conn.commit()
+
+
+def get_daily_snapshots(start_date=None, end_date=None):
+    """Saved daily snapshots, oldest first — what the weekly and
+    monthly rollup views will read. start_date/end_date (both
+    inclusive, 'YYYY-MM-DD' strings) let a view ask for just this week
+    or this month instead of pulling the whole history every time."""
+    query = "SELECT * FROM daily_snapshots WHERE 1=1"
+    params = {}
+    if start_date:
+        query += " AND date >= %(start_date)s"
+        params['start_date'] = start_date
+    if end_date:
+        query += " AND date <= %(end_date)s"
+        params['end_date'] = end_date
+    query += " ORDER BY date ASC"
+
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+
+    result = []
+    for r in rows:
+        row = dict(r)
+        if row.get('mttr_hrs') is not None:
+            row['mttr_hrs'] = float(row['mttr_hrs'])
+        if row.get('date') is not None:
+            row['date'] = row['date'].isoformat()
+        if row.get('created_at') is not None:
+            row['created_at'] = row['created_at'].isoformat()
+        result.append(row)
+    return result

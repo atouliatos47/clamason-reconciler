@@ -14,6 +14,7 @@ from parsers.wo_parser import parse_wo_file, parse_wo_file_all_types
 from reconciliation import reconcile
 from report_pdf import build_gap_pdf
 from daily import compute_daily_summary
+from daily_trend import weekly_rollup, monthly_rollup
 import db
 
 bp = Blueprint('routes', __name__)
@@ -61,6 +62,28 @@ def daily_view():
     return send_from_directory('public', 'daily.html')
 
 
+@bp.route('/daily-trend')
+def daily_trend_view():
+    return send_from_directory('public', 'daily-trend.html')
+
+
+@bp.route('/api/daily-trend')
+def daily_trend():
+    """Saved daily_snapshots plus weekly/monthly rollups, for the Daily
+    Trend view. Read-only, same split as /api/trend vs /api/save-run:
+    this route never writes, /api/save-daily never reads."""
+    try:
+        snapshots = db.get_daily_snapshots()
+        return jsonify({
+            'daily': snapshots,
+            'weekly': weekly_rollup(snapshots),
+            'monthly': monthly_rollup(snapshots),
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
 @bp.route('/api/daily-check', methods=['POST'])
 def daily_check():
     """Daily View — whole-site Maintenance/Electrician WO check, replacing
@@ -80,6 +103,42 @@ def daily_check():
 
         summary = compute_daily_summary(wo_data)
         return jsonify(summary)
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/api/save-daily', methods=['POST'])
+def save_daily():
+    """Deliberately separate from /api/daily-check, same reasoning as
+    /api/save-run: running the check itself never auto-saves, so a day
+    you're still reviewing doesn't silently land in daily_snapshots.
+
+    Recomputes from the uploaded file rather than trusting whatever
+    JSON the browser already holds, so the saved row can never drift
+    from what a fresh /api/daily-check would produce. Down Time
+    Analysis isn't used here either, for the same reason it isn't used
+    in /api/daily-check yet (see daily.py) — using it here but not
+    there would mean the saved MTTR silently disagrees with the MTTR
+    on screen."""
+    try:
+        date = request.form.get('date', '').strip()
+        if not date:
+            return jsonify({'error': 'date is required (YYYY-MM-DD)'})
+
+        wo_file = request.files.get('agility_wo')
+        if not wo_file:
+            return jsonify({'error': 'Selective Work Orders xlsx is required'})
+
+        with saved_upload(wo_file, 'daily_wo') as path:
+            wo_data, asset_lookup = parse_wo_file_all_types(path)
+
+        for w in wo_data:
+            w['assetName'] = asset_lookup.get(w['asset'], '')
+
+        summary = compute_daily_summary(wo_data)
+        db.save_daily_snapshot(summary, date)
+        return jsonify({'saved': True, 'date': date, 'total_wos': summary['total_wos']})
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()})
