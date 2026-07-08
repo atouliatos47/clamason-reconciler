@@ -10,15 +10,36 @@
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
 
-  header {
-    background: #243547; padding: 0 32px;
-    display: flex; align-items: center; justify-content: space-between; height: 60px;
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh;
+    display: flex; flex-direction: column; padding: 24px 0;
+    border-right: 3px solid #95C11F;
   }
-  header h1 { color: white; font-size: 16px; font-weight: bold; }
-  header p { color: #95C11F; font-size: 11px; margin-top: 2px; }
-  .logo-badge { background: #95C11F; color: #243547; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-item { color: #C7CFD6; font-size: 13px; text-decoration: none; padding: 11px 24px; border-left: 3px solid transparent; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.14); color: #95C11F; border-left-color: #95C11F; font-weight: bold; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; min-width: 0; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; }
+  .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
+  .page-header p { color: #888; font-size: 11.5px; margin-top: 3px; }
+
+  @media (max-width: 768px) {
+    body { flex-direction: column; }
+    .sidebar { width: 100%; min-height: auto; flex-direction: row; align-items: center; padding: 12px 16px; overflow-x: auto; border-right: none; border-bottom: 3px solid #95C11F; }
+    .sidebar-brand { border-bottom: none; padding: 0 16px 0 0; margin-bottom: 0; white-space: nowrap; width: 140px; }
+    .sidebar-nav { flex-direction: row; }
+    .nav-item { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-item.active { border-left: none; border-bottom-color: #95C11F; }
+    .sidebar-footer { display: none; }
+  }
 
   .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
 
@@ -84,17 +105,26 @@
 </head>
 <body>
 
-<header>
-  <div>
-    <h1>Maintenance-Only Downtime Check</h1>
-    <p>SFC daily summary vs Agility breakdown work orders — maintenance hours only</p>
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Maintenance Reconciler</p>
   </div>
-  <div style="display:flex;align-items:center;">
-    <a href="/daily" style="color:#C7CFD6;font-size:12px;text-decoration:none;margin-right:18px;">Daily Check →</a>
-    <a href="/dashboard" style="color:#C7CFD6;font-size:12px;text-decoration:none;margin-right:18px;">Trend Dashboard →</a>
-    <span class="logo-badge">CLAMASON</span>
-  </div>
-</header>
+  <nav class="sidebar-nav">
+    <a class="nav-item active" href="/">Monthly Check</a>
+    <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+    <a class="nav-item" href="/daily">Daily Check</a>
+    <a class="nav-item" href="/daily-trend">Daily Trend</a>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<div class="main">
+
+<div class="page-header">
+  <h1>Maintenance-Only Downtime Check</h1>
+  <p>SFC daily summary vs Agility breakdown work orders — maintenance hours only</p>
+</div>
 
 <div class="container">
 
@@ -177,6 +207,8 @@
 </div>
 
 <footer>Clamason Maintenance — Internal Tool</footer>
+
+</div>
 
 <script>
 const files = {};
