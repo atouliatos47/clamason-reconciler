@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Clamason — Daily Maintenance Check</title>
+<title>Clamason — SFC Daily Downtime</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
@@ -46,7 +46,7 @@
   .upload-section { background: white; border-radius: 10px; padding: 28px; margin-bottom: 24px; }
   .upload-section h2 { font-size: 15px; color: #243547; margin-bottom:4px; }
   .upload-section p { font-size: 12px; color: #888; margin-bottom: 20px; }
-  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; flex: 1; min-width: 240px; transition: all 0.2s; }
+  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; max-width: 420px; transition: all 0.2s; }
   .upload-card.done { border-color: #95C11F; border-style: solid; background: #f9fdf0; }
   .upload-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
   .upload-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
@@ -78,18 +78,15 @@
 
   .scope-badge { background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; }
 
-  .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 16px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
   .kpi { background: white; border-radius: 8px; padding: 18px 20px; border-top: 4px solid #ddd; }
   .kpi.red { border-top-color: #dc2626; }
   .kpi.green { border-top-color: #95C11F; }
   .kpi.navy { border-top-color: #243547; }
   .kpi.amber { border-top-color: #d97706; }
-  .kpi.gray { border-top-color: #9ca3af; }
   .kpi label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
   .kpi .val { font-size: 26px; font-weight: bold; color: #243547; margin: 4px 0; }
   .kpi .sub { font-size: 11px; color: #aaa; }
-
-  .mttr-note { background: #fef3c7; border: 1px solid #d97706; border-radius: 8px; padding: 10px 16px; font-size: 12px; color: #92400e; margin-bottom: 24px; }
 
   .table-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
   .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; }
@@ -99,13 +96,9 @@
   tr:hover td { background: #fafafa; }
   .pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; display: inline-block; white-space: nowrap; }
   .pill-red { background: #fee2e2; color: #dc2626; }
-  .pill-green { background: #dcfce7; color: #16a34a; }
-  .pill-purple { background: #ede9fe; color: #7c3aed; }
-  .pill-gray { background: #f3f4f6; color: #6b7280; }
+  .pill-amber { background: #fef3c7; color: #92400e; }
   .pill-navy { background: #e3e8ee; color: #243547; }
-  .filter-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
-  .filter-tab { padding: 6px 14px; border-radius: 14px; font-size: 11px; font-weight: bold; cursor: pointer; background: #f3f4f6; color: #555; border: none; }
-  .filter-tab.active { background: #243547; color: white; }
+  .pill-gray { background: #f3f4f6; color: #6b7280; }
 
   footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
 </style>
@@ -120,9 +113,9 @@
   <nav class="sidebar-nav">
     <a class="nav-item" href="/">Monthly Check</a>
     <a class="nav-item" href="/dashboard">Trend Dashboard</a>
-    <a class="nav-item active" href="/daily">Daily Check</a>
+    <a class="nav-item" href="/daily">Daily Check</a>
     <a class="nav-item" href="/daily-trend">Daily Trend</a>
-    <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+    <a class="nav-item active" href="/sfc-daily">SFC Daily</a>
   </nav>
   <div class="sidebar-footer">Internal Tool</div>
 </div>
@@ -130,33 +123,24 @@
 <div class="main">
 
 <div class="page-header">
-  <h1>Daily Maintenance Check</h1>
-  <p>Whole-site WO status — Maintenance &amp; Electrician, updated daily</p>
+  <h1>SFC Daily Downtime</h1>
+  <p>Fault-reason breakdown from the SFC Daily Downtime Summary PDF</p>
 </div>
 
 <div class="container">
 
   <div class="upload-section">
-    <h2>Upload Today's Work Orders</h2>
-    <p>Selective Work Orders export from Agility. Down Time Analysis is optional — add it too if you want a real MTTR for today's breakdowns instead of a manual entry.</p>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;">
-      <div class="upload-card" id="card-wo">
-        <h3>🔧 Selective Work Orders</h3>
-        <p>Today's export, any period</p>
-        <label class="upload-btn" for="wo-file">Choose File</label>
-        <input type="file" id="wo-file" accept=".xlsx,.xls" onchange="handleFile(this,'wo','card-wo','wo-status')">
-        <div class="file-status" id="wo-status"></div>
-      </div>
-      <div class="upload-card" id="card-dt">
-        <h3>⏱️ Agility Down Time</h3>
-        <p>Optional — enables real MTTR for today's breakdowns</p>
-        <label class="upload-btn" for="dt-file">Choose File</label>
-        <input type="file" id="dt-file" accept=".xlsx,.xls" onchange="handleFile(this,'dt','card-dt','dt-status')">
-        <div class="file-status" id="dt-status"></div>
-      </div>
+    <h2>Upload Today's SFC Downtime Summary</h2>
+    <p>The daily "SFC Downtime Summary" PDF export from ShopfloorConnect — whole site, one report per day.</p>
+    <div class="upload-card" id="card-pdf">
+      <h3>📄 SFC Daily Downtime Summary</h3>
+      <p>PDF export, whole site</p>
+      <label class="upload-btn" for="pdf-file">Choose File</label>
+      <input type="file" id="pdf-file" accept=".pdf" onchange="handleFile(this)">
+      <div class="file-status" id="pdf-status"></div>
     </div>
     <div class="error-box" id="error-box"></div>
-    <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Daily Check</button>
+    <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Check</button>
   </div>
 
   <div class="results" id="results">
@@ -166,29 +150,26 @@
       <div class="date-field">
         <label for="save-date">Date:</label>
         <input type="date" id="save-date">
-        <button class="save-btn" id="save-btn" onclick="saveDaily()">💾 Save</button>
+        <button class="save-btn" id="save-btn" onclick="saveSfcDaily()">💾 Save</button>
         <button class="clear-btn" id="clear-btn" onclick="clearCheck()">↺ Clear / New Check</button>
         <span class="save-status" id="save-status"></span>
       </div>
     </div>
 
     <div class="kpi-row">
-      <div class="kpi navy"><label>Total WOs</label><div class="val" id="kpi-total">—</div><div class="sub" id="kpi-scope-sub"></div></div>
-      <div class="kpi red"><label>Breakdowns</label><div class="val" id="kpi-breakdowns">—</div><div class="sub" id="kpi-breakdowns-sub"></div></div>
-      <div class="kpi green"><label>Planned Completion</label><div class="val" id="kpi-pct">—</div><div class="sub" id="kpi-pct-sub"></div></div>
-      <div class="kpi amber"><label>Project / CI Open</label><div class="val" id="kpi-project">—</div><div class="sub" id="kpi-project-sub"></div></div>
+      <div class="kpi red"><label>Maintenance Hrs</label><div class="val" id="kpi-maint">—</div><div class="sub">FAULT - PRESS + FAULT-FEEDER/DECOILER/STR</div></div>
+      <div class="kpi amber"><label>Toolroom Hrs</label><div class="val" id="kpi-tool">—</div><div class="sub">Tool failures, waste in tool, unavailable</div></div>
+      <div class="kpi green"><label>Scheduled Hrs</label><div class="val" id="kpi-sched">—</div><div class="sub" id="kpi-sched-sub"></div></div>
+      <div class="kpi navy"><label>Total Downtime</label><div class="val" id="kpi-total">—</div><div class="sub" id="kpi-total-sub"></div></div>
     </div>
 
-    <div class="mttr-note" id="mttr-note"></div>
-
     <div class="table-card">
-      <h3>Work Order Detail</h3>
-      <div class="filter-tabs" id="filter-tabs"></div>
+      <h3>Downtime Reasons — Sorted by Hours</h3>
       <table>
         <thead>
-          <tr><th>Job No</th><th>Asset</th><th>Type</th><th>Description</th><th>Status</th><th>Scope</th></tr>
+          <tr><th>Reason</th><th>Category</th><th># of Events</th><th>Hours</th><th>% of Total</th></tr>
         </thead>
-        <tbody id="wo-tbody"></tbody>
+        <tbody id="reasons-tbody"></tbody>
       </table>
     </div>
 
@@ -201,17 +182,44 @@
 </div>
 
 <script>
-let files = {};
+let file = null;
 let lastResult = null;
-let activeFilter = 'all';
 
-function handleFile(input, key, cardId, statusId) {
+// Display-only copy of config.py's category sets, for tagging rows in
+// the table below. NOT used for any calculation — that's done
+// server-side in parsers/sfc_daily_downtime_pdf.py using the real
+// config.py. If those lists ever change, update this copy too, or the
+// pill on a row could show the wrong category while the hours
+// underneath it (computed server-side) stay correct regardless.
+const BLAME_FAULT_CODES = new Set(['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR']);
+const TOOLROOM_CODES = new Set(['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP', 'TOOL UNAVAILABLE', 'WASTE IN THE TOOL']);
+const PLANNED_CODES = new Set(['PLANNED OFFLINE', 'NO PRODUCTION PLANNED']);
+
+function categoryFor(reason) {
+  const upper = reason.toUpperCase();
+  if (BLAME_FAULT_CODES.has(upper)) return 'maintenance';
+  if (TOOLROOM_CODES.has(upper)) return 'toolroom';
+  if (PLANNED_CODES.has(upper)) return 'planned';
+  return 'other';
+}
+
+function categoryPill(cat) {
+  const map = {
+    maintenance: '<span class="pill pill-red">Maintenance</span>',
+    toolroom: '<span class="pill pill-amber">Toolroom</span>',
+    planned: '<span class="pill pill-navy">Planned</span>',
+    other: '<span class="pill pill-gray">Other</span>',
+  };
+  return map[cat] || map.other;
+}
+
+function handleFile(input) {
   const f = input.files[0];
   if (!f) return;
-  files[key] = f;
-  document.getElementById(cardId).classList.add('done');
-  document.getElementById(statusId).textContent = '✓ ' + f.name;
-  document.getElementById('run-btn').disabled = !files.wo;
+  file = f;
+  document.getElementById('card-pdf').classList.add('done');
+  document.getElementById('pdf-status').textContent = '✓ ' + f.name;
+  document.getElementById('run-btn').disabled = false;
 }
 
 async function runCheck() {
@@ -221,9 +229,8 @@ async function runCheck() {
 
   try {
     const fd = new FormData();
-    fd.append('agility_wo', files.wo);
-    if (files.dt) fd.append('agility_downtime', files.dt);
-    const res = await fetch('/api/daily-check', { method: 'POST', body: fd });
+    fd.append('sfc_daily_pdf', file);
+    const res = await fetch('/api/sfc-daily-check', { method: 'POST', body: fd });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
     lastResult = d;
@@ -236,10 +243,44 @@ async function runCheck() {
   }
 
   document.getElementById('run-btn').disabled = false;
-  document.getElementById('run-btn').textContent = '🔍 Run Daily Check';
+  document.getElementById('run-btn').textContent = '🔍 Run Check';
 }
 
-async function saveDaily() {
+function render(d) {
+  document.getElementById('scope-badge').textContent =
+    `Whole site — ${d.machine_count} monitored presses · ${d.period_hrs}h period`;
+
+  document.getElementById('kpi-maint').textContent = d.maintenance_hrs + 'h';
+  document.getElementById('kpi-tool').textContent = d.toolroom_hrs + 'h';
+
+  document.getElementById('kpi-sched').textContent = d.scheduled_hrs + 'h';
+  document.getElementById('kpi-sched-sub').textContent = `of ${d.max_possible_hrs}h max possible`;
+
+  document.getElementById('kpi-total').textContent = d.total_hrs + 'h';
+  document.getElementById('kpi-total-sub').textContent = `${d.total_events} events`;
+
+  renderReasonsTable(d);
+}
+
+function renderReasonsTable(d) {
+  const reasons = Object.entries(d.reasons || {}).sort((a, b) => b[1] - a[1]);
+  const totalHrs = d.total_hrs || 1;
+
+  document.getElementById('reasons-tbody').innerHTML = reasons.length ? reasons.map(([reason, hrs]) => {
+    const cat = categoryFor(reason);
+    const events = (d.reason_events || {})[reason] ?? '—';
+    const pct = ((hrs / totalHrs) * 100).toFixed(1);
+    return `<tr>
+      <td>${reason}</td>
+      <td>${categoryPill(cat)}</td>
+      <td>${events}</td>
+      <td>${hrs.toFixed(2)}h</td>
+      <td>${pct}%</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px">No reasons parsed</td></tr>';
+}
+
+async function saveSfcDaily() {
   const dateVal = document.getElementById('save-date').value;
   const statusEl = document.getElementById('save-status');
 
@@ -248,8 +289,8 @@ async function saveDaily() {
     statusEl.className = 'save-status err';
     return;
   }
-  if (!files.wo) {
-    statusEl.textContent = 'Selective Work Orders file is missing — choose it again and Run before saving';
+  if (!file) {
+    statusEl.textContent = 'PDF is missing — choose it again and Run before saving';
     statusEl.className = 'save-status err';
     return;
   }
@@ -261,9 +302,9 @@ async function saveDaily() {
 
   try {
     const fd = new FormData();
-    fd.append('agility_wo', files.wo);
+    fd.append('sfc_daily_pdf', file);
     fd.append('date', dateVal);
-    const res = await fetch('/api/save-daily', { method: 'POST', body: fd });
+    const res = await fetch('/api/save-sfc-daily', { method: 'POST', body: fd });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
     statusEl.textContent = `✓ Saved for ${d.date}`;
@@ -277,17 +318,12 @@ async function saveDaily() {
 }
 
 function clearCheck() {
-  files = {};
+  file = null;
   lastResult = null;
-  activeFilter = 'all';
 
-  ['wo', 'dt'].forEach(key => {
-    document.getElementById(key + '-file').value = '';
-  });
-  document.getElementById('card-wo').classList.remove('done');
-  document.getElementById('card-dt').classList.remove('done');
-  document.getElementById('wo-status').textContent = '';
-  document.getElementById('dt-status').textContent = '';
+  document.getElementById('pdf-file').value = '';
+  document.getElementById('card-pdf').classList.remove('done');
+  document.getElementById('pdf-status').textContent = '';
 
   document.getElementById('run-btn').disabled = true;
   document.getElementById('error-box').style.display = 'none';
@@ -301,95 +337,6 @@ function clearCheck() {
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('save-date').valueAsDate = new Date();
 });
-
-function jobTypeBucket(job, d) {
-  const inList = (list) => list.some(j => j.jobNo === job.jobNo);
-  if (inList(d.breakdowns.jobs)) return 'breakdown';
-  if (inList(d.planned.jobs)) return 'planned';
-  if (inList(d.project_ci.jobs)) return 'project';
-  return 'other';
-}
-
-function pillFor(bucket) {
-  const map = {
-    breakdown: '<span class="pill pill-red">Breakdown</span>',
-    planned: '<span class="pill pill-green">Planned</span>',
-    project: '<span class="pill pill-purple">Project/CI</span>',
-    other: '<span class="pill pill-gray">Other</span>',
-  };
-  return map[bucket] || map.other;
-}
-
-function render(d) {
-  document.getElementById('scope-badge').textContent =
-    `Whole site — ${d.press_machine_wos} on SFC-tracked presses, ${d.sitewide_wos} on other equipment`;
-
-  document.getElementById('kpi-total').textContent = d.total_wos;
-  document.getElementById('kpi-scope-sub').textContent = 'All Maintenance & Electrician WOs';
-
-  document.getElementById('kpi-breakdowns').textContent = d.breakdowns.total;
-  document.getElementById('kpi-breakdowns-sub').textContent = `${d.breakdowns.completed} completed`;
-
-  const pct = d.planned.pct_completion;
-  document.getElementById('kpi-pct').textContent = pct !== null ? pct + '%' : '—';
-  document.getElementById('kpi-pct-sub').textContent = d.planned.total
-    ? `${d.planned.completed} of ${d.planned.total} planned jobs` : 'No planned jobs today';
-
-  document.getElementById('kpi-project').textContent = d.project_ci.open;
-  document.getElementById('kpi-project-sub').textContent = `${d.project_ci.total} total this period`;
-
-  const mttrNote = document.getElementById('mttr-note');
-  if (d.mttr_hrs !== null && d.mttr_hrs !== undefined) {
-    mttrNote.innerHTML = `⏱️ <b>MTTR: ${d.mttr_hrs}h</b> — average of ${d.mttr_matched} matched breakdown${d.mttr_matched===1?'':'s'}` +
-      (d.mttr_unmatched > 0 ? `, ${d.mttr_unmatched} breakdown${d.mttr_unmatched===1?'':'s'} had no matching Down Time Analysis entry` : '');
-  } else if (d.breakdowns.total === 0) {
-    mttrNote.innerHTML = '⏱️ MTTR: no breakdowns today — nothing to average.';
-  } else {
-    mttrNote.innerHTML = '⏱️ MTTR: upload Agility Down Time above for a real calculated figure — manual entry for now.';
-  }
-
-  renderFilterTabs(d);
-  renderTable(d);
-}
-
-function renderFilterTabs(d) {
-  const tabs = [
-    { key: 'all', label: `All (${d.total_wos})` },
-    { key: 'breakdown', label: `Breakdowns (${d.breakdowns.total})` },
-    { key: 'planned', label: `Planned (${d.planned.total})` },
-    { key: 'project', label: `Project/CI (${d.project_ci.total})` },
-    { key: 'other', label: `Other (${d.other.total})` },
-  ];
-  document.getElementById('filter-tabs').innerHTML = tabs.map(t =>
-    `<button class="filter-tab ${activeFilter===t.key?'active':''}" onclick="setFilter('${t.key}')">${t.label}</button>`
-  ).join('');
-}
-
-function setFilter(key) {
-  activeFilter = key;
-  renderFilterTabs(lastResult);
-  renderTable(lastResult);
-}
-
-function renderTable(d) {
-  let jobs = d.all_jobs;
-  if (activeFilter !== 'all') {
-    jobs = jobs.filter(j => jobTypeBucket(j, d) === activeFilter);
-  }
-  document.getElementById('wo-tbody').innerHTML = jobs.length ? jobs.map(j => {
-    const bucket = jobTypeBucket(j, d);
-    const statusClass = (j.status||'').toLowerCase().includes('complet') ? 'pill-green' : 'pill-gray';
-    const scopePill = j.known_machine ? '<span class="pill pill-navy">Press</span>' : '<span class="pill pill-gray">Site</span>';
-    return `<tr>
-      <td>${j.jobNo}</td>
-      <td><b>${j.asset}</b><br><span style="color:#888;font-size:11px">${j.assetName||''}</span></td>
-      <td>${pillFor(bucket)}</td>
-      <td>${j.desc||'—'}</td>
-      <td><span class="pill ${statusClass}">${j.status||'—'}</span></td>
-      <td>${scopePill}</td>
-    </tr>`;
-  }).join('') : '<tr><td colspan="6" style="text-align:center;color:#888;padding:20px">No work orders in this category</td></tr>';
-}
 </script>
 </body>
 </html>
