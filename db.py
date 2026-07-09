@@ -195,3 +195,100 @@ def get_daily_snapshots(start_date=None, end_date=None):
             row['created_at'] = row['created_at'].isoformat()
         result.append(row)
     return result
+
+
+def save_sfc_daily_snapshot(summary, date):
+    """Store one day's SFC Daily Downtime Summary result. summary is the
+    dict returned by parsers.sfc_daily_downtime_pdf.parse_daily_downtime_pdf();
+    date is a 'YYYY-MM-DD' string (or a date object) you choose at save
+    time — same as save_daily_snapshot(), this is never derived from the
+    report's own Report Period. Re-saving the same date overwrites the
+    previous row rather than creating a duplicate."""
+    row = {
+        'date': date,
+        'period': summary.get('period'),
+        'total_events': summary.get('total_events'),
+        'total_hrs': summary.get('total_hrs'),
+        'maintenance_hrs': summary.get('maintenance_hrs'),
+        'toolroom_hrs': summary.get('toolroom_hrs'),
+        'production_hrs': summary.get('production_hrs'),
+        'machine_count': summary.get('machine_count'),
+        'period_hrs': summary.get('period_hrs'),
+        'max_possible_hrs': summary.get('max_possible_hrs'),
+        'planned_offline_hrs': summary.get('planned_offline_hrs'),
+        'scheduled_hrs': summary.get('scheduled_hrs'),
+        'reasons': json.dumps(summary.get('reasons', {})),
+        'reason_events': json.dumps(summary.get('reason_events', {})),
+    }
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO sfc_daily_snapshots
+                    (date, period, total_events, total_hrs,
+                     maintenance_hrs, toolroom_hrs, production_hrs,
+                     machine_count, period_hrs, max_possible_hrs,
+                     planned_offline_hrs, scheduled_hrs,
+                     reasons, reason_events)
+                VALUES
+                    (%(date)s, %(period)s, %(total_events)s, %(total_hrs)s,
+                     %(maintenance_hrs)s, %(toolroom_hrs)s, %(production_hrs)s,
+                     %(machine_count)s, %(period_hrs)s, %(max_possible_hrs)s,
+                     %(planned_offline_hrs)s, %(scheduled_hrs)s,
+                     %(reasons)s, %(reason_events)s)
+                ON CONFLICT (date) DO UPDATE SET
+                    period = EXCLUDED.period,
+                    total_events = EXCLUDED.total_events,
+                    total_hrs = EXCLUDED.total_hrs,
+                    maintenance_hrs = EXCLUDED.maintenance_hrs,
+                    toolroom_hrs = EXCLUDED.toolroom_hrs,
+                    production_hrs = EXCLUDED.production_hrs,
+                    machine_count = EXCLUDED.machine_count,
+                    period_hrs = EXCLUDED.period_hrs,
+                    max_possible_hrs = EXCLUDED.max_possible_hrs,
+                    planned_offline_hrs = EXCLUDED.planned_offline_hrs,
+                    scheduled_hrs = EXCLUDED.scheduled_hrs,
+                    reasons = EXCLUDED.reasons,
+                    reason_events = EXCLUDED.reason_events
+            """, row)
+        conn.commit()
+
+
+def get_sfc_daily_snapshots(start_date=None, end_date=None):
+    """Saved SFC daily downtime snapshots, oldest first — what the SFC
+    Daily Trend / Pareto view will read. Optional start_date/end_date
+    (both inclusive, 'YYYY-MM-DD' strings) let a view ask for just this
+    week or month instead of pulling the whole history every time.
+    reasons/reason_events come back from psycopg2 as plain dicts
+    already — JSONB is adapted automatically, no json.loads() needed."""
+    query = "SELECT * FROM sfc_daily_snapshots WHERE 1=1"
+    params = {}
+    if start_date:
+        query += " AND date >= %(start_date)s"
+        params['start_date'] = start_date
+    if end_date:
+        query += " AND date <= %(end_date)s"
+        params['end_date'] = end_date
+    query += " ORDER BY date ASC"
+
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+
+    numeric_fields = [
+        'total_hrs', 'maintenance_hrs', 'toolroom_hrs', 'production_hrs',
+        'period_hrs', 'max_possible_hrs', 'planned_offline_hrs', 'scheduled_hrs',
+    ]
+    result = []
+    for r in rows:
+        row = dict(r)
+        for field in numeric_fields:
+            if row.get(field) is not None:
+                row[field] = float(row[field])
+        if row.get('date') is not None:
+            row['date'] = row['date'].isoformat()
+        if row.get('created_at') is not None:
+            row['created_at'] = row['created_at'].isoformat()
+        result.append(row)
+    return result
