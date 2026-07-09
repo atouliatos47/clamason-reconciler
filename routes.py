@@ -15,6 +15,7 @@ from reconciliation import reconcile
 from report_pdf import build_gap_pdf
 from daily import compute_daily_summary
 from daily_trend import weekly_rollup, monthly_rollup
+from parsers.sfc_daily_downtime_pdf import parse_daily_downtime_pdf
 import db
 
 bp = Blueprint('routes', __name__)
@@ -139,6 +140,60 @@ def save_daily():
         summary = compute_daily_summary(wo_data)
         db.save_daily_snapshot(summary, date)
         return jsonify({'saved': True, 'date': date, 'total_wos': summary['total_wos']})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/sfc-daily')
+def sfc_daily_view():
+    return send_from_directory('public', 'sfc-daily.html')
+
+
+@bp.route('/api/sfc-daily-check', methods=['POST'])
+def sfc_daily_check():
+    """SFC Daily Downtime Summary PDF check — entirely separate from the
+    WO-based Daily Check above: own upload, own page, own table
+    (sfc_daily_snapshots). Never auto-saves; /api/save-sfc-daily below
+    is the only route that writes."""
+    try:
+        pdf_file = request.files.get('sfc_daily_pdf')
+        if not pdf_file:
+            return jsonify({'error': 'SFC Daily Downtime Summary PDF is required'})
+
+        with saved_upload(pdf_file, 'sfc_daily_pdf') as path:
+            summary = parse_daily_downtime_pdf(path)
+
+        return jsonify(summary)
+    except ValueError as e:
+        return jsonify({'error': str(e)})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/api/save-sfc-daily', methods=['POST'])
+def save_sfc_daily():
+    """Deliberately separate from /api/sfc-daily-check, same reasoning
+    as /api/save-daily: never auto-saves, and recomputes from the
+    uploaded file rather than trusting whatever the browser already
+    has, so the saved row can never drift from a fresh check."""
+    try:
+        date = request.form.get('date', '').strip()
+        if not date:
+            return jsonify({'error': 'date is required (YYYY-MM-DD)'})
+
+        pdf_file = request.files.get('sfc_daily_pdf')
+        if not pdf_file:
+            return jsonify({'error': 'SFC Daily Downtime Summary PDF is required'})
+
+        with saved_upload(pdf_file, 'sfc_daily_pdf') as path:
+            summary = parse_daily_downtime_pdf(path)
+
+        db.save_sfc_daily_snapshot(summary, date)
+        return jsonify({'saved': True, 'date': date, 'maintenance_hrs': summary['maintenance_hrs']})
+    except ValueError as e:
+        return jsonify({'error': str(e)})
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()})
