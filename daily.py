@@ -9,11 +9,13 @@ this covers everything Maintenance/Electrician touch day to day
 tagged `known_machine` so the UI can flag which ones are part of the
 monthly board story.
 
-MTTR is deliberately NOT calculated here yet. Andreas asked for it to
-show as a manual 0 for now, until the Down Time Analysis file can be
-properly cross-referenced against Selective Work Orders for craft —
-the same class of bug we found in Maintenance Daily's own MTTR
-calculation (it summed DTA events unfiltered by craft or job type).
+MTTR is calculated for real when Down Time Analysis is provided (see
+compute_daily_summary below) — matched by WO number against the
+breakdown jobs already filtered to Maintenance/Electrician craft, so
+it can't pick up the same class of bug Maintenance Daily's own MTTR
+had (that one summed DTA events sitewide, unfiltered by craft or job
+type). If Down Time Analysis isn't uploaded, mttr_hrs comes back None
+and the UI falls back to manual entry.
 """
 from config import (
     BREAKDOWN_JOB_TYPE, PLANNED_JOB_TYPES_DAILY, PROJECT_JOB_TYPES_DAILY,

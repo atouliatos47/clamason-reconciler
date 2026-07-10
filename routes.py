@@ -89,8 +89,10 @@ def daily_trend():
 def daily_check():
     """Daily View — whole-site Maintenance/Electrician WO check, replacing
     Maintenance Daily's own calculation. Only needs Selective Work Orders;
-    Down Time Analysis is accepted but not used yet (MTTR is manual until
-    it can be properly cross-referenced for craft — see daily.py)."""
+    Down Time Analysis is optional — if provided, MTTR is calculated for
+    real (see compute_daily_summary), matched by WO number against the
+    already craft-filtered breakdown list, so nothing outside
+    Maintenance/Electrician can leak into it."""
     try:
         wo_file = request.files.get('agility_wo')
         if not wo_file:
@@ -102,7 +104,13 @@ def daily_check():
         for w in wo_data:
             w['assetName'] = asset_lookup.get(w['asset'], '')
 
-        summary = compute_daily_summary(wo_data)
+        downtime_data = None
+        dt_file = request.files.get('agility_downtime')
+        if dt_file:
+            with saved_upload(dt_file, 'daily_downtime') as path:
+                downtime_data = parse_downtime_file(path)
+
+        summary = compute_daily_summary(wo_data, downtime_data)
         return jsonify(summary)
     except Exception as e:
         import traceback
@@ -115,13 +123,12 @@ def save_daily():
     /api/save-run: running the check itself never auto-saves, so a day
     you're still reviewing doesn't silently land in daily_snapshots.
 
-    Recomputes from the uploaded file rather than trusting whatever
+    Recomputes from the uploaded file(s) rather than trusting whatever
     JSON the browser already holds, so the saved row can never drift
     from what a fresh /api/daily-check would produce. Down Time
-    Analysis isn't used here either, for the same reason it isn't used
-    in /api/daily-check yet (see daily.py) — using it here but not
-    there would mean the saved MTTR silently disagrees with the MTTR
-    on screen."""
+    Analysis is handled exactly the same way here as in /api/daily-check
+    (optional, real MTTR if provided) — deliberately kept identical so
+    the saved MTTR can never silently disagree with the MTTR on screen."""
     try:
         date = request.form.get('date', '').strip()
         if not date:
@@ -137,7 +144,13 @@ def save_daily():
         for w in wo_data:
             w['assetName'] = asset_lookup.get(w['asset'], '')
 
-        summary = compute_daily_summary(wo_data)
+        downtime_data = None
+        dt_file = request.files.get('agility_downtime')
+        if dt_file:
+            with saved_upload(dt_file, 'daily_downtime') as path:
+                downtime_data = parse_downtime_file(path)
+
+        summary = compute_daily_summary(wo_data, downtime_data)
         db.save_daily_snapshot(summary, date)
         return jsonify({'saved': True, 'date': date, 'total_wos': summary['total_wos']})
     except Exception as e:
