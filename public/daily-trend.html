@@ -149,8 +149,14 @@ function setGranularity(g, btn) {
   renderAll();
 }
 
+function formatUKDate(isoDate) {
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 function rowLabel(row) {
-  return granularity === 'daily' ? row.date : row.label;
+  if (granularity === 'monthly') return row.label; // e.g. "July 2026" — already text, not a date to reformat
+  return formatUKDate(granularity === 'daily' ? row.date : row.label);
 }
 
 function rowPlannedPct(row) {

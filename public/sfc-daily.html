@@ -280,6 +280,11 @@ function renderReasonsTable(d) {
   }).join('') : '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px">No reasons parsed</td></tr>';
 }
 
+function formatUKDate(isoDate) {
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 async function saveSfcDaily() {
   const dateVal = document.getElementById('save-date').value;
   const statusEl = document.getElementById('save-status');
@@ -307,7 +312,7 @@ async function saveSfcDaily() {
     const res = await fetch('/api/save-sfc-daily', { method: 'POST', body: fd });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
-    statusEl.textContent = `✓ Saved for ${d.date}`;
+    statusEl.textContent = `✓ Saved for ${formatUKDate(d.date)}`;
     statusEl.className = 'save-status ok';
   } catch (e) {
     statusEl.textContent = 'Error: ' + e.message;

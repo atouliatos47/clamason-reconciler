@@ -205,6 +205,79 @@ let files = {};
 let lastResult = null;
 let activeFilter = 'all';
 
+const STORAGE_KEY = 'daily-check-progress';
+const FILE_UI = {
+  wo: { cardId: 'card-wo', statusId: 'wo-status' },
+  dt: { cardId: 'card-dt', statusId: 'dt-status' },
+};
+
+// Persists in-progress work (chosen files + the last computed result) to
+// sessionStorage, so switching away to another tab and back doesn't lose
+// everything — browsers routinely discard background tabs to save memory,
+// which wipes all in-page JS state on return since nothing was surviving
+// that beyond page-load. Cleared explicitly by Clear / New Check, not by
+// any timer — this is "keep it until I say otherwise," not a cache.
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function dataURLToFile(dataUrl, filename) {
+  const [header, base64] = dataUrl.split(',');
+  const mime = (header.match(/data:(.*?);base64/) || [])[1] || 'application/octet-stream';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], filename, { type: mime });
+}
+
+async function persistProgress() {
+  try {
+    const fileData = {};
+    for (const key of Object.keys(FILE_UI)) {
+      if (files[key]) fileData[key] = { name: files[key].name, data: await fileToDataURL(files[key]) };
+    }
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ fileData, result: lastResult, activeFilter }));
+  } catch (e) {
+    // Quota exceeded or similar — not fatal, just means this particular
+    // save won't survive a tab reload. Nothing else depends on it working.
+    console.warn('Could not save progress for tab-switch recovery:', e);
+  }
+}
+
+function clearPersistedProgress() {
+  sessionStorage.removeItem(STORAGE_KEY);
+}
+
+function restorePersistedProgress() {
+  const raw = sessionStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const state = JSON.parse(raw);
+    for (const key of Object.keys(FILE_UI)) {
+      const fd = state.fileData && state.fileData[key];
+      if (!fd) continue;
+      files[key] = dataURLToFile(fd.data, fd.name);
+      document.getElementById(FILE_UI[key].cardId).classList.add('done');
+      document.getElementById(FILE_UI[key].statusId).textContent = '✓ ' + fd.name;
+    }
+    document.getElementById('run-btn').disabled = !files.wo;
+    if (state.result) {
+      lastResult = state.result;
+      activeFilter = state.activeFilter || 'all';
+      render(lastResult);
+      document.getElementById('results').style.display = 'block';
+    }
+  } catch (e) {
+    console.warn('Could not restore saved progress:', e);
+    clearPersistedProgress();
+  }
+}
+
 function handleFile(input, key, cardId, statusId) {
   const f = input.files[0];
   if (!f) return;
@@ -212,6 +285,7 @@ function handleFile(input, key, cardId, statusId) {
   document.getElementById(cardId).classList.add('done');
   document.getElementById(statusId).textContent = '✓ ' + f.name;
   document.getElementById('run-btn').disabled = !files.wo;
+  persistProgress();
 }
 
 async function runCheck() {
@@ -229,6 +303,7 @@ async function runCheck() {
     lastResult = d;
     render(d);
     document.getElementById('results').style.display = 'block';
+    persistProgress();
   } catch (e) {
     const eb = document.getElementById('error-box');
     eb.style.display = 'block';
@@ -237,6 +312,11 @@ async function runCheck() {
 
   document.getElementById('run-btn').disabled = false;
   document.getElementById('run-btn').textContent = '🔍 Run Daily Check';
+}
+
+function formatUKDate(isoDate) {
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
 }
 
 async function saveDaily() {
@@ -266,7 +346,7 @@ async function saveDaily() {
     const res = await fetch('/api/save-daily', { method: 'POST', body: fd });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
-    statusEl.textContent = `✓ Saved for ${d.date}`;
+    statusEl.textContent = `✓ Saved for ${formatUKDate(d.date)}`;
     statusEl.className = 'save-status ok';
   } catch (e) {
     statusEl.textContent = 'Error: ' + e.message;
@@ -280,6 +360,7 @@ function clearCheck() {
   files = {};
   lastResult = null;
   activeFilter = 'all';
+  clearPersistedProgress();
 
   ['wo', 'dt'].forEach(key => {
     document.getElementById(key + '-file').value = '';
@@ -300,6 +381,7 @@ function clearCheck() {
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('save-date').valueAsDate = new Date();
+  restorePersistedProgress();
 });
 
 function jobTypeBucket(job, d) {

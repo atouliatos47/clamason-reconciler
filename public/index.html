@@ -57,9 +57,12 @@
   .upload-btn:hover { background: #95C11F; color: #243547; }
   .file-status { font-size: 11px; margin-top: 8px; color: #95C11F; font-weight: bold; min-height: 16px; }
 
-  .run-btn { width: 100%; padding: 14px; background: #95C11F; color: #243547; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: opacity 0.2s; }
+  .action-row { display: flex; gap: 10px; align-items: stretch; }
+  .run-btn { flex: 1; padding: 14px; background: #95C11F; color: #243547; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: opacity 0.2s; }
   .run-btn:hover { opacity: 0.9; }
   .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .clear-btn { padding: 0 20px; background: white; color: #243547; font-size: 13px; font-weight: bold; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+  .clear-btn:hover { border-color: #243547; }
 
   .results { display: none; }
 
@@ -157,7 +160,10 @@
     </div>
     <div class="error-box" id="error-box"></div>
     <div class="error-box" id="warning-box" style="background:#fef3c7;border-color:#d97706;color:#92400e;"></div>
-    <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Maintenance Check</button>
+    <div class="action-row">
+      <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Maintenance Check</button>
+      <button class="clear-btn" id="clear-btn" onclick="clearCheck()">↺ Clear / New Check</button>
+    </div>
     <button class="report-btn" id="report-btn" onclick="generateReport()">📄 Generate PDF Report</button>
     <div id="save-row" style="display:none;margin-top:10px;gap:8px;align-items:center;">
       <input type="text" id="period-label" placeholder="e.g. June 2026" style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
@@ -213,6 +219,115 @@
 
 <script>
 const files = {};
+let lastResult = null;
+
+const STORAGE_KEY = 'monthly-check-progress';
+const FILE_UI = {
+  ds: { cardId: 'card-ds', statusId: 'ds-status' },
+  dt: { cardId: 'card-dt', statusId: 'dt-status' },
+  wo: { cardId: 'card-wo', statusId: 'wo-status' },
+};
+
+// Same reasoning as the Daily Check page: persist in-progress work to
+// sessionStorage so switching to another browser tab and back doesn't lose
+// everything when the browser discards the background tab to save memory.
+// Cleared explicitly by Clear / New Check — not time-based.
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function dataURLToFile(dataUrl, filename) {
+  const [header, base64] = dataUrl.split(',');
+  const mime = (header.match(/data:(.*?);base64/) || [])[1] || 'application/octet-stream';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], filename, { type: mime });
+}
+
+async function persistProgress() {
+  try {
+    const fileData = {};
+    for (const key of Object.keys(FILE_UI)) {
+      if (files[key]) fileData[key] = { name: files[key].name, data: await fileToDataURL(files[key]) };
+    }
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+      fileData,
+      result: lastResult,
+      periodLabel: document.getElementById('period-label').value,
+      warning: document.getElementById('warning-box').textContent,
+    }));
+  } catch (e) {
+    console.warn('Could not save progress for tab-switch recovery:', e);
+  }
+}
+
+function clearPersistedProgress() {
+  sessionStorage.removeItem(STORAGE_KEY);
+}
+
+function restorePersistedProgress() {
+  const raw = sessionStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const state = JSON.parse(raw);
+    for (const key of Object.keys(FILE_UI)) {
+      const fd = state.fileData && state.fileData[key];
+      if (!fd) continue;
+      files[key] = dataURLToFile(fd.data, fd.name);
+      document.getElementById(FILE_UI[key].cardId).classList.add('done');
+      document.getElementById(FILE_UI[key].statusId).textContent = '✓ ' + fd.name;
+    }
+    document.getElementById('run-btn').disabled = !(files.ds && files.dt);
+    if (state.periodLabel) document.getElementById('period-label').value = state.periodLabel;
+    if (state.warning) {
+      const wb = document.getElementById('warning-box');
+      wb.style.display = 'block';
+      wb.textContent = state.warning;
+    }
+    if (state.result) {
+      lastResult = state.result;
+      render(lastResult);
+      document.getElementById('results').style.display = 'block';
+      document.getElementById('report-btn').style.display = 'block';
+      document.getElementById('save-row').style.display = 'flex';
+    }
+  } catch (e) {
+    console.warn('Could not restore saved progress:', e);
+    clearPersistedProgress();
+  }
+}
+
+function clearCheck() {
+  for (const key of Object.keys(files)) delete files[key];
+  lastResult = null;
+  clearPersistedProgress();
+
+  for (const key of Object.keys(FILE_UI)) {
+    document.getElementById(key + '-file').value = '';
+    document.getElementById(FILE_UI[key].cardId).classList.remove('done');
+    document.getElementById(FILE_UI[key].statusId).textContent = '';
+  }
+
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('warning-box').style.display = 'none';
+  document.getElementById('warning-box').textContent = '';
+  document.getElementById('period-label').value = '';
+  document.getElementById('save-status').textContent = '';
+  document.getElementById('report-btn').style.display = 'none';
+  document.getElementById('save-row').style.display = 'none';
+  document.getElementById('results').style.display = 'none';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  restorePersistedProgress();
+});
 
 function handleFile(input, key, cardId, statusId) {
   const f = input.files[0];
@@ -221,6 +336,7 @@ function handleFile(input, key, cardId, statusId) {
   document.getElementById(cardId).classList.add('done');
   document.getElementById(statusId).textContent = '✓ ' + f.name;
   document.getElementById('run-btn').disabled = !(files.ds && files.dt);
+  persistProgress();
 }
 
 async function runCheck() {
@@ -246,11 +362,13 @@ async function runCheck() {
       wb.textContent = '⚠️ ' + d.warning;
     }
 
+    lastResult = d;
     render(d);
     document.getElementById('results').style.display = 'block';
     document.getElementById('report-btn').style.display = 'block';
     document.getElementById('save-row').style.display = 'flex';
     document.getElementById('save-status').textContent = '';
+    persistProgress();
   } catch (e) {
     const eb = document.getElementById('error-box');
     eb.style.display = 'block';
