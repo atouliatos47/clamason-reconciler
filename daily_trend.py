@@ -47,6 +47,10 @@ def _parse_date(d):
     return datetime.strptime(d, '%Y-%m-%d').date() if isinstance(d, str) else d
 
 
+def _day_key(date_obj):
+    return date_obj.isoformat(), date_obj.strftime('%a %d %b')
+
+
 def _week_key(date_obj):
     iso_year, iso_week, _ = date_obj.isocalendar()
     monday = date_obj - timedelta(days=date_obj.weekday())
@@ -149,15 +153,48 @@ def _sfc_finalize(bucket):
     total = bucket['total_hrs']
     scheduled = bucket['scheduled_hrs']
 
-    # Maintenance's share of all downtime in the period — computed from the
-    # period totals, never from an average of each day's own percentage.
+    # total_hrs is EVERY downtime reason including Planned Offline and No
+    # Production Planned. scheduled_hrs has already had those same planned
+    # hours subtracted out (max_possible - planned_offline). Dividing one by
+    # the other therefore double-counts planned time and can exceed 100% —
+    # on real Clamason data, 388.76 / 136.8 = 284%, which is nonsense.
+    #
+    # Unplanned downtime is the honest numerator: what was lost during time
+    # the site was actually scheduled to be running.
+    bucket['unplanned_hrs'] = round(total - bucket['planned_offline_hrs'], 2)
+    unplanned = bucket['unplanned_hrs']
+
+    # Share of ALL downtime — matches the "% of Total" column on the SFC
+    # Daily page, so the two views agree on any given reason.
     bucket['maintenance_pct'] = round(bucket['maintenance_hrs'] / total * 100, 1) if total else None
     bucket['toolroom_pct'] = round(bucket['toolroom_hrs'] / total * 100, 1) if total else None
     bucket['production_pct'] = round(bucket['production_hrs'] / total * 100, 1) if total else None
 
-    # Downtime as a share of the time the site was actually scheduled to run.
+    # Share of UNPLANNED downtime — the number that actually means something
+    # for a maintenance conversation. Maintenance is ~1.8% of all downtime
+    # but ~10% of unplanned downtime; the second figure is the real one.
+    bucket['maintenance_pct_of_unplanned'] = (
+        round(bucket['maintenance_hrs'] / unplanned * 100, 1) if unplanned > 0 else None
+    )
+    bucket['toolroom_pct_of_unplanned'] = (
+        round(bucket['toolroom_hrs'] / unplanned * 100, 1) if unplanned > 0 else None
+    )
+
+    # How much of the time the site WAS scheduled to run got lost to
+    # unplanned stoppages.
     bucket['downtime_pct_of_scheduled'] = (
-        round(total / scheduled * 100, 1) if scheduled else None
+        round(unplanned / scheduled * 100, 1) if scheduled else None
+    )
+
+    # Everything unplanned that wasn't Maintenance or Toolroom — setting,
+    # changeover, labour, quality, etc. Derived here rather than in the page
+    # so the three stack segments always sum to unplanned_hrs exactly.
+    #
+    # Note this is NOT production_hrs from the parser: that one is
+    # total - maintenance - toolroom, so it still has all the planned
+    # offline hours buried in it and would dwarf the chart.
+    bucket['other_unplanned_hrs'] = round(
+        max(unplanned - bucket['maintenance_hrs'] - bucket['toolroom_hrs'], 0), 2
     )
 
     # Pareto, biggest loss first — the order the chart draws in.
@@ -203,6 +240,18 @@ def monthly_rollup(snapshots):
     """snapshots: output of db.get_daily_snapshots(), oldest first.
     Returns one row per calendar month, oldest first."""
     return _rollup(snapshots, _month_key, _empty_bucket, _add_row, _finalize)
+
+
+def sfc_daily_rollup(snapshots):
+    """snapshots: output of db.get_sfc_daily_snapshots(), oldest first.
+    One bucket per day — so a single day gets exactly the same derived
+    fields (unplanned_hrs, percentages, top_reasons) as a week or a month.
+
+    Without this the Daily tab would have to recompute all of that in
+    JavaScript, which is how the two-implementations-of-one-rule bug gets
+    in. A one-row bucket is a trivial rollup, and it keeps every number on
+    every tab coming out of the same function."""
+    return _rollup(snapshots, _day_key, _sfc_empty_bucket, _sfc_add_row, _sfc_finalize)
 
 
 def sfc_weekly_rollup(snapshots):

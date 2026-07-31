@@ -16,7 +16,7 @@ from report_pdf import build_gap_pdf
 from daily import compute_daily_summary
 from daily_trend import (
     weekly_rollup, monthly_rollup,
-    sfc_weekly_rollup, sfc_monthly_rollup,
+    sfc_daily_rollup, sfc_weekly_rollup, sfc_monthly_rollup,
 )
 from parsers.sfc_daily_downtime_pdf import parse_daily_downtime_pdf
 import db
@@ -189,7 +189,7 @@ def sfc_daily_trend():
         end = request.args.get('end') or None
         snapshots = db.get_sfc_daily_snapshots(start_date=start, end_date=end)
         return jsonify({
-            'daily': snapshots,
+            'daily': sfc_daily_rollup(snapshots),
             'weekly': sfc_weekly_rollup(snapshots),
             'monthly': sfc_monthly_rollup(snapshots),
         })
