@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — SFC Daily Downtime</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh;
+    display: flex; flex-direction: column; padding: 24px 0;
+    border-right: 3px solid #95C11F;
+  }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-item { color: #C7CFD6; font-size: 13px; text-decoration: none; padding: 11px 24px; border-left: 3px solid transparent; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.14); color: #95C11F; border-left-color: #95C11F; font-weight: bold; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; min-width: 0; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; }
+  .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
+  .page-header p { color: #888; font-size: 11.5px; margin-top: 3px; }
+
+  @media (max-width: 768px) {
+    body { flex-direction: column; }
+    .sidebar { width: 100%; min-height: auto; flex-direction: row; align-items: center; padding: 12px 16px; overflow-x: auto; border-right: none; border-bottom: 3px solid #95C11F; }
+    .sidebar-brand { border-bottom: none; padding: 0 16px 0 0; margin-bottom: 0; white-space: nowrap; width: 140px; }
+    .sidebar-nav { flex-direction: row; }
+    .nav-item { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-item.active { border-left: none; border-bottom-color: #95C11F; }
+    .sidebar-footer { display: none; }
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+
+  .upload-section { background: white; border-radius: 10px; padding: 28px; margin-bottom: 24px; }
+  .upload-section h2 { font-size: 15px; color: #243547; margin-bottom:4px; }
+  .upload-section p { font-size: 12px; color: #888; margin-bottom: 20px; }
+  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; max-width: 420px; transition: all 0.2s; }
+  .upload-card.done { border-color: #95C11F; border-style: solid; background: #f9fdf0; }
+  .upload-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
+  .upload-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
+  .upload-card input[type=file] { display: none; }
+  .upload-btn { display: inline-block; padding: 8px 18px; background: #243547; color: white; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
+  .upload-btn:hover { background: #95C11F; color: #243547; }
+  .file-status { font-size: 11px; margin-top: 8px; color: #95C11F; font-weight: bold; min-height: 16px; }
+
+  .run-btn { padding: 14px 28px; background: #95C11F; color: #243547; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; margin-top: 20px; transition: opacity 0.2s; }
+  .run-btn:hover { opacity: 0.9; }
+  .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .action-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .date-field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .date-field label { font-size: 12px; color: #555; }
+  .date-field input[type=date] { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; color: #243547; }
+  .save-btn { padding: 9px 18px; background: #243547; color: white; font-size: 12px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+  .save-btn:hover { background: #1a2735; }
+  .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .clear-btn { padding: 9px 18px; background: white; color: #243547; font-size: 12px; font-weight: bold; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+  .clear-btn:hover { border-color: #243547; }
+  .save-status { font-size: 12px; font-weight: bold; }
+  .save-status.ok { color: #16a34a; }
+  .save-status.err { color: #dc2626; }
+
+  .restored-note {
+    display: none; background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b;
+    border-radius: 6px; padding: 11px 14px; margin-bottom: 16px; font-size: 12px; color: #92400e; line-height: 1.5;
+  }
+  .restored-note strong { color: #78350f; }
+
+  .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; display: none; }
+
+  .results { display: none; }
+
+  .scope-badge { background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi { background: white; border-radius: 8px; padding: 18px 20px; border-top: 4px solid #ddd; }
+  .kpi.red { border-top-color: #dc2626; }
+  .kpi.green { border-top-color: #95C11F; }
+  .kpi.navy { border-top-color: #243547; }
+  .kpi.amber { border-top-color: #d97706; }
+  .kpi label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi .val { font-size: 26px; font-weight: bold; color: #243547; margin: 4px 0; }
+  .kpi .sub { font-size: 11px; color: #aaa; }
+
+  .table-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
+  .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
+  tr:hover td { background: #fafafa; }
+  .pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; display: inline-block; white-space: nowrap; }
+  .pill-red { background: #fee2e2; color: #dc2626; }
+  .pill-amber { background: #fef3c7; color: #92400e; }
+  .pill-navy { background: #e3e8ee; color: #243547; }
+  .pill-gray { background: #f3f4f6; color: #6b7280; }
+
+  footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Maintenance Reconciler</p>
+  </div>
+  <nav class="sidebar-nav">
+    <a class="nav-item" href="/">Monthly Check</a>
+    <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+    <a class="nav-item" href="/daily">Daily Check</a>
+    <a class="nav-item" href="/daily-trend">Daily Trend</a>
+    <a class="nav-item active" href="/sfc-daily">SFC Daily</a>
+    <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<div class="main">
+
+<div class="page-header">
+  <h1>SFC Daily Downtime</h1>
+  <p>Fault-reason breakdown from the SFC Daily Downtime Summary PDF</p>
+</div>
+
+<div class="container">
+
+  <div class="upload-section">
+    <h2>Upload Today's SFC Downtime Summary</h2>
+    <p>The daily "SFC Downtime Summary" PDF export from ShopfloorConnect — whole site, one report per day.</p>
+    <div class="upload-card" id="card-pdf">
+      <h3>📄 SFC Daily Downtime Summary</h3>
+      <p>PDF export, whole site</p>
+      <label class="upload-btn" for="pdf-file">Choose File</label>
+      <input type="file" id="pdf-file" accept=".pdf" onchange="handleFile(this)">
+      <div class="file-status" id="pdf-status"></div>
+    </div>
+    <div class="error-box" id="error-box"></div>
+    <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Check</button>
+  </div>
+
+  <div class="results" id="results">
+
+    <div class="restored-note" id="restored-note"></div>
+
+    <div class="action-row">
+      <div class="scope-badge" id="scope-badge"></div>
+      <div class="date-field">
+        <label for="save-date">Date:</label>
+        <input type="date" id="save-date">
+        <button class="save-btn" id="save-btn" onclick="saveSfcDaily()">💾 Save</button>
+        <button class="clear-btn" id="clear-btn" onclick="clearCheck()">↺ Clear / New Check</button>
+        <span class="save-status" id="save-status"></span>
+      </div>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi red"><label>Maintenance Hrs</label><div class="val" id="kpi-maint">—</div><div class="sub">FAULT - PRESS + FAULT-FEEDER/DECOILER/STR</div></div>
+      <div class="kpi amber"><label>Toolroom Hrs</label><div class="val" id="kpi-tool">—</div><div class="sub">Tool failures, waste in tool, unavailable</div></div>
+      <div class="kpi green"><label>Scheduled Hrs</label><div class="val" id="kpi-sched">—</div><div class="sub" id="kpi-sched-sub"></div></div>
+      <div class="kpi navy"><label>Total Downtime</label><div class="val" id="kpi-total">—</div><div class="sub" id="kpi-total-sub"></div></div>
+    </div>
+
+    <div class="table-card">
+      <h3>Downtime Reasons — Sorted by Hours</h3>
+      <table>
+        <thead>
+          <tr><th>Reason</th><th>Category</th><th># of Events</th><th>Hours</th><th>% of Total</th></tr>
+        </thead>
+        <tbody id="reasons-tbody"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+</div>
+
+<footer>Clamason Maintenance — Internal Tool</footer>
+
+</div>
+
+<script>
+let file = null;
+let lastResult = null;
+let fileName = null;
+let checkedAt = null;
+
+// Persist the last check so closing the tab (or the whole app) doesn't throw
+// the results away. Cleared ONLY by the Clear / New Check button — there is
+// deliberately no expiry, because "still there when I come back" is the whole
+// point of it.
+//
+// The PDF File object itself is NOT stored: File isn't serialisable, and
+// base64-ing a PDF into a ~5MB localStorage budget is a quota failure waiting
+// to happen. Only the parsed summary is kept. That's enough to redraw every
+// number on the page, but not enough to re-POST to /api/save-sfc-daily, which
+// deliberately re-parses the file rather than trusting the browser. So a
+// restored check displays fully but needs the file re-picked before it can be
+// saved — the banner says so rather than letting you find out at the Save button.
+const STORAGE_KEY = 'clamason.sfcDaily.lastCheck.v1';
+
+function persist() {
+  if (!lastResult) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      v: 1,
+      result: lastResult,
+      fileName: fileName,
+      checkedAt: checkedAt,
+      saveDate: document.getElementById('save-date').value || '',
+      saveStatus: {
+        text: document.getElementById('save-status').textContent || '',
+        cls: document.getElementById('save-status').className || 'save-status',
+      },
+    }));
+  } catch (e) {
+    // Quota or private-browsing refusal. Persistence is a convenience, not a
+    // requirement — the page must keep working, so this is swallowed on purpose.
+    console.warn('Could not persist SFC daily check:', e);
+  }
+}
+
+function clearStored() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* nothing to do */ }
+}
+
+function restore() {
+  let saved;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    saved = JSON.parse(raw);
+  } catch (e) {
+    clearStored();   // corrupt or half-written — drop it rather than crash the page
+    return false;
+  }
+  if (!saved || saved.v !== 1 || !saved.result) { clearStored(); return false; }
+
+  lastResult = saved.result;
+  fileName = saved.fileName || null;
+  checkedAt = saved.checkedAt || null;
+
+  render(lastResult);
+  document.getElementById('results').style.display = 'block';
+
+  if (saved.saveDate) document.getElementById('save-date').value = saved.saveDate;
+  if (saved.saveStatus && saved.saveStatus.text) {
+    const el = document.getElementById('save-status');
+    el.textContent = saved.saveStatus.text;
+    el.className = saved.saveStatus.cls || 'save-status';
+  }
+
+  showRestoredNote();
+  return true;
+}
+
+function showRestoredNote() {
+  const note = document.getElementById('restored-note');
+  let when = 'a previous session';
+  if (checkedAt) {
+    const d = new Date(checkedAt);
+    if (!isNaN(d)) {
+      when = d.toLocaleString('en-GB', {
+        weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
+    }
+  }
+  note.innerHTML =
+    `<strong>Restored from your last check</strong> — run on ${when}` +
+    (fileName ? ` from <strong>${fileName}</strong>` : '') + '.<br>' +
+    'These figures are from that report, not from today. The PDF itself isn\'t kept, ' +
+    'so to Save this day you\'ll need to choose the file again and Run Check. ' +
+    'Press <strong>Clear / New Check</strong> to start fresh.';
+  note.style.display = 'block';
+}
+
+function hideRestoredNote() {
+  document.getElementById('restored-note').style.display = 'none';
+}
+
+// Display-only copy of config.py's category sets, for tagging rows in
+// the table below. NOT used for any calculation — that's done
+// server-side in parsers/sfc_daily_downtime_pdf.py using the real
+// config.py. If those lists ever change, update this copy too, or the
+// pill on a row could show the wrong category while the hours
+// underneath it (computed server-side) stay correct regardless.
+const BLAME_FAULT_CODES = new Set(['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR']);
+const TOOLROOM_CODES = new Set(['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP', 'TOOL UNAVAILABLE', 'WASTE IN THE TOOL']);
+const PLANNED_CODES = new Set(['PLANNED OFFLINE', 'NO PRODUCTION PLANNED']);
+
+function categoryFor(reason) {
+  const upper = reason.toUpperCase();
+  if (BLAME_FAULT_CODES.has(upper)) return 'maintenance';
+  if (TOOLROOM_CODES.has(upper)) return 'toolroom';
+  if (PLANNED_CODES.has(upper)) return 'planned';
+  return 'other';
+}
+
+function categoryPill(cat) {
+  const map = {
+    maintenance: '<span class="pill pill-red">Maintenance</span>',
+    toolroom: '<span class="pill pill-amber">Toolroom</span>',
+    planned: '<span class="pill pill-navy">Planned</span>',
+    other: '<span class="pill pill-gray">Other</span>',
+  };
+  return map[cat] || map.other;
+}
+
+function handleFile(input) {
+  const f = input.files[0];
+  if (!f) return;
+  file = f;
+  fileName = f.name;
+  document.getElementById('card-pdf').classList.add('done');
+  document.getElementById('pdf-status').textContent = '✓ ' + f.name;
+  document.getElementById('run-btn').disabled = false;
+}
+
+async function runCheck() {
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('run-btn').textContent = '⏳ Checking...';
+
+  try {
+    const fd = new FormData();
+    fd.append('sfc_daily_pdf', file);
+    const res = await fetch('/api/sfc-daily-check', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    lastResult = d;
+    checkedAt = new Date().toISOString();
+    render(d);
+    document.getElementById('results').style.display = 'block';
+    // A fresh check supersedes anything restored, and clears any stale
+    // "Saved for ..." status left over from the previous report.
+    hideRestoredNote();
+    document.getElementById('save-status').textContent = '';
+    document.getElementById('save-status').className = 'save-status';
+    persist();
+  } catch (e) {
+    const eb = document.getElementById('error-box');
+    eb.style.display = 'block';
+    eb.textContent = 'Error: ' + e.message;
+  }
+
+  document.getElementById('run-btn').disabled = false;
+  document.getElementById('run-btn').textContent = '🔍 Run Check';
+}
+
+function render(d) {
+  document.getElementById('scope-badge').textContent =
+    `Whole site — ${d.machine_count} monitored presses · ${d.period_hrs}h period`;
+
+  document.getElementById('kpi-maint').textContent = d.maintenance_hrs + 'h';
+  document.getElementById('kpi-tool').textContent = d.toolroom_hrs + 'h';
+
+  document.getElementById('kpi-sched').textContent = d.scheduled_hrs + 'h';
+  document.getElementById('kpi-sched-sub').textContent = `of ${d.max_possible_hrs}h max possible`;
+
+  document.getElementById('kpi-total').textContent = d.total_hrs + 'h';
+  document.getElementById('kpi-total-sub').textContent = `${d.total_events} events`;
+
+  renderReasonsTable(d);
+}
+
+function renderReasonsTable(d) {
+  const reasons = Object.entries(d.reasons || {}).sort((a, b) => b[1] - a[1]);
+  const totalHrs = d.total_hrs || 1;
+
+  document.getElementById('reasons-tbody').innerHTML = reasons.length ? reasons.map(([reason, hrs]) => {
+    const cat = categoryFor(reason);
+    const events = (d.reason_events || {})[reason] ?? '—';
+    const pct = ((hrs / totalHrs) * 100).toFixed(1);
+    return `<tr>
+      <td>${reason}</td>
+      <td>${categoryPill(cat)}</td>
+      <td>${events}</td>
+      <td>${hrs.toFixed(2)}h</td>
+      <td>${pct}%</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px">No reasons parsed</td></tr>';
+}
+
+function formatUKDate(isoDate) {
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+async function saveSfcDaily() {
+  const dateVal = document.getElementById('save-date').value;
+  const statusEl = document.getElementById('save-status');
+
+  if (!dateVal) {
+    statusEl.textContent = 'Pick a date first';
+    statusEl.className = 'save-status err';
+    return;
+  }
+  if (!file) {
+    statusEl.textContent = 'PDF is missing — choose it again and Run before saving';
+    statusEl.className = 'save-status err';
+    return;
+  }
+
+  const saveBtn = document.getElementById('save-btn');
+  saveBtn.disabled = true;
+  statusEl.textContent = 'Saving…';
+  statusEl.className = 'save-status';
+
+  try {
+    const fd = new FormData();
+    fd.append('sfc_daily_pdf', file);
+    fd.append('date', dateVal);
+    const res = await fetch('/api/save-sfc-daily', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    statusEl.textContent = `✓ Saved for ${formatUKDate(d.date)}`;
+    statusEl.className = 'save-status ok';
+    persist();   // so the tick is still there when you come back
+  } catch (e) {
+    statusEl.textContent = 'Error: ' + e.message;
+    statusEl.className = 'save-status err';
+  }
+
+  saveBtn.disabled = false;
+}
+
+function clearCheck() {
+  file = null;
+  lastResult = null;
+  fileName = null;
+  checkedAt = null;
+  clearStored();
+  hideRestoredNote();
+
+  document.getElementById('pdf-file').value = '';
+  document.getElementById('card-pdf').classList.remove('done');
+  document.getElementById('pdf-status').textContent = '';
+
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('save-status').textContent = '';
+  document.getElementById('save-status').className = 'save-status';
+
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('save-date').valueAsDate = new Date();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Default the date first so restore() can overwrite it with the saved one.
+  document.getElementById('save-date').valueAsDate = new Date();
+  restore();
+  // Keep the date picker in sync too, so changing it survives a reload.
+  document.getElementById('save-date').addEventListener('change', persist);
+});
+</script>
+</body>
+</html>
