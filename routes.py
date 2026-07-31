@@ -14,7 +14,10 @@ from parsers.wo_parser import parse_wo_file, parse_wo_file_all_types
 from reconciliation import reconcile
 from report_pdf import build_gap_pdf
 from daily import compute_daily_summary
-from daily_trend import weekly_rollup, monthly_rollup
+from daily_trend import (
+    weekly_rollup, monthly_rollup,
+    sfc_weekly_rollup, sfc_monthly_rollup,
+)
 from parsers.sfc_daily_downtime_pdf import parse_daily_downtime_pdf
 import db
 
@@ -161,6 +164,38 @@ def save_daily():
 @bp.route('/sfc-daily')
 def sfc_daily_view():
     return send_from_directory('public', 'sfc-daily.html')
+
+
+@bp.route('/sfc-daily-trend')
+def sfc_daily_trend_view():
+    return send_from_directory('public', 'sfc-daily-trend.html')
+
+
+@bp.route('/api/sfc-daily-trend')
+def sfc_daily_trend():
+    """Saved sfc_daily_snapshots plus weekly/monthly rollups, for the SFC
+    Daily Trend view. Read-only — the mirror of /api/daily-trend, and the
+    first consumer db.get_sfc_daily_snapshots() has ever had.
+
+    Optional ?start=YYYY-MM-DD&end=YYYY-MM-DD narrows the window; both are
+    inclusive and either can be given on its own. Left off, it returns the
+    whole saved history.
+
+    Note the rollups are built from whatever the date filter returned, NOT
+    from the full history — so a filtered week's Pareto is that week's
+    Pareto, not the all-time one re-labelled."""
+    try:
+        start = request.args.get('start') or None
+        end = request.args.get('end') or None
+        snapshots = db.get_sfc_daily_snapshots(start_date=start, end_date=end)
+        return jsonify({
+            'daily': snapshots,
+            'weekly': sfc_weekly_rollup(snapshots),
+            'monthly': sfc_monthly_rollup(snapshots),
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
 
 
 @bp.route('/api/sfc-daily-check', methods=['POST'])
