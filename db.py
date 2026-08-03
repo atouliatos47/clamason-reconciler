@@ -70,6 +70,43 @@ def save_run(result, period_label):
         row[f'mdt_hrs_{suffix}'] = rt.get('mdt_hrs')
         row[f'mttr_jobs_{suffix}'] = rt.get('mttr_jobs')
 
+    # OEE and MTBF are optional uploads — a check run without them stores
+    # NULLs rather than failing, and an existing row keeps whatever it had.
+    oee = result.get('oee') or {}
+    fleet = oee.get('fleet') or {}
+    row.update({
+        'oee_pct': fleet.get('oee_pct'),
+        'oee_availability_pct': fleet.get('availability_pct'),
+        'oee_performance_pct': fleet.get('performance_pct'),
+        'oee_performance_pct_raw': fleet.get('performance_pct_raw'),
+        'oee_quality_pct': fleet.get('quality_pct'),
+        'oee_week_count': fleet.get('week_count'),
+        'oee_machine_count': fleet.get('machine_count'),
+        'oee_run_hrs': fleet.get('run_time_hrs'),
+        'oee_net_avail_hrs': fleet.get('net_avail_hrs'),
+        'oee_total_parts': fleet.get('total_parts'),
+        'oee_scrap_parts': fleet.get('scrap_parts'),
+        'oee_per_machine': json.dumps(oee.get('per_machine', [])) if oee else None,
+    })
+
+    # Flat columns carry the PLANT scope specifically — see schema.sql.
+    # All three scopes go into mtbf_scopes so a stored run can still be
+    # audited against the toolroom-inclusive figure it was derived from.
+    mtbf = result.get('mtbf') or {}
+    plant = mtbf.get('plant') or {}
+    row.update({
+        'mtbf_days': plant.get('mtbf_days'),
+        'mtbf_assets': plant.get('mtbf_assets'),
+        'mtbf_asset_count': plant.get('asset_count'),
+        'mtbf_mttr_hrs': plant.get('mttr_hrs'),
+        'mtbf_wait_hrs': plant.get('wait_hrs'),
+        'mtbf_jobs': plant.get('jobs'),
+        'mtbf_downtime_hrs': plant.get('downtime_hrs'),
+        'mtbf_scopes': json.dumps({
+            k: mtbf[k] for k in ('all', 'plant', 'tools') if k in mtbf
+        }) if mtbf else None,
+    })
+
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -78,13 +115,23 @@ def save_run(result, period_label):
                      maintenance_hrs, toolroom_hrs, agility_maintenance_hrs,
                      gap_hrs, gap_pct, wo_count, machine_breakdown,
                      mtta_hrs_press, mttr_hrs_press, mdt_hrs_press, mttr_jobs_press,
-                     mtta_hrs_all, mttr_hrs_all, mdt_hrs_all, mttr_jobs_all)
+                     mtta_hrs_all, mttr_hrs_all, mdt_hrs_all, mttr_jobs_all,
+                     oee_pct, oee_availability_pct, oee_performance_pct, oee_performance_pct_raw,
+                     oee_quality_pct, oee_week_count, oee_machine_count, oee_run_hrs,
+                     oee_net_avail_hrs, oee_total_parts, oee_scrap_parts, oee_per_machine,
+                     mtbf_days, mtbf_assets, mtbf_asset_count, mtbf_mttr_hrs,
+                     mtbf_wait_hrs, mtbf_jobs, mtbf_downtime_hrs, mtbf_scopes)
                 VALUES
                     (%(period)s, %(period_label)s, %(machine_count)s, %(total_hrs)s, %(total_events)s,
                      %(maintenance_hrs)s, %(toolroom_hrs)s, %(agility_maintenance_hrs)s,
                      %(gap_hrs)s, %(gap_pct)s, %(wo_count)s, %(machine_breakdown)s,
                      %(mtta_hrs_press)s, %(mttr_hrs_press)s, %(mdt_hrs_press)s, %(mttr_jobs_press)s,
-                     %(mtta_hrs_all)s, %(mttr_hrs_all)s, %(mdt_hrs_all)s, %(mttr_jobs_all)s)
+                     %(mtta_hrs_all)s, %(mttr_hrs_all)s, %(mdt_hrs_all)s, %(mttr_jobs_all)s,
+                     %(oee_pct)s, %(oee_availability_pct)s, %(oee_performance_pct)s, %(oee_performance_pct_raw)s,
+                     %(oee_quality_pct)s, %(oee_week_count)s, %(oee_machine_count)s, %(oee_run_hrs)s,
+                     %(oee_net_avail_hrs)s, %(oee_total_parts)s, %(oee_scrap_parts)s, %(oee_per_machine)s,
+                     %(mtbf_days)s, %(mtbf_assets)s, %(mtbf_asset_count)s, %(mtbf_mttr_hrs)s,
+                     %(mtbf_wait_hrs)s, %(mtbf_jobs)s, %(mtbf_downtime_hrs)s, %(mtbf_scopes)s)
                 ON CONFLICT (period) DO UPDATE SET
                     period_label = EXCLUDED.period_label,
                     machine_count = EXCLUDED.machine_count,
@@ -104,7 +151,27 @@ def save_run(result, period_label):
                     mtta_hrs_all = EXCLUDED.mtta_hrs_all,
                     mttr_hrs_all = EXCLUDED.mttr_hrs_all,
                     mdt_hrs_all = EXCLUDED.mdt_hrs_all,
-                    mttr_jobs_all = EXCLUDED.mttr_jobs_all
+                    mttr_jobs_all = EXCLUDED.mttr_jobs_all,
+                    oee_pct = EXCLUDED.oee_pct,
+                    oee_availability_pct = EXCLUDED.oee_availability_pct,
+                    oee_performance_pct = EXCLUDED.oee_performance_pct,
+                    oee_performance_pct_raw = EXCLUDED.oee_performance_pct_raw,
+                    oee_quality_pct = EXCLUDED.oee_quality_pct,
+                    oee_week_count = EXCLUDED.oee_week_count,
+                    oee_machine_count = EXCLUDED.oee_machine_count,
+                    oee_run_hrs = EXCLUDED.oee_run_hrs,
+                    oee_net_avail_hrs = EXCLUDED.oee_net_avail_hrs,
+                    oee_total_parts = EXCLUDED.oee_total_parts,
+                    oee_scrap_parts = EXCLUDED.oee_scrap_parts,
+                    oee_per_machine = EXCLUDED.oee_per_machine,
+                    mtbf_days = EXCLUDED.mtbf_days,
+                    mtbf_assets = EXCLUDED.mtbf_assets,
+                    mtbf_asset_count = EXCLUDED.mtbf_asset_count,
+                    mtbf_mttr_hrs = EXCLUDED.mtbf_mttr_hrs,
+                    mtbf_wait_hrs = EXCLUDED.mtbf_wait_hrs,
+                    mtbf_jobs = EXCLUDED.mtbf_jobs,
+                    mtbf_downtime_hrs = EXCLUDED.mtbf_downtime_hrs,
+                    mtbf_scopes = EXCLUDED.mtbf_scopes
             """, row)
         conn.commit()
 
@@ -128,6 +195,10 @@ def get_all_runs():
         # and any arithmetic on it silently produces nonsense.
         'mtta_hrs_press', 'mttr_hrs_press', 'mdt_hrs_press',
         'mtta_hrs_all', 'mttr_hrs_all', 'mdt_hrs_all',
+        'oee_pct', 'oee_availability_pct', 'oee_performance_pct',
+        'oee_performance_pct_raw', 'oee_quality_pct', 'oee_run_hrs',
+        'oee_net_avail_hrs', 'oee_total_parts', 'oee_scrap_parts',
+        'mtbf_days', 'mtbf_mttr_hrs', 'mtbf_wait_hrs', 'mtbf_downtime_hrs',
     ]
     result = []
     for r in rows:

@@ -56,6 +56,52 @@ CREATE TABLE IF NOT EXISTS monthly_runs (
     mdt_hrs_all             NUMERIC,
     mttr_jobs_all           INTEGER,
 
+    -- OEE, from the SFC weekly exports via parsers.oee_parser.
+    -- Every figure here is recomputed from summed raw hours and part
+    -- counts, never averaged from SFC's own weekly percentages — on
+    -- June 2026 those two methods differ by 17.8 points (36.64 vs 54.41).
+    --
+    -- oee_week_count matters more than it looks: SFC weeks run Sun-Sun
+    -- and never align with month ends, so a "month" is whichever 4 or 5
+    -- weekly files were uploaded. Storing the count makes a 4-week month
+    -- distinguishable from a 5-week one when comparing periods later.
+    --
+    -- oee_performance_pct is the CAPPED value used in the OEE product;
+    -- oee_performance_pct_raw preserves the uncapped figure, which
+    -- exceeds 100% when a machine's ideal-parts setting in SFC is wrong.
+    oee_pct                 NUMERIC,
+    oee_availability_pct    NUMERIC,
+    oee_performance_pct     NUMERIC,
+    oee_performance_pct_raw NUMERIC,
+    oee_quality_pct         NUMERIC,
+    oee_week_count          INTEGER,
+    oee_machine_count       INTEGER,
+    oee_run_hrs             NUMERIC,
+    oee_net_avail_hrs       NUMERIC,
+    oee_total_parts         NUMERIC,
+    oee_scrap_parts         NUMERIC,
+    oee_per_machine         JSONB,      -- full per-machine detail, for the board review
+
+    -- Reliability, from the Agility MTBF export via parsers.mtbf_parser.
+    -- These are the PLANT-ONLY scope. That export has no craft column
+    -- and lists presses, plant and tools together; on June 2026 tools are
+    -- 3,279h of the 3,469h total, so the unfiltered MTTR (18.96h) is a
+    -- toolroom figure, not a maintenance one. Plant-only gives 1.41h.
+    -- All three scopes are kept in mtbf_scopes for audit.
+    --
+    -- mtbf_assets vs mtbf_asset_count is the honesty pair: Agility can
+    -- only calculate MTBF for assets with more than one job, so June's
+    -- figure rests on 4 of 12 plant assets. Storing both means the UI
+    -- can say "5.77 days across 4 of 12" instead of implying fleet-wide.
+    mtbf_days               NUMERIC,
+    mtbf_assets             INTEGER,    -- assets with a real MTBF
+    mtbf_asset_count        INTEGER,    -- assets in scope
+    mtbf_mttr_hrs           NUMERIC,
+    mtbf_wait_hrs           NUMERIC,
+    mtbf_jobs               INTEGER,
+    mtbf_downtime_hrs       NUMERIC,
+    mtbf_scopes             JSONB,      -- {all, plant, tools} summaries
+
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -79,6 +125,31 @@ ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtta_hrs_all    NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mttr_hrs_all    NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mdt_hrs_all     NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mttr_jobs_all   INTEGER;
+
+-- Same reason as the block above: monthly_runs already exists in the live
+-- database, so the OEE and MTBF columns need ALTERs as well as being in
+-- the CREATE. Existing rows get NULL, which is correct — those months were
+-- checked before OEE and MTBF could be uploaded.
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_pct                 NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_availability_pct    NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_performance_pct     NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_performance_pct_raw NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_quality_pct         NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_week_count          INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_machine_count       INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_run_hrs             NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_net_avail_hrs       NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_total_parts         NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_scrap_parts         NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_per_machine         JSONB;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_days               NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_assets             INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_asset_count        INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_mttr_hrs           NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_wait_hrs           NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_jobs               INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_downtime_hrs       NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_scopes             JSONB;
 
 
 -- ---------------------------------------------------------------------------

@@ -5,11 +5,18 @@ add filtering or gap-calculation logic inside a route function, it
 belongs in reconciliation.py instead, so every route (and the future
 dashboard) stays consistent by construction.
 """
+import re
+
 from flask import Blueprint, request, jsonify, send_file, send_from_directory
 
 from file_utils import saved_upload
 from parsers.sfc_monthly_xlsx import parse_monthly_summary_xlsx
 from parsers.downtime_parser import parse_downtime_file
+from parsers.oee_parser import parse_oee_file, aggregate_oee
+
+# Agility plant asset codes: numeric, zero-padded, at most 6 digits.
+PLANT_ASSET_CODE = re.compile(r'^\d{1,6}$')
+from parsers.mtbf_parser import parse_mtbf_file, summarise_mtbf
 from parsers.wo_parser import parse_wo_file, parse_wo_file_all_types
 from reconciliation import reconcile
 from report_pdf import build_gap_pdf
@@ -24,10 +31,107 @@ import db
 bp = Blueprint('routes', __name__)
 
 
+def _parse_oee_uploads():
+    """Aggregate however many weekly SFC OEE .xls files were uploaded.
+
+    Returns None when none were provided — OEE is optional, so a check
+    run without it behaves exactly as it did before.
+
+    Each file gets its own temp path (oee_weekly_0, _1, ...) because
+    saved_upload() derives the path from the prefix alone; reusing one
+    prefix for several files would have each overwrite the last.
+
+    The parser reports the date range it found in each file rather than
+    inferring a month, and those ranges are passed straight through to
+    the UI. SFC weeks run Sunday-Sunday and never line up with month
+    ends — June 2026 is Wk23 (starts 31 May) to Wk26 (ends 28 Jun) — so
+    which weeks make up a month is the user's call, made visible by
+    showing the ranges rather than silently assumed here.
+    """
+    oee_files = [f for f in request.files.getlist('oee_weekly') if f and f.filename]
+    if not oee_files:
+        return None
+
+    weeks, ranges = [], []
+    for i, f in enumerate(oee_files):
+        try:
+            with saved_upload(f, f'oee_weekly_{i}') as path:
+                records, date_range = parse_oee_file(path)
+        except Exception as exc:
+            # xlrd's own message for a modern workbook is 'Excel xlsx
+            # file; not supported', which tells the user nothing about
+            # what they should have picked. The SFC OEE export is
+            # legacy .xls — an easy field to drop the wrong file into
+            # when four others on the page take .xlsx.
+            raise ValueError(
+                f"Couldn't read '{f.filename}' as an SFC weekly OEE export. "
+                "It must be the 'Weekly UK OEE By Machine Tabular' file, "
+                f"which SFC produces as legacy .xls. ({exc})"
+            )
+        if not records:
+            raise ValueError(
+                f"No OEE data found in '{f.filename}' — expected the SFC "
+                "'Weekly UK OEE By Machine Tabular' .xls export"
+            )
+        weeks.append(records)
+        ranges.append({'file': f.filename, 'range': date_range})
+
+    result = aggregate_oee(weeks)
+    result['week_ranges'] = ranges
+    return result
+
+
+def _parse_mtbf_upload():
+    """Agility MTBF export, or None if not uploaded.
+
+    Summarised twice on purpose. This export has no craft column and
+    lists presses, plant and TOOLS together — on June 2026, tools are
+    3,279h of the 3,469h total, so an unfiltered 'maintenance MTTR'
+    from this file is really a toolroom figure inflated roughly
+    thirteen-fold. Splitting it here means the number that reaches a
+    slide has a stated scope.
+    """
+    mtbf_file = request.files.get('agility_mtbf')
+    if not mtbf_file or not mtbf_file.filename:
+        return None
+
+    with saved_upload(mtbf_file, 'agility_mtbf') as path:
+        records, breakdown_range = parse_mtbf_file(path)
+
+    if not records:
+        raise ValueError(
+            f"No asset rows found in '{mtbf_file.filename}' — expected the "
+            "Agility 'Mean Time Between Failure' export"
+        )
+
+    # Agility plant asset codes are numeric and at most 6 digits
+    # (00014, 00141, 12833). The length bound matters: a bare .isdigit()
+    # also matches part numbers like 1301250031, which are tools. On
+    # June 2026 that one difference moves the 'plant' MTTR from 1.41h to
+    # 19.86h, because three long-numeric tool rows carry 800+ hours
+    # between them.
+    plant = [r for r in records if PLANT_ASSET_CODE.match(r['asset'])]
+    tools = [r for r in records if not PLANT_ASSET_CODE.match(r['asset'])]
+
+    return {
+        'breakdown_range': breakdown_range,
+        'all': summarise_mtbf(records),
+        'plant': summarise_mtbf(plant),
+        'tools': summarise_mtbf(tools),
+        'assets': records,
+    }
+
+
 def _parse_uploads():
     """Shared upload-handling for both routes below. Returns
-    (sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided)
-    or raises ValueError with a user-facing message."""
+    (sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided, extras)
+    or raises ValueError with a user-facing message.
+
+    `extras` carries the optional OEE and MTBF results. They're kept
+    separate from the reconciliation inputs because neither feeds the
+    SFC-vs-Agility gap calculation — they're additional context for the
+    board review, and a missing one must never change the gap figure.
+    """
     ds_file = request.files.get('daily_summary')
     dt_file = request.files.get('agility_downtime')
     wo_file = request.files.get('agility_wo')
@@ -48,7 +152,12 @@ def _parse_uploads():
         with saved_upload(wo_file, 'agility_wo') as path:
             wo_data, asset_lookup = parse_wo_file(path)
 
-    return sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided
+    extras = {
+        'oee': _parse_oee_uploads(),
+        'mtbf': _parse_mtbf_upload(),
+    }
+
+    return sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided, extras
 
 
 @bp.route('/')
@@ -262,8 +371,9 @@ def trend():
 @bp.route('/api/maintenance-check', methods=['POST'])
 def maintenance_check():
     try:
-        sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided = _parse_uploads()
+        sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided, extras = _parse_uploads()
         result = reconcile(sfc_summary, downtime_data, wo_data, asset_lookup, wo_file_provided=wo_provided)
+        result.update(extras)
         return jsonify(result)
     except ValueError as e:
         return jsonify({'error': str(e)})
@@ -275,8 +385,9 @@ def maintenance_check():
 @bp.route('/api/generate-report', methods=['POST'])
 def generate_report():
     try:
-        sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided = _parse_uploads()
+        sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided, extras = _parse_uploads()
         result = reconcile(sfc_summary, downtime_data, wo_data, asset_lookup, wo_file_provided=wo_provided)
+        result.update(extras)
         pdf_buf = build_gap_pdf(result)
         return send_file(
             pdf_buf, mimetype='application/pdf', as_attachment=True,
@@ -300,8 +411,9 @@ def save_run():
         if not period_label:
             return jsonify({'error': 'period_label is required (e.g. "June 2026")'})
 
-        sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided = _parse_uploads()
+        sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided, extras = _parse_uploads()
         result = reconcile(sfc_summary, downtime_data, wo_data, asset_lookup, wo_file_provided=wo_provided)
+        result.update(extras)
         db.save_run(result, period_label=period_label)
         return jsonify({'saved': True, 'period_label': period_label, 'gap_pct': result['gap_pct']})
     except ValueError as e:

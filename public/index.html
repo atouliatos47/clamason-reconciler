@@ -53,6 +53,9 @@
   .upload-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
   .upload-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
   .upload-card input[type=file] { display: none; }
+  .file-list { margin-top: 8px; font-size: 10.5px; color: #666; text-align: left; max-height: 76px; overflow-y: auto; }
+  .file-list div { padding: 1px 0; }
+  .upload-card .hint { font-size: 10px; color: #aaa; margin-top: 6px; }
   .upload-btn { display: inline-block; padding: 8px 18px; background: #243547; color: white; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
   .upload-btn:hover { background: #95C11F; color: #243547; }
   .file-status { font-size: 11px; margin-top: 8px; color: #95C11F; font-weight: bold; min-height: 16px; }
@@ -158,6 +161,22 @@
         <input type="file" id="wo-file" accept=".xlsx,.xls" onchange="handleFile(this,'wo','card-wo','wo-status')">
         <div class="file-status" id="wo-status"></div>
       </div>
+      <div class="upload-card optional" id="card-oee">
+        <h3>📈 SFC Weekly OEE</h3>
+        <p>Weekly UK OEE By Machine Tabular — select every week in the month</p>
+        <label class="upload-btn" for="oee-file">Choose Files</label>
+        <input type="file" id="oee-file" accept=".xls" multiple onchange="handleOeeFiles(this)">
+        <div class="file-status" id="oee-status"></div>
+        <div class="file-list" id="oee-list"></div>
+        <div class="hint">SFC weeks run Sun–Sun, so they won't match month ends exactly</div>
+      </div>
+      <div class="upload-card optional" id="card-mtbf">
+        <h3>📉 Agility MTBF</h3>
+        <p>Mean Time Between Failure export for the same period</p>
+        <label class="upload-btn" for="mtbf-file">Choose File</label>
+        <input type="file" id="mtbf-file" accept=".xlsx,.xls" onchange="handleFile(this,'mtbf','card-mtbf','mtbf-status')">
+        <div class="file-status" id="mtbf-status"></div>
+      </div>
     </div>
     <div class="error-box" id="error-box"></div>
     <div class="error-box" id="warning-box" style="background:#fef3c7;border-color:#d97706;color:#92400e;"></div>
@@ -186,6 +205,9 @@
     </div>
 
     <div class="kpi-row" id="kpi-row"></div>
+
+    <div class="table-card" id="oee-box" style="display:none;"></div>
+    <div class="table-card" id="mtbf-box" style="display:none;"></div>
 
     <div class="table-card" style="padding:16px 20px 8px">
       <h3>Scheduled vs Actual Hours</h3>
@@ -220,6 +242,11 @@
 
 <script>
 const files = {};
+// OEE is the only multi-file input — a month is 4 or 5 weekly exports.
+// Kept in its own array rather than in `files` so nothing that iterates
+// FILE_UI (persistence, restore, the run-button check) has to special-case
+// a value that's a list instead of a File.
+let oeeFiles = [];
 let lastResult = null;
 
 const STORAGE_KEY = 'monthly-check-progress';
@@ -227,6 +254,7 @@ const FILE_UI = {
   ds: { cardId: 'card-ds', statusId: 'ds-status' },
   dt: { cardId: 'card-dt', statusId: 'dt-status' },
   wo: { cardId: 'card-wo', statusId: 'wo-status' },
+  mtbf: { cardId: 'card-mtbf', statusId: 'mtbf-status' },
 };
 
 // Same reasoning as the Daily Check page: persist in-progress work to
@@ -257,8 +285,13 @@ async function persistProgress() {
     for (const key of Object.keys(FILE_UI)) {
       if (files[key]) fileData[key] = { name: files[key].name, data: await fileToDataURL(files[key]) };
     }
+    const oeeData = [];
+    for (const f of oeeFiles) {
+      oeeData.push({ name: f.name, data: await fileToDataURL(f) });
+    }
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
       fileData,
+      oeeData,
       result: lastResult,
       periodLabel: document.getElementById('period-label').value,
       warning: document.getElementById('warning-box').textContent,
@@ -284,6 +317,10 @@ function restorePersistedProgress() {
       document.getElementById(FILE_UI[key].cardId).classList.add('done');
       document.getElementById(FILE_UI[key].statusId).textContent = '✓ ' + fd.name;
     }
+    if (Array.isArray(state.oeeData)) {
+      oeeFiles = state.oeeData.map(f => dataURLToFile(f.data, f.name));
+      renderOeeList();
+    }
     document.getElementById('run-btn').disabled = !(files.ds && files.dt);
     if (state.periodLabel) document.getElementById('period-label').value = state.periodLabel;
     if (state.warning) {
@@ -306,6 +343,9 @@ function restorePersistedProgress() {
 
 function clearCheck() {
   for (const key of Object.keys(files)) delete files[key];
+  oeeFiles = [];
+  document.getElementById('oee-file').value = '';
+  renderOeeList();
   lastResult = null;
   clearPersistedProgress();
 
@@ -330,6 +370,31 @@ document.addEventListener('DOMContentLoaded', () => {
   restorePersistedProgress();
 });
 
+function handleOeeFiles(input) {
+  const picked = Array.from(input.files || []);
+  if (!picked.length) return;
+  // Sorted by name so Wk23..Wk26 list in week order regardless of the
+  // order the file picker happened to return them in.
+  oeeFiles = picked.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  renderOeeList();
+  persistProgress();
+}
+
+function renderOeeList() {
+  const card = document.getElementById('card-oee');
+  const status = document.getElementById('oee-status');
+  const list = document.getElementById('oee-list');
+  if (!oeeFiles.length) {
+    card.classList.remove('done');
+    status.textContent = '';
+    list.innerHTML = '';
+    return;
+  }
+  card.classList.add('done');
+  status.textContent = `\u2713 ${oeeFiles.length} week${oeeFiles.length === 1 ? '' : 's'} selected`;
+  list.innerHTML = oeeFiles.map(f => `<div>\u2713 ${f.name}</div>`).join('');
+}
+
 function handleFile(input, key, cardId, statusId) {
   const f = input.files[0];
   if (!f) return;
@@ -352,6 +417,9 @@ async function runCheck() {
     fd.append('daily_summary', files.ds);
     fd.append('agility_downtime', files.dt);
     if (files.wo) fd.append('agility_wo', files.wo);
+    if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
+    // Same field name repeated — Flask reads them with getlist('oee_weekly').
+    oeeFiles.forEach(f => fd.append('oee_weekly', f));
 
     const res = await fetch('/api/maintenance-check', { method: 'POST', body: fd });
     const d = await res.json();
@@ -380,8 +448,79 @@ async function runCheck() {
   document.getElementById('run-btn').disabled = false;
 }
 
+function renderOee(d) {
+  const box = document.getElementById('oee-box');
+  if (!d.oee) { box.style.display = 'none'; return; }
+  const f = d.oee.fleet;
+  const worst = d.oee.per_machine.slice(0, 3);
+  const ranges = d.oee.week_ranges.map(w => `${w.file} — ${w.range}`).join('<br>');
+
+  // Anomalies are surfaced rather than quietly corrected. Performance
+  // above 100% means SFC's ideal-parts or cycle-time setting is wrong
+  // for that machine, which understates the fleet figure — a data
+  // problem worth someone's attention, not a rounding detail.
+  const anomalyNote = f.anomaly_machines.length
+    ? `<div style="margin-top:10px;padding:8px 10px;background:#fef3c7;border-radius:6px;font-size:11px;color:#92400e;">
+         <strong>${f.anomaly_machines.length} machine${f.anomaly_machines.length === 1 ? '' : 's'} with suspect source data:</strong>
+         ${f.anomaly_machines.join(', ')}. Parts produced exceed SFC's ideal, or scrap exceeds parts made.
+         Performance is capped at 100% for the OEE figure.</div>`
+    : '';
+
+  box.innerHTML = `
+    <h3>OEE — ${f.week_count} week${f.week_count === 1 ? '' : 's'}, ${f.machine_count} machines</h3>
+    <div class="kpi-row">
+      <div class="kpi"><label>Availability</label><div class="val">${f.availability_pct}%</div><div class="sub">${f.run_time_hrs.toLocaleString()}h run / ${f.net_avail_hrs.toLocaleString()}h net</div></div>
+      <div class="kpi"><label>Performance</label><div class="val">${f.performance_pct}%</div><div class="sub">${f.performance_pct_raw > 100 ? 'raw ' + f.performance_pct_raw + '%, capped' : 'parts vs ideal'}</div></div>
+      <div class="kpi"><label>Quality</label><div class="val">${f.quality_pct === null ? 'n/a' : f.quality_pct + '%'}</div><div class="sub">${f.scrap_parts.toLocaleString()} scrap logged</div></div>
+      <div class="kpi green"><label>OEE</label><div class="val">${f.oee_pct}%</div><div class="sub">A × P × Q</div></div>
+    </div>
+    <div style="font-size:11px;color:#888;margin-top:10px;line-height:1.6;">
+      <strong>Weeks included:</strong><br>${ranges}
+    </div>
+    <div style="font-size:11.5px;color:#555;margin-top:10px;">
+      <strong>Lowest OEE:</strong> ${worst.map(m => `${m.machine} ${m.oee_pct}%`).join(' · ')}
+    </div>
+    ${anomalyNote}`;
+  box.style.display = 'block';
+}
+
+function renderMtbf(d) {
+  const box = document.getElementById('mtbf-box');
+  if (!d.mtbf) { box.style.display = 'none'; return; }
+  const m = d.mtbf;
+  const row = (label, s, note) => `
+    <tr><td>${label}</td><td>${s.asset_count}</td><td>${s.jobs}</td>
+    <td>${s.downtime_hrs.toLocaleString()}h</td><td>${s.mttr_hrs === null ? '–' : s.mttr_hrs + 'h'}</td>
+    <td>${s.wait_hrs === null ? '–' : s.wait_hrs + 'h'}</td>
+    <td>${s.mtbf_days === null ? '–' : s.mtbf_days + 'd'}<span style="color:#999;font-size:10px;"> (${s.mtbf_assets}/${s.asset_count})</span></td>
+    <td style="color:#888;font-size:10.5px;">${note}</td></tr>`;
+
+  box.innerHTML = `
+    <h3>Reliability — Agility MTBF ${m.breakdown_range ? '· ' + m.breakdown_range : ''}</h3>
+    <table>
+      <thead><tr><th>Scope</th><th>Assets</th><th>Jobs</th><th>Downtime</th><th>MTTR</th><th>Wait</th><th>MTBF</th><th></th></tr></thead>
+      <tbody>
+        ${row('Plant only', m.plant, 'presses and equipment')}
+        ${row('Tools', m.tools, 'toolroom assets')}
+        ${row('All assets', m.all, 'unfiltered — mixes both')}
+      </tbody>
+    </table>
+    <div style="font-size:11px;color:#888;margin-top:10px;line-height:1.6;">
+      This export has no craft column, so plant and tools are split by asset code.
+      Use the plant row for a maintenance figure — the unfiltered row is dominated by toolroom work.
+      MTBF counts in brackets are the assets Agility could calculate it for; the rest had too few
+      jobs to measure an interval between failures.
+    </div>`;
+  box.style.display = 'block';
+}
+
 function render(d) {
   const s = d.sfc_summary;
+
+  // Both are no-ops when their file wasn't uploaded — they hide their
+  // own box rather than leaving a stale one from a previous run visible.
+  renderOee(d);
+  renderMtbf(d);
 
   const statement = `SFC logged ${s.total_hrs}h of downtime in total for this period (${s.period || 'period not detected'}).\n\nOf that, ${s.maintenance_hrs}h is attributable to maintenance fault codes (press faults, feeder/decoiler faults, lubrication). Agility shows ${d.agility_maintenance_hrs}h logged against breakdown work orders for the same window.\n\nGap: ${d.gap_hrs}h (${d.gap_pct}%) of maintenance-attributable SFC downtime has no matching breakdown WO in Agility.`;
   document.getElementById('statement-text').innerText = statement;
@@ -429,6 +568,9 @@ async function generateReport() {
     fd.append('daily_summary', files.ds);
     fd.append('agility_downtime', files.dt);
     if (files.wo) fd.append('agility_wo', files.wo);
+    if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
+    // Same field name repeated — Flask reads them with getlist('oee_weekly').
+    oeeFiles.forEach(f => fd.append('oee_weekly', f));
 
     const res = await fetch('/api/generate-report', { method: 'POST', body: fd });
     if (!res.ok) throw new Error('Server error generating PDF');
@@ -462,6 +604,9 @@ async function saveRun() {
     fd.append('daily_summary', files.ds);
     fd.append('agility_downtime', files.dt);
     if (files.wo) fd.append('agility_wo', files.wo);
+    if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
+    // Same field name repeated — Flask reads them with getlist('oee_weekly').
+    oeeFiles.forEach(f => fd.append('oee_weekly', f));
     fd.append('period_label', label);
 
     const res = await fetch('/api/save-run', { method: 'POST', body: fd });
