@@ -33,10 +33,52 @@ CREATE TABLE IF NOT EXISTS monthly_runs (
     gap_pct                 NUMERIC,
     wo_count                INTEGER,
     machine_breakdown       JSONB,
+
+    -- Repair times, from reconciliation.compute_repair_times(). Two sets
+    -- because there are two defensible answers to "which assets count":
+    --   _press = SFC-monitored presses only — the same asset set the gap
+    --            figure describes, so MTTR and coverage % agree.
+    --   _all   = every Maintenance/Electrician breakdown, including
+    --            compressors, chillers and other plant the team maintains.
+    -- On June 2026 data these differ by roughly 65%, so storing only one
+    -- would bake a definitional choice into the history where nobody can
+    -- see it. Both are kept; the board slide picks one and says which.
+    --
+    -- All NULLable: a month with no completed breakdown matched to a Down
+    -- Time Analysis row has no MTTR, and NULL keeps it out of any trend
+    -- average instead of a 0 pretending repairs took no time.
+    mtta_hrs_press          NUMERIC,   -- Reported -> Started
+    mttr_hrs_press          NUMERIC,   -- Started -> Finished (the real MTTR)
+    mdt_hrs_press           NUMERIC,   -- Breakdown -> OnLine
+    mttr_jobs_press         INTEGER,   -- denominator behind the means
+    mtta_hrs_all            NUMERIC,
+    mttr_hrs_all            NUMERIC,
+    mdt_hrs_all             NUMERIC,
+    mttr_jobs_all           INTEGER,
+
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_monthly_runs_period ON monthly_runs (period);
+
+-- The repair-time columns above are new, and monthly_runs ALREADY EXISTS in
+-- the live database with real rows in it. CREATE TABLE IF NOT EXISTS does
+-- NOT add columns to a table that's already there — it sees the table, does
+-- nothing, and moves on. Without these ALTERs, init_db.py would report
+-- success while save_run() failed on every call with
+-- 'column "mtta_hrs_press" of relation "monthly_runs" does not exist'.
+--
+-- ADD COLUMN IF NOT EXISTS is safe to run repeatedly and never touches
+-- existing rows: previously-saved months simply get NULL for the new
+-- columns, which is correct — those months genuinely have no MTTR recorded.
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtta_hrs_press  NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mttr_hrs_press  NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mdt_hrs_press   NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mttr_jobs_press INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtta_hrs_all    NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mttr_hrs_all    NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mdt_hrs_all     NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mttr_jobs_all   INTEGER;
 
 
 -- ---------------------------------------------------------------------------

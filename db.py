@@ -54,17 +54,37 @@ def save_run(result, period_label):
         'machine_breakdown': json.dumps(result.get('machine_breakdown', [])),
     }
 
+    # Repair times arrive as two nested dicts from reconciliation.reconcile().
+    # Flattened into columns rather than stored as JSON because the trend
+    # dashboard charts them over time, and charting means SQL needs to sort
+    # and aggregate on them directly.
+    #
+    # .get with an empty-dict default on purpose: a result produced before
+    # these keys existed (or by a caller that skipped reconciliation) writes
+    # NULLs rather than raising KeyError, so an old cached result can still
+    # be saved.
+    for suffix, key in (('press', 'repair_times_press'), ('all', 'repair_times_all')):
+        rt = result.get(key) or {}
+        row[f'mtta_hrs_{suffix}'] = rt.get('mtta_hrs')
+        row[f'mttr_hrs_{suffix}'] = rt.get('mttr_hrs')
+        row[f'mdt_hrs_{suffix}'] = rt.get('mdt_hrs')
+        row[f'mttr_jobs_{suffix}'] = rt.get('mttr_jobs')
+
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO monthly_runs
                     (period, period_label, machine_count, total_hrs, total_events,
                      maintenance_hrs, toolroom_hrs, agility_maintenance_hrs,
-                     gap_hrs, gap_pct, wo_count, machine_breakdown)
+                     gap_hrs, gap_pct, wo_count, machine_breakdown,
+                     mtta_hrs_press, mttr_hrs_press, mdt_hrs_press, mttr_jobs_press,
+                     mtta_hrs_all, mttr_hrs_all, mdt_hrs_all, mttr_jobs_all)
                 VALUES
                     (%(period)s, %(period_label)s, %(machine_count)s, %(total_hrs)s, %(total_events)s,
                      %(maintenance_hrs)s, %(toolroom_hrs)s, %(agility_maintenance_hrs)s,
-                     %(gap_hrs)s, %(gap_pct)s, %(wo_count)s, %(machine_breakdown)s)
+                     %(gap_hrs)s, %(gap_pct)s, %(wo_count)s, %(machine_breakdown)s,
+                     %(mtta_hrs_press)s, %(mttr_hrs_press)s, %(mdt_hrs_press)s, %(mttr_jobs_press)s,
+                     %(mtta_hrs_all)s, %(mttr_hrs_all)s, %(mdt_hrs_all)s, %(mttr_jobs_all)s)
                 ON CONFLICT (period) DO UPDATE SET
                     period_label = EXCLUDED.period_label,
                     machine_count = EXCLUDED.machine_count,
@@ -76,7 +96,15 @@ def save_run(result, period_label):
                     gap_hrs = EXCLUDED.gap_hrs,
                     gap_pct = EXCLUDED.gap_pct,
                     wo_count = EXCLUDED.wo_count,
-                    machine_breakdown = EXCLUDED.machine_breakdown
+                    machine_breakdown = EXCLUDED.machine_breakdown,
+                    mtta_hrs_press = EXCLUDED.mtta_hrs_press,
+                    mttr_hrs_press = EXCLUDED.mttr_hrs_press,
+                    mdt_hrs_press = EXCLUDED.mdt_hrs_press,
+                    mttr_jobs_press = EXCLUDED.mttr_jobs_press,
+                    mtta_hrs_all = EXCLUDED.mtta_hrs_all,
+                    mttr_hrs_all = EXCLUDED.mttr_hrs_all,
+                    mdt_hrs_all = EXCLUDED.mdt_hrs_all,
+                    mttr_jobs_all = EXCLUDED.mttr_jobs_all
             """, row)
         conn.commit()
 
@@ -95,6 +123,11 @@ def get_all_runs():
     numeric_fields = [
         'total_hrs', 'maintenance_hrs', 'toolroom_hrs',
         'agility_maintenance_hrs', 'gap_hrs', 'gap_pct',
+        # Same Decimal-to-string problem as the fields above — without
+        # these, an MTTR of 1.41 reaches the chart as the string "1.41"
+        # and any arithmetic on it silently produces nonsense.
+        'mtta_hrs_press', 'mttr_hrs_press', 'mdt_hrs_press',
+        'mtta_hrs_all', 'mttr_hrs_all', 'mdt_hrs_all',
     ]
     result = []
     for r in rows:

@@ -8,7 +8,7 @@ filter missing from one of two routes) existed because the same rule
 was written out twice in two different places and only fixed in one.
 With one shared function, that class of bug can't happen again.
 """
-from config import is_known_machine
+from config import BREAKDOWN_JOB_TYPE, is_known_machine
 
 
 def enrich_and_filter(downtime_data, wo_data, asset_lookup):
@@ -28,6 +28,21 @@ def enrich_and_filter(downtime_data, wo_data, asset_lookup):
                           because SFC doesn't track fault codes for
                           anything outside SFC_TO_AGILITY.
     """
+    enriched, wo_map = enrich_all(downtime_data, wo_data, asset_lookup)
+    matched = [d for d in enriched if d['wo'] in wo_map]
+    matched = [d for d in matched if d['known_machine']]
+    return matched, wo_map
+
+
+def enrich_all(downtime_data, wo_data, asset_lookup):
+    """Every Down Time Analysis row, tagged with its WO's job type,
+    status, craft and known_machine flag — with NO filtering applied.
+
+    Split out of enrich_and_filter so repair times can be computed on
+    the craft-matched set BEFORE the known_machine filter narrows it.
+    The gap figure needs both filters; MTTR does not, and forcing them
+    to share one filtered list would mean either a wrong gap or a wrong
+    MTTR."""
     wo_map = {w['jobNo']: w for w in wo_data}
 
     enriched = []
@@ -43,9 +58,50 @@ def enrich_and_filter(downtime_data, wo_data, asset_lookup):
         d['known_machine'] = is_known_machine(d['asset'])
         enriched.append(d)
 
-    matched = [d for d in enriched if d['wo'] in wo_map]
-    matched = [d for d in matched if d['known_machine']]
-    return matched, wo_map
+    return enriched, wo_map
+
+
+def compute_repair_times(rows):
+    """Mean MTTA / MTTR / MDT across Breakdown Repair rows, from the
+    timestamps parsers.downtime_parser derives. Same three durations
+    daily.py reports, so the monthly and daily views can never disagree
+    about what MTTR means.
+
+    Restricted to Breakdown Repair on purpose. The monthly WO parser
+    admits four job types (breakdown repair, routine minor service,
+    planned service & maintenance, corrective maintenance) — a PPM is
+    scheduled work, not a repair after a failure, and averaging those in
+    would drag MTTR toward whatever the PPM schedule looks like rather
+    than how long a breakdown takes to fix.
+
+    Counts are reported alongside the means because a mean over two
+    jobs and a mean over eighty are not the same claim, and the weekly
+    rollups need the denominator to weight by."""
+    breakdowns = [
+        r for r in rows
+        if (r.get('job_type') or '').strip().lower() == BREAKDOWN_JOB_TYPE
+    ]
+
+    def mean_of(key):
+        vals = [r[key] for r in breakdowns if r.get(key) is not None]
+        return (round(sum(vals) / len(vals), 2) if vals else None), len(vals)
+
+    mtta, n_mtta = mean_of('mtta_hrs')
+    mttr, n_mttr = mean_of('mttr_hrs')
+    mdt, n_mdt = mean_of('mdt_hrs')
+
+    return {
+        'mtta_hrs': mtta,
+        'mttr_hrs': mttr,
+        'mdt_hrs': mdt,
+        'mttr_jobs': n_mttr,
+        # Breakdown WOs that matched a DTA row but had no usable
+        # Started/Finished pair — blank cell, or Finished before
+        # Started. Surfaced rather than hidden so a thin month is
+        # visible instead of just producing a confident-looking mean.
+        'mttr_no_duration': len(breakdowns) - n_mttr,
+        'breakdown_count': len(breakdowns),
+    }
 
 
 def compute_gap(sfc_summary, matched_wos):
@@ -114,10 +170,35 @@ def reconcile(sfc_summary, downtime_data, wo_data, asset_lookup, wo_file_provide
     gap = compute_gap(sfc_summary, matched_wos)
     machine_breakdown = compute_machine_breakdown(sfc_summary, matched_wos)
 
+    # Two MTTR figures, deliberately. They answer different questions and
+    # on June 2026 data they differ by about 65%, so publishing one
+    # without saying which is a real risk of a wrong board number:
+    #
+    #   repair_times_press — SFC-monitored presses only. Describes the
+    #     same asset set as the gap figure, so MTTR and coverage % are
+    #     talking about the same machines.
+    #   repair_times_all — every Maintenance/Electrician breakdown,
+    #     including compressors, chillers and other plant. Describes
+    #     what the team actually maintains.
+    #
+    # Neither is "correct" in the abstract; it depends what the number is
+    # being used to claim. Both are returned so the choice is made where
+    # it's visible, not silently inside this function.
+    if wo_file_provided:
+        all_enriched, wo_map = enrich_all(downtime_data, wo_data, asset_lookup)
+        craft_matched = [d for d in all_enriched if d['wo'] in wo_map]
+    else:
+        craft_matched = []
+
+    repair_times_all = compute_repair_times(craft_matched)
+    repair_times_press = compute_repair_times(matched_wos)
+
     return {
         'sfc_summary': sfc_summary,
         'matched_wos': matched_wos,
         'machine_breakdown': machine_breakdown,
         'warning': warning,
+        'repair_times_press': repair_times_press,
+        'repair_times_all': repair_times_all,
         **gap,
     }
