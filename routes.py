@@ -356,6 +356,11 @@ def save_sfc_daily():
         return jsonify({'error': str(e), 'trace': traceback.format_exc()})
 
 
+@bp.route('/board-review')
+def board_review_view():
+    return send_from_directory('public', 'board-review.html')
+
+
 @bp.route('/api/trend')
 def trend():
     """All saved monthly runs, for the trend dashboard. Read-only —
