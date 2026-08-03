@@ -147,6 +147,87 @@ async function load() {
   render(runs);
 }
 
+// Months saved before OEE could be uploaded have NULL in every OEE
+// column. The sections and charts below hide themselves entirely rather
+// than drawing an axis with one point on it — a chart with a single
+// datum isn't a trend, it's a decoration.
+function hasOee(runs) {
+  return runs.some(r => r.oee_pct !== null && r.oee_pct !== undefined);
+}
+
+function oeeSection(latest, prev) {
+  if (latest.oee_pct === null || latest.oee_pct === undefined) return '';
+  const weeks = latest.oee_week_count;
+  // Quality sits at ~100% because SFC's scrap field is barely populated,
+  // not because nothing was scrapped. Saying so on the card stops the
+  // number being read as a quality result.
+  const qualityNote = latest.oee_scrap_parts !== null
+    ? `${Number(latest.oee_scrap_parts).toLocaleString()} scrap parts logged in SFC`
+    : '';
+  return `
+    <div class="machine-card">
+      <h3>OEE — ${weeks} week${weeks === 1 ? '' : 's'} uploaded${latest.oee_machine_count ? ', ' + latest.oee_machine_count + ' machines' : ''}</h3>
+      <div class="kpi-row" style="margin-bottom:0;">
+        <div class="kpi navy">
+          <label>Availability</label>
+          <div class="val">${fmt(latest.oee_availability_pct, 1)}%</div>
+          ${prev && prev.oee_availability_pct != null ? deltaBadge(latest.oee_availability_pct, prev.oee_availability_pct, false) : '<span class="sub">Run time / net available</span>'}
+        </div>
+        <div class="kpi navy">
+          <label>Performance</label>
+          <div class="val">${fmt(latest.oee_performance_pct, 1)}%</div>
+          ${prev && prev.oee_performance_pct != null ? deltaBadge(latest.oee_performance_pct, prev.oee_performance_pct, false) : '<span class="sub">Parts vs ideal</span>'}
+        </div>
+        <div class="kpi navy">
+          <label>Quality</label>
+          <div class="val">${latest.oee_quality_pct == null ? 'n/a' : fmt(latest.oee_quality_pct, 2) + '%'}</div>
+          <span class="sub">${qualityNote}</span>
+        </div>
+        <div class="kpi green">
+          <label>OEE</label>
+          <div class="val">${fmt(latest.oee_pct, 1)}%</div>
+          ${prev && prev.oee_pct != null ? deltaBadge(latest.oee_pct, prev.oee_pct, false) : '<span class="sub">A × P × Q</span>'}
+        </div>
+      </div>
+    </div>`;
+}
+
+function reliabilitySection(latest, prev) {
+  if (latest.mtbf_mttr_hrs === null || latest.mtbf_mttr_hrs === undefined) return '';
+  // mtbf_assets / mtbf_asset_count is the honesty pair — Agility can only
+  // calculate MTBF where an asset had more than one job, so the figure
+  // often rests on a handful of assets. Stating the sample stops it
+  // reading as fleet-wide.
+  const cover = (latest.mtbf_assets != null && latest.mtbf_asset_count != null)
+    ? `${latest.mtbf_assets} of ${latest.mtbf_asset_count} assets` : '';
+  return `
+    <div class="machine-card">
+      <h3>Reliability — plant only, tools excluded</h3>
+      <div class="kpi-row" style="margin-bottom:0;">
+        <div class="kpi green">
+          <label>MTTR</label>
+          <div class="val">${fmt(latest.mtbf_mttr_hrs, 2)}h</div>
+          ${prev && prev.mtbf_mttr_hrs != null ? deltaBadge(latest.mtbf_mttr_hrs, prev.mtbf_mttr_hrs, true) : '<span class="sub">Time spent repairing</span>'}
+        </div>
+        <div class="kpi red">
+          <label>Response Wait</label>
+          <div class="val">${fmt(latest.mtbf_wait_hrs, 2)}h</div>
+          ${prev && prev.mtbf_wait_hrs != null ? deltaBadge(latest.mtbf_wait_hrs, prev.mtbf_wait_hrs, true) : '<span class="sub">Before work starts</span>'}
+        </div>
+        <div class="kpi amber">
+          <label>MTBF</label>
+          <div class="val">${latest.mtbf_days == null ? 'n/a' : fmt(latest.mtbf_days, 1) + 'd'}</div>
+          <span class="sub">${cover}</span>
+        </div>
+        <div class="kpi navy">
+          <label>Breakdown Jobs</label>
+          <div class="val">${latest.mtbf_jobs == null ? '–' : latest.mtbf_jobs}</div>
+          <span class="sub">${latest.mtbf_downtime_hrs != null ? fmt(latest.mtbf_downtime_hrs) + 'h total downtime' : ''}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
 function render(runs) {
   const latest = runs[runs.length - 1];
   const prev = runs.length > 1 ? runs[runs.length - 2] : null;
@@ -178,6 +259,9 @@ function render(runs) {
       </div>
     </div>
 
+    ${oeeSection(latest, prev)}
+    ${reliabilitySection(latest, prev)}
+
     <div class="machine-card">
       <h3>${latest.period_label || latest.period} — Fault Events vs Breakdown WOs by Machine</h3>
       <div class="canvas-wrap"><canvas id="machineChart"></canvas></div>
@@ -193,9 +277,63 @@ function render(runs) {
         <div class="canvas-wrap short"><canvas id="gapChart"></canvas></div>
       </div>
     </div>
+
+    ${hasOee(runs) ? `
+    <div class="chart-grid">
+      <div class="chart-card">
+        <h3>OEE — Trend</h3>
+        <div class="canvas-wrap short"><canvas id="oeeChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>MTTR &amp; Response Time — Trend</h3>
+        <div class="canvas-wrap short"><canvas id="mttrChart"></canvas></div>
+      </div>
+    </div>` : ''}
   `;
 
   const labels = runs.map(r => r.period_label || r.period);
+
+  if (hasOee(runs)) {
+    // spanGaps lets a month with no OEE upload leave a break in the line
+    // rather than being drawn as a drop to zero.
+    new Chart(document.getElementById('oeeChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'OEE %', data: runs.map(r => r.oee_pct), borderColor: '#95C11F',
+            backgroundColor: '#95C11F', borderWidth: 2.5, pointRadius: 4, spanGaps: true },
+          { label: 'Availability %', data: runs.map(r => r.oee_availability_pct), borderColor: '#243547',
+            backgroundColor: '#243547', borderWidth: 1.5, borderDash: [5, 3], pointRadius: 3, spanGaps: true },
+          { label: 'Performance %', data: runs.map(r => r.oee_performance_pct), borderColor: '#d97706',
+            backgroundColor: '#d97706', borderWidth: 1.5, borderDash: [2, 2], pointRadius: 3, spanGaps: true },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+                   tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}%` } } },
+        scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+      },
+    });
+
+    new Chart(document.getElementById('mttrChart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'MTTR (repair)', data: runs.map(r => r.mtbf_mttr_hrs), backgroundColor: '#95C11F' },
+          { label: 'Wait (before start)', data: runs.map(r => r.mtbf_wait_hrs), backgroundColor: '#dc2626' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+                   tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(2)}h` } } },
+        scales: { y: { beginAtZero: true, title: { display: true, text: 'Hours' } } },
+      },
+    });
+  }
 
   new Chart(document.getElementById('gapChart'), {
     type: 'line',
