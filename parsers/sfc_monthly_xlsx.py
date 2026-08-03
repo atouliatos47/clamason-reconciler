@@ -8,7 +8,7 @@ import re
 import pandas as pd
 
 from time_utils import hms_to_hours
-from config import BLAME_FAULT_CODES, TOOLROOM_CODES, PLANNED_CODES, NON_MACHINE_SHEETS
+from config import BLAME_FAULT_CODES, FAULT_CODES, TOOLROOM_CODES, PLANNED_CODES, NON_MACHINE_SHEETS
 
 
 def _find_report_period(df):
@@ -58,7 +58,10 @@ def _categorise(reason):
     rather than silently vanishing from the totals.
     """
     up = reason.upper()
-    if up in BLAME_FAULT_CODES:
+    # FAULT_CODES, not BLAME_FAULT_CODES — see the note in config.py.
+    # This is departmental ownership, a different question from what the
+    # gap report can match against a work order.
+    if up in FAULT_CODES:
         return 'fault'
     if up in TOOLROOM_CODES:
         return 'tool'

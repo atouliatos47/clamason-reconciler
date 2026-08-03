@@ -139,14 +139,46 @@ def compute_machine_breakdown(sfc_summary, matched_wos):
         sfc = by_machine_sfc.get(machine, {'fault_hrs': 0, 'fault_events': 0})
         wo_count = sum(wo_by_asset_count.get(a, 0) for a in asset_codes)
         wo_hrs = round(sum(wo_by_asset_hrs.get(a, 0) for a in asset_codes), 2)
-        if sfc['fault_hrs'] == 0 and sfc['fault_events'] == 0 and wo_count == 0:
-            continue  # nothing happened on this machine this period — skip from the table
+        # A machine with no faults and no WOs used to be dropped here.
+        # It can still have had toolroom or production downtime, and
+        # dropping it would silently remove it from those two Paretos —
+        # so the test now covers every category, not just faults.
+        if (sfc['fault_hrs'] == 0 and sfc['fault_events'] == 0 and wo_count == 0
+                and not sfc.get('tool_hrs') and not sfc.get('production_hrs')):
+            continue  # genuinely nothing happened on this machine this period
         rows.append({
             'machine': machine,
             'fault_hrs': round(sfc['fault_hrs'], 2),
             'fault_events': sfc['fault_events'],
             'wo_count': wo_count,
             'wo_hrs': wo_hrs,
+
+            # Toolroom and production hours per machine, carried through
+            # from the parser. Without these, machine_breakdown only ever
+            # supports a maintenance Pareto — the board review needs one
+            # per department, and the parser was already computing these
+            # and throwing them away here.
+            #
+            # .get with a 0 default so a summary produced by the older
+            # parser (or the daily PDF parser, which has no per-machine
+            # categories) still works instead of raising KeyError.
+            'tool_hrs': round(sfc.get('tool_hrs', 0), 2),
+            'tool_events': sfc.get('tool_events', 0),
+            'production_hrs': round(sfc.get('production_hrs', 0), 2),
+            'production_events': sfc.get('production_events', 0),
+            'planned_hrs': round(sfc.get('planned_hrs', 0), 2),
+            'total_hrs': round(sfc.get('total_hrs', 0), 2),
+            # Total minus planned — the honest basis for a downtime
+            # Pareto. Ranking by total_hrs would put the machines that
+            # were scheduled off the most at the top, which says nothing
+            # about how they performed when they were meant to be running.
+            'unplanned_hrs': round(sfc.get('unplanned_hrs', 0), 2),
+
+            # That machine's own reason breakdown, so any department's
+            # Pareto can be rebuilt from a saved run without re-uploading
+            # the source workbook.
+            'reasons': sfc.get('reasons', {}),
+            'reason_events': sfc.get('reason_events', {}),
         })
 
     rows.sort(key=lambda r: -r['fault_hrs'])

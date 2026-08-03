@@ -26,6 +26,31 @@ MAINTENANCE_CODES = {
 # excluded from this specific check.
 BLAME_FAULT_CODES = {'FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR'}
 
+# Departmental attribution for the board review — every code that is a
+# FAULT on plant maintenance is responsible for.
+#
+# Deliberately NOT the same set as BLAME_FAULT_CODES. That one drives the
+# SFC-vs-Agility gap figure and is scoped to the two codes that can
+# actually be matched against a press-fault work order; widening it would
+# move a number already presented to the board. This set answers a
+# different question — "which department owns this downtime" — and
+# FAULT-SHAKER/CONVEYOR plainly belongs to maintenance by that test.
+#
+# On June 2026 the difference is 122.1h vs 126.7h. The 126.7h figure is
+# what the board slide mockup already shows, so this brings the code into
+# line with what was presented rather than the other way round.
+#
+# LUBRICATION/OIL REFILL is excluded on purpose. It's maintenance-ish
+# work but it isn't a fault, and the incoming SFC code list doesn't give
+# it an 'MA -' prefix — it's an operator topping up oil, not a breakdown.
+# Folding 17.3h of it into a fault figure would overstate breakdowns.
+FAULT_CODES = {
+    'FAULT - PRESS',
+    'FAULT-FEEDER/DECOILER/STR',
+    'FAULT-FEEDER/DECOILER/STRAIGHTENER',
+    'FAULT-SHAKER/CONVEYOR',
+}
+
 TOOLROOM_CODES = {
     'TOOL FAILURE - PRODUCTION',
     'TOOL FAILURE - SET UP',
