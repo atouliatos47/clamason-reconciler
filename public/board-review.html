@@ -49,8 +49,9 @@
   .dept.toolroom { background: #bf7d2c; }
   .dept.maintenance { background: #2e6b4f; }
 
-  .chart-label { display: flex; justify-content: space-between; font-size: 9px; color: #999; margin: 14px 0 5px; letter-spacing: 0.4px; text-transform: uppercase; }
-  .chart-label .hrs { color: #555; font-weight: bold; }
+  .chart-label { display: flex; justify-content: space-between; font-size: 10px; color: #243547; font-weight: bold; margin: 14px 0 5px; letter-spacing: 0.4px; text-transform: uppercase; }
+  .chart-label .meta { color: #777; font-weight: normal; }
+  .chart-label .hrs { color: #243547; font-weight: bold; }
   .chart-box { border: 1px solid #e8eaee; border-radius: 5px; padding: 8px; }
   /* Sits below the gauges, not above them. Between the chart and the
      gauges it pushed the Production column's gauges out of line with
@@ -61,7 +62,7 @@
   .chart-wrap.short { height: 135px; }
 
   .gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
-  .gauge-label { font-size: 9px; color: #999; margin-bottom: 5px; letter-spacing: 0.4px; text-transform: uppercase; }
+  .gauge-label { font-size: 10px; color: #243547; font-weight: bold; margin-bottom: 5px; letter-spacing: 0.4px; text-transform: uppercase; }
   .gauge-box { border: 1px solid #e8eaee; border-radius: 5px; padding: 12px 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
   /* Stacked rather than side-by-side: the ring no longer competes with
      the text for width, so it can be larger and the note gets the full
@@ -258,7 +259,7 @@ function render() {
   const col = (cls, name, num, cat, siteHrs, reasonLabel, gauges, note) => `
     <div class="col">
       <div class="dept ${cls}"><span class="name">${name}</span><span class="num">DEPT / ${num}</span></div>
-      <div class="chart-label"><span>Downtime Pareto</span><span>Top 5 presses</span></div>
+      <div class="chart-label"><span>Downtime Pareto</span><span class="meta">Top 5 presses</span></div>
       <div class="chart-box"><div class="chart-wrap"><canvas id="p-${cls}"></canvas></div></div>
       <div class="chart-label"><span>${reasonLabel}</span><span class="hrs">${siteHrs.toFixed(1)}h</span></div>
       <div class="chart-box"><div class="chart-wrap short"><canvas id="r-${cls}"></canvas></div></div>
@@ -370,6 +371,9 @@ function render() {
 }
 
 const MUTED = '#999', RED = '#c0392b';
+// Axis ticks were the same washed-out grey as the section headings.
+// Darker so they survive a projector and a printed page.
+const TICK = '#555';
 const lastOtherContents = {};
 
 function pareto(id, rows, key, colour) {
@@ -379,7 +383,10 @@ function pareto(id, rows, key, colour) {
   const cum = data.map(v => { run += v; return total ? Math.round(run / total * 1000) / 10 : 0; });
   charts.push(new Chart(document.getElementById(id), {
     data: {
-      labels: rows.map((r, i) => [cum[i].toFixed(0) + '%', r.machine]),
+      // One line, not a stacked [percent, name] pair. Rotated, a two-line
+      // label draws both lines at the angle and eats most of the chart's
+      // height; flattened it stays legible and matches the reason charts.
+      labels: rows.map((r, i) => `${cum[i].toFixed(0)}% ${r.machine}`),
       datasets: [
         { type: 'bar', data, backgroundColor: colour, borderRadius: 2, maxBarThickness: 34, order: 2 },
         { type: 'line', data: cum, borderColor: RED, borderWidth: 1.4, pointRadius: 2,
@@ -392,11 +399,15 @@ function pareto(id, rows, key, colour) {
         tooltip: { callbacks: { label: c => c.dataset.type === 'line'
           ? 'cumulative ' + c.parsed.y.toFixed(1) + '%' : c.parsed.y.toFixed(1) + 'h' } } },
       scales: {
-        x: { ticks: { color: MUTED, font: { size: 8 } }, grid: { display: false } },
-        y: { ticks: { color: MUTED, font: { size: 8 }, callback: v => v + 'h' },
+        // Same 38-degree tick style as the reason charts below. The
+        // Pareto used flat two-line labels, which meant the two charts
+        // in a column disagreed about how to write a machine name.
+        x: { ticks: { color: TICK, font: { size: 8.5 }, maxRotation: 38, minRotation: 38, autoSkip: false },
+             grid: { display: false } },
+        y: { ticks: { color: TICK, font: { size: 8.5 }, callback: v => v + 'h' },
              grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true },
         y1: { position: 'right', min: 0, max: 100, grid: { display: false },
-              ticks: { color: MUTED, font: { size: 8 }, stepSize: 50, callback: v => v + '%' } },
+              ticks: { color: TICK, font: { size: 8.5 }, stepSize: 50, callback: v => v + '%' } },
       },
     },
   }));
@@ -465,9 +476,9 @@ function reasonBars(id, entries, colour, total, extras) {
               .concat(inOther.length > 8 ? [`  + ${inOther.length - 8} more`] : []),
         } } },
       scales: {
-        x: { ticks: { color: MUTED, font: { size: 8 }, maxRotation: 38, minRotation: 38, autoSkip: false },
+        x: { ticks: { color: TICK, font: { size: 8.5 }, maxRotation: 38, minRotation: 38, autoSkip: false },
              grid: { display: false } },
-        y: { ticks: { color: MUTED, font: { size: 8 }, callback: v => v + 'h' },
+        y: { ticks: { color: TICK, font: { size: 8.5 }, callback: v => v + 'h' },
              grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true },
       },
     },
