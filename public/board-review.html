@@ -274,12 +274,13 @@ function render() {
       <div class="gauge-note">${note}</div></div></div>`;
 
   const oeeGauges =
-    gauge('g-oee', 'OEE', d.oee_pct == null ? 'not uploaded' : `target 70%<br>${d.oee_week_count} weeks`) +
-    gauge('g-prod', 'Total unplanned', `${prodOwn.toFixed(0)}h production<br>excl. breaks`);
+    gauge('g-oee', 'OEE', d.oee_pct == null ? 'not uploaded'
+      : `target ${TARGETS.oee}% · tick on ring<br>${d.oee_week_count} weeks uploaded`) +
+    gauge('g-prod', 'Total unplanned', `${prodOwn.toFixed(0)}h production<br>no target set`);
 
   const toolGauges =
-    gauge('g-woT', 'Agility (tool WOs)', `vs ${mb.reduce((s, m) => s + (m.tool_events || 0), 0)} SFC events`) +
-    gauge('g-tool', 'Downtime (SFC)', `${siteTool.toFixed(0)}h<br>tool-related`);
+    gauge('g-woT', 'Agility (tool WOs)', `vs ${mb.reduce((s, m) => s + (m.tool_events || 0), 0)} SFC events<br>no target set`) +
+    gauge('g-tool', 'Downtime (SFC)', `tool-related<br>no target set`);
 
   // MTBF is the headline: how long plant runs between failures. MTTR and
   // MTTF sit alongside as the two halves it decomposes into —
@@ -297,7 +298,7 @@ function render() {
   })();
   const maintGauges =
     gauge('g-mtbf', 'MTBF', mtbfNote) +
-    gauge('g-fault', 'Downtime (SFC)', `Agility ${hrs(d.agility_maintenance_hrs)}<br>${fmt(100 - d.gap_pct, 1)}% covered`);
+    gauge('g-cover', 'WO coverage', `${siteFault.toFixed(0)}h SFC vs ${hrs(d.agility_maintenance_hrs)} Agility<br>target 100%`);
 
   document.getElementById('slide').innerHTML = `
     <div class="slide-head">
@@ -330,12 +331,16 @@ function render() {
   reasonBars('r-toolroom', reasonTotals(mb, 'tool'), '#bf7d2c', siteTool);
   reasonBars('r-maintenance', reasonTotals(mb, 'fault'), '#2e6b4f', siteFault);
 
-  ring('g-oee', d.oee_pct, d.oee_pct == null ? '–' : fmt(d.oee_pct, 0) + '%', '#3d6491');
-  ring('g-prod', 100, totalUnplanned.toFixed(0) + 'h', '#c0392b');
-  ring('g-woT', 100, String(mb.reduce((s, m) => s + (m.wo_count || 0), 0)), '#bf7d2c');
-  ring('g-tool', 100, siteTool.toFixed(0) + 'h', '#c0392b');
-  ring('g-mtbf', 100, d.mtbf_days == null ? '–' : fmt(d.mtbf_days, 1) + 'd', '#2e6b4f');
-  ring('g-fault', d.gap_pct, siteFault.toFixed(0) + 'h', '#c0392b');
+  // Only these two have a real proportion behind them: OEE against its
+  // 70% target, and WO coverage against the 100% every fault event
+  // should have. The rest pass null and render as plain frames.
+  ring('g-oee', d.oee_pct, d.oee_pct == null ? '–' : fmt(d.oee_pct, 0) + '%', '#3d6491', TARGETS.oee);
+  ring('g-prod', null, totalUnplanned.toFixed(0) + 'h', '#c0392b');
+  ring('g-woT', null, String(mb.reduce((s, m) => s + (m.wo_count || 0), 0)), '#bf7d2c');
+  ring('g-tool', null, siteTool.toFixed(0) + 'h', '#c0392b');
+  ring('g-mtbf', null, d.mtbf_days == null ? '–' : fmt(d.mtbf_days, 1) + 'd', '#2e6b4f');
+  ring('g-cover', d.gap_pct == null ? null : 100 - d.gap_pct,
+       d.gap_pct == null ? '–' : fmt(100 - d.gap_pct, 0) + '%', '#c0392b', 100);
 
   // Only surface unclassified codes when they're material. The strip is a
   // safeguard for the incoming SFC code list — a new 'MA - Fault - Robot'
@@ -486,27 +491,73 @@ function reasonBars(id, entries, colour, total, extras) {
   }));
 }
 
-function ring(id, pct, text, colour) {
+// Targets. Only OEE has one agreed so far — everything else here is a
+// raw quantity (hours, work-order counts, days between failures) with no
+// number anyone has committed to yet.
+const TARGETS = { oee: 70 };
+
+/**
+ * pct === null means "this value has no target".
+ *
+ * A doughnut filled to 100% is a claim: it says the value reached the top
+ * of some scale. On a card showing 259 hours of tool downtime that claim
+ * is meaningless, and worse, it sits next to OEE — which IS a real
+ * percentage — so the eye reads them as comparable. They aren't.
+ *
+ * So a target-less card gets a thin flat ring: it frames the number
+ * without implying a proportion. A card with a target gets a thick arc
+ * plus a tick at the target, which is the only place a filled ring
+ * actually means anything.
+ */
+function ring(id, pct, text, colour, target) {
   const el = document.getElementById(id);
   if (!el) return;
-  const value = (pct === null || pct === undefined) ? 0 : Math.max(0, Math.min(100, pct));
+  const hasTarget = pct !== null && pct !== undefined;
+  const value = hasTarget ? Math.max(0, Math.min(100, pct)) : 100;
+
   const centre = {
     id: 'c' + id,
     afterDraw(c) {
       const x = c.ctx, a = c.chartArea;
+      const cx = (a.left + a.right) / 2, cy = (a.top + a.bottom) / 2;
       x.save();
       x.textAlign = 'center'; x.textBaseline = 'middle';
       x.fillStyle = '#243547';
       x.font = '500 15px Arial';
-      x.fillText(text, (a.left + a.right) / 2, (a.top + a.bottom) / 2);
+      x.fillText(text, cx, cy);
+
+      // Target tick — a notch through the ring at the target position,
+      // so "are we there yet" is answerable without reading the note.
+      if (hasTarget && target) {
+        const meta = c.getDatasetMeta(0).data[0];
+        const outer = meta.outerRadius, inner = meta.innerRadius;
+        const angle = -Math.PI / 2 + (target / 100) * Math.PI * 2;
+        x.strokeStyle = '#243547';
+        x.lineWidth = 2;
+        x.beginPath();
+        x.moveTo(cx + Math.cos(angle) * (inner - 1), cy + Math.sin(angle) * (inner - 1));
+        x.lineTo(cx + Math.cos(angle) * (outer + 1), cy + Math.sin(angle) * (outer + 1));
+        x.stroke();
+      }
       x.restore();
     },
   };
+
   charts.push(new Chart(el, {
     type: 'doughnut',
-    data: { datasets: [{ data: [value, 100 - value], backgroundColor: [colour, '#e8eaee'], borderWidth: 0 }] },
-    options: { responsive: true, maintainAspectRatio: false, cutout: '74%',
-               plugins: { legend: { display: false }, tooltip: { enabled: false } } },
+    data: {
+      datasets: [{
+        data: [value, 100 - value],
+        backgroundColor: hasTarget ? [colour, '#e8eaee'] : [colour, colour],
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      // Thin for a plain frame, thick for a real progress arc.
+      cutout: hasTarget ? '74%' : '86%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    },
     plugins: [centre],
   }));
 }
