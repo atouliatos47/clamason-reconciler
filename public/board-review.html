@@ -52,6 +52,7 @@
   .chart-label { display: flex; justify-content: space-between; font-size: 9px; color: #999; margin: 14px 0 5px; letter-spacing: 0.4px; text-transform: uppercase; }
   .chart-label .hrs { color: #555; font-weight: bold; }
   .chart-box { border: 1px solid #e8eaee; border-radius: 5px; padding: 8px; }
+  .chart-note { font-size: 9px; color: #999; margin-top: 5px; line-height: 1.5; }
   .chart-wrap { position: relative; height: 155px; }
   .chart-wrap.short { height: 135px; }
 
@@ -133,6 +134,17 @@ const TOOLROOM_CODES = ['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP',
                         'TOOL UNAVAILABLE', 'WASTE IN THE TOOL'];
 const PLANNED_CODES = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED'];
 
+// Contractual break time. Excluded from the Production chart because it
+// isn't lost performance — it's time the site was never going to run.
+// Leaving it in made it the second-biggest bar on the column, which
+// invites a question ("why is lunch on a downtime slide?") that has
+// nothing to do with the point being made.
+//
+// Excluded, not hidden: the figure is stated under the chart, and it
+// stays in the server-side production_hrs total, so nothing else on the
+// page or in the database moves because of this.
+const BREAK_CODES = ['LUNCH / BREAK / MEETING'];
+
 function categorise(reason) {
   const r = (reason || '').toUpperCase().trim();
   if (FAULT_CODES.includes(r)) return 'fault';
@@ -175,14 +187,23 @@ function selectPeriod(i) {
 // Aggregate each department's reason codes across every machine. The
 // per-machine reasons dicts are stored precisely so this can be rebuilt
 // from a saved run without re-uploading the source workbook.
-function reasonTotals(mb, cat) {
+function reasonTotals(mb, cat, excludeBreaks) {
   const totals = {};
   mb.forEach(m => {
     Object.entries(m.reasons || {}).forEach(([reason, h]) => {
+      if (excludeBreaks && BREAK_CODES.includes(reason.toUpperCase().trim())) return;
       if (categorise(reason) === cat) totals[reason] = (totals[reason] || 0) + h;
     });
   });
   return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+}
+
+function breakHours(mb) {
+  let total = 0;
+  mb.forEach(m => Object.entries(m.reasons || {}).forEach(([reason, h]) => {
+    if (BREAK_CODES.includes(reason.toUpperCase().trim())) total += h;
+  }));
+  return total;
 }
 
 function unclassifiedCodes(mb) {
@@ -214,16 +235,23 @@ function render() {
   const siteFault = mb.reduce((s, m) => s + (m.fault_hrs || 0), 0);
   const siteTool = mb.reduce((s, m) => s + (m.tool_hrs || 0), 0);
   const siteProd = mb.reduce((s, m) => s + (m.production_hrs || 0), 0);
+  const siteBreak = breakHours(mb);
+  // Production's own losses, with contractual break time taken out.
+  const prodOwn = siteProd - siteBreak;
+  // What the Production column now totals: every unplanned hour, whoever
+  // owns it. The three bars-groups on that chart sum to exactly this.
+  const totalUnplanned = prodOwn + siteFault + siteTool;
 
   const top5 = (cat) => mb.slice().sort((a, b) => (b[cat] || 0) - (a[cat] || 0)).slice(0, 5);
 
-  const col = (cls, name, num, cat, siteHrs, reasonLabel, gauges) => `
+  const col = (cls, name, num, cat, siteHrs, reasonLabel, gauges, note) => `
     <div class="col">
       <div class="dept ${cls}"><span class="name">${name}</span><span class="num">DEPT / ${num}</span></div>
       <div class="chart-label"><span>Downtime Pareto</span><span>Top 5 presses</span></div>
       <div class="chart-box"><div class="chart-wrap"><canvas id="p-${cls}"></canvas></div></div>
       <div class="chart-label"><span>${reasonLabel}</span><span class="hrs">${siteHrs.toFixed(1)}h</span></div>
       <div class="chart-box"><div class="chart-wrap short"><canvas id="r-${cls}"></canvas></div></div>
+      ${note ? `<div class="chart-note">${note}</div>` : ''}
       <div class="gauges">${gauges}</div>
     </div>`;
 
@@ -234,7 +262,7 @@ function render() {
 
   const oeeGauges =
     gauge('g-oee', 'OEE', d.oee_pct == null ? 'not uploaded' : `target 70%<br>${d.oee_week_count} weeks`) +
-    gauge('g-prod', 'Production downtime', `${siteProd.toFixed(0)}h<br>unplanned`);
+    gauge('g-prod', 'Total unplanned', `${prodOwn.toFixed(0)}h production<br>excl. breaks`);
 
   const toolGauges =
     gauge('g-woT', 'Agility (tool WOs)', `vs ${mb.reduce((s, m) => s + (m.tool_events || 0), 0)} SFC events`) +
@@ -252,7 +280,9 @@ function render() {
       <div class="period">Period: <strong>${d.period_label || d.period}</strong> · ${mb.length} presses</div>
     </div>
     <div class="cols">
-      ${col('production', 'PRODUCTION', '01', 'production_hrs', siteProd, 'Unplanned downtime — reason codes', oeeGauges)}
+      ${col('production', 'PRODUCTION', '01', 'production_hrs', totalUnplanned,
+             'Unplanned downtime by owner', oeeGauges,
+             `Excludes ${siteBreak.toFixed(0)}h contractual break time. Maintenance and Toolroom shown in their own colours.`)}
       ${col('toolroom', 'TOOLROOM', '02', 'tool_hrs', siteTool, 'Tool downtime — reason codes', toolGauges)}
       ${col('maintenance', 'MAINTENANCE', '03', 'fault_hrs', siteFault, 'Fault downtime — reason codes', maintGauges)}
     </div>
@@ -267,12 +297,17 @@ function render() {
   pareto('p-toolroom', top5('tool_hrs'), 'tool_hrs', '#bf7d2c');
   pareto('p-maintenance', top5('fault_hrs'), 'fault_hrs', '#2e6b4f');
 
-  reasonBars('r-production', reasonTotals(mb, 'production'), '#3d6491', siteProd);
+  // Production gets Maintenance and Toolroom appended as their own bars,
+  // so the column reads as total unplanned downtime by owner.
+  reasonBars('r-production', reasonTotals(mb, 'production', true), '#3d6491', totalUnplanned, [
+    { label: 'Maintenance', hrs: siteFault, colour: '#2e6b4f' },
+    { label: 'Toolroom', hrs: siteTool, colour: '#bf7d2c' },
+  ]);
   reasonBars('r-toolroom', reasonTotals(mb, 'tool'), '#bf7d2c', siteTool);
   reasonBars('r-maintenance', reasonTotals(mb, 'fault'), '#2e6b4f', siteFault);
 
   ring('g-oee', d.oee_pct, d.oee_pct == null ? '–' : fmt(d.oee_pct, 0) + '%', '#3d6491');
-  ring('g-prod', 100, siteProd.toFixed(0) + 'h', '#c0392b');
+  ring('g-prod', 100, totalUnplanned.toFixed(0) + 'h', '#c0392b');
   ring('g-woT', 100, String(mb.reduce((s, m) => s + (m.wo_count || 0), 0)), '#bf7d2c');
   ring('g-tool', 100, siteTool.toFixed(0) + 'h', '#c0392b');
   ring('g-mttr', 100, d.mtbf_mttr_hrs == null ? '–' : fmt(d.mtbf_mttr_hrs, 1) + 'h', '#2e6b4f');
@@ -322,22 +357,34 @@ function pareto(id, rows, key, colour) {
   }));
 }
 
-function reasonBars(id, entries, colour, total) {
-  // Top 5 plus an explicit "Other" — dropping the tail would make the
+function reasonBars(id, entries, colour, total, extras) {
+  // Top 4 plus an explicit "Other" — dropping the tail would make the
   // column look smaller than the department's actual downtime.
-  const top = entries.slice(0, 5);
-  const rest = entries.slice(5).reduce((s, e) => s + e[1], 0);
+  const top = entries.slice(0, 4);
+  const rest = entries.slice(4).reduce((s, e) => s + e[1], 0);
   const labels = top.map(e => e[0].length > 16 ? e[0].slice(0, 15) + '…' : e[0]);
   const data = top.map(e => e[1]);
-  if (rest > 0.05) { labels.push('Other'); data.push(rest); }
+  const colours = data.map(() => colour);
+  if (rest > 0.05) { labels.push('Other'); data.push(rest); colours.push(colour); }
+
+  // `extras` appends other departments' totals to this chart, in their
+  // own colours. On the Production column that turns "here are our
+  // reason codes" into "here is every hour of unplanned downtime the
+  // line lost, and who owns each part" — which is the question a board
+  // actually asks.
+  (extras || []).forEach(e => { labels.push(e.label); data.push(e.hrs); colours.push(e.colour); });
+
   charts.push(new Chart(document.getElementById(id), {
     type: 'bar',
-    data: { labels, datasets: [{ data, backgroundColor: colour, borderRadius: 2, maxBarThickness: 40 }] },
+    data: { labels, datasets: [{ data, backgroundColor: colours, borderRadius: 2, maxBarThickness: 40 }] },
     options: {
       responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8 } },
       plugins: { legend: { display: false },
         tooltip: { callbacks: {
-          title: c => entries[c[0].dataIndex] ? entries[c[0].dataIndex][0] : 'Other',
+          title: c => {
+            const i = c[0].dataIndex;
+            return i < 4 && entries[i] ? entries[i][0] : c[0].label;
+          },
           label: c => c.parsed.y.toFixed(1) + 'h' + (total ? ` (${(c.parsed.y / total * 100).toFixed(0)}%)` : '') } } },
       scales: {
         x: { ticks: { color: MUTED, font: { size: 8 }, maxRotation: 38, minRotation: 38, autoSkip: false },
