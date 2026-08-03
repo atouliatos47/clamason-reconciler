@@ -417,17 +417,34 @@ function reasonBars(id, entries, colour, total, extras) {
   const top = entries.slice(0, SHOWN);
   const inOther = otherContents(entries, SHOWN);
   const rest = inOther.reduce((s, e) => s + e[1], 0);
-  const labels = top.map(e => e[0].length > 16 ? e[0].slice(0, 15) + '…' : e[0]);
-  const data = top.map(e => e[1]);
-  const colours = data.map(() => colour);
-  if (rest > 0.05) { labels.push('Other'); data.push(rest); colours.push(colour); }
+
+  // One array of bar objects rather than three parallel arrays, so a
+  // bar's label, colour and full name can't drift apart when the order
+  // changes below.
+  const bars = top.map(e => ({
+    label: e[0].length > 16 ? e[0].slice(0, 15) + '…' : e[0],
+    full: e[0],
+    value: e[1],
+    colour,
+  }));
+  if (rest > 0.05) bars.push({ label: 'Other', full: 'Other', value: rest, colour });
 
   // `extras` appends other departments' totals to this chart, in their
   // own colours. On the Production column that turns "here are our
   // reason codes" into "here is every hour of unplanned downtime the
   // line lost, and who owns each part" — which is the question a board
   // actually asks.
-  (extras || []).forEach(e => { labels.push(e.label); data.push(e.hrs); colours.push(e.colour); });
+  (extras || []).forEach(e => bars.push({ label: e.label, full: e.label, value: e.hrs, colour: e.colour }));
+
+  // Sorted descending, same as the Pareto charts above. Appending the
+  // department bars in fixed positions left Other and Toolroom out of
+  // sequence, which makes the eye work to find the biggest loss — the
+  // one thing a downtime chart exists to show.
+  bars.sort((a, b) => b.value - a.value);
+
+  const labels = bars.map(b => b.label);
+  const data = bars.map(b => b.value);
+  const colours = bars.map(b => b.colour);
 
   lastOtherContents[id] = inOther;
   charts.push(new Chart(document.getElementById(id), {
@@ -437,10 +454,9 @@ function reasonBars(id, entries, colour, total, extras) {
       responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8 } },
       plugins: { legend: { display: false },
         tooltip: { callbacks: {
-          title: c => {
-            const i = c[0].dataIndex;
-            return i < SHOWN && entries[i] ? entries[i][0] : c[0].label;
-          },
+          // Full name from the bar itself, not from an index into
+          // `entries` — after sorting those no longer correspond.
+          title: c => (bars[c[0].dataIndex] || {}).full || c[0].label,
           label: c => c.parsed.y.toFixed(1) + 'h' + (total ? ` (${(c.parsed.y / total * 100).toFixed(0)}%)` : ''),
           // Hovering Other lists what's inside it, so the question
           // "what's in that bar?" is answerable on the spot.
