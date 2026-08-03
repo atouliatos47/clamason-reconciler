@@ -287,7 +287,7 @@ function render() {
   const oeeGauges =
     gauge('g-oee', 'OEE', d.oee_pct == null ? 'not uploaded'
       : `target ${TARGETS.oee}% · tick on ring<br>${d.oee_week_count} weeks uploaded`) +
-    gauge('g-prod', 'Downtime (SFC)', `${prodOwn.toFixed(0)}h production + ${(siteFault + siteTool).toFixed(0)}h other depts<br>no target set`);
+    gauge('g-prod', 'Downtime (SFC)', `production-owned reasons only<br>no target set`);
 
   const toolGauges =
     gauge('g-woT', 'Agility (tool WOs)', `vs ${mb.reduce((s, m) => s + (m.tool_events || 0), 0)} SFC events<br>no target set`) +
@@ -346,7 +346,15 @@ function render() {
   // 70% target, and WO coverage against the 100% every fault event
   // should have. The rest pass null and render as plain frames.
   ring('g-oee', d.oee_pct, d.oee_pct == null ? '–' : fmt(d.oee_pct, 0) + '%', '#3d6491', TARGETS.oee);
-  ring('g-prod', null, totalUnplanned.toFixed(0) + 'h', '#c0392b');
+  // Production's OWN losses, not the site total. The three second gauges
+  // read across as a comparison, so they have to be peers — showing the
+  // 1565h all-departments figure here put maintenance and toolroom
+  // inside the number sitting next to them, and 1565 / 259 / 127 reads
+  // as "production had six times the downtime of toolroom" when 259 and
+  // 127 are components of the 1565.
+  //
+  // The by-owner total is still on the chart above, in its header.
+  ring('g-prod', null, prodOwn.toFixed(0) + 'h', '#c0392b');
   ring('g-woT', null, String(mb.reduce((s, m) => s + (m.wo_count || 0), 0)), '#bf7d2c');
   ring('g-tool', null, siteTool.toFixed(0) + 'h', '#c0392b');
   ring('g-mtbf', null, d.mtbf_days == null ? '–' : fmt(d.mtbf_days, 1) + 'd', '#2e6b4f');
