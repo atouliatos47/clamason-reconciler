@@ -52,7 +52,11 @@
   .chart-label { display: flex; justify-content: space-between; font-size: 9px; color: #999; margin: 14px 0 5px; letter-spacing: 0.4px; text-transform: uppercase; }
   .chart-label .hrs { color: #555; font-weight: bold; }
   .chart-box { border: 1px solid #e8eaee; border-radius: 5px; padding: 8px; }
-  .chart-note { font-size: 9px; color: #999; margin-top: 5px; line-height: 1.5; }
+  /* Sits below the gauges, not above them. Between the chart and the
+     gauges it pushed the Production column's gauges out of line with
+     Toolroom and Maintenance, which reads as a layout fault on a slide
+     whose whole point is three comparable columns. */
+  .chart-note { font-size: 9px; color: #999; margin-top: 10px; line-height: 1.5; }
   .chart-wrap { position: relative; height: 155px; }
   .chart-wrap.short { height: 135px; }
 
@@ -258,8 +262,8 @@ function render() {
       <div class="chart-box"><div class="chart-wrap"><canvas id="p-${cls}"></canvas></div></div>
       <div class="chart-label"><span>${reasonLabel}</span><span class="hrs">${siteHrs.toFixed(1)}h</span></div>
       <div class="chart-box"><div class="chart-wrap short"><canvas id="r-${cls}"></canvas></div></div>
-      ${note ? `<div class="chart-note" id="${cls}-note">${note}</div>` : ''}
       <div class="gauges">${gauges}</div>
+      ${note ? `<div class="chart-note" id="${cls}-note">${note}</div>` : ''}
     </div>`;
 
   const gauge = (id, label, note) => `
