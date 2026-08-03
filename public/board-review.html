@@ -226,6 +226,10 @@ function unclassifiedCodes(mb) {
   return Object.entries(found).sort((a, b) => b[1] - a[1]);
 }
 
+// Placeholder — replaced with the real text once the charts have run and
+// the contents of the Other bar are known.
+const PRODUCTION_NOTE = '&nbsp;';
+
 function render() {
   const d = current;
   const mb = d.machine_breakdown || [];
@@ -251,7 +255,7 @@ function render() {
       <div class="chart-box"><div class="chart-wrap"><canvas id="p-${cls}"></canvas></div></div>
       <div class="chart-label"><span>${reasonLabel}</span><span class="hrs">${siteHrs.toFixed(1)}h</span></div>
       <div class="chart-box"><div class="chart-wrap short"><canvas id="r-${cls}"></canvas></div></div>
-      ${note ? `<div class="chart-note">${note}</div>` : ''}
+      ${note ? `<div class="chart-note" id="${cls}-note">${note}</div>` : ''}
       <div class="gauges">${gauges}</div>
     </div>`;
 
@@ -281,8 +285,7 @@ function render() {
     </div>
     <div class="cols">
       ${col('production', 'PRODUCTION', '01', 'production_hrs', totalUnplanned,
-             'Unplanned downtime by owner', oeeGauges,
-             `Excludes ${siteBreak.toFixed(0)}h contractual break time. Maintenance and Toolroom shown in their own colours.`)}
+             'Unplanned downtime by owner', oeeGauges, PRODUCTION_NOTE)}
       ${col('toolroom', 'TOOLROOM', '02', 'tool_hrs', siteTool, 'Tool downtime — reason codes', toolGauges)}
       ${col('maintenance', 'MAINTENANCE', '03', 'fault_hrs', siteFault, 'Fault downtime — reason codes', maintGauges)}
     </div>
@@ -313,7 +316,29 @@ function render() {
   ring('g-mttr', 100, d.mtbf_mttr_hrs == null ? '–' : fmt(d.mtbf_mttr_hrs, 1) + 'h', '#2e6b4f');
   ring('g-fault', d.gap_pct, siteFault.toFixed(0) + 'h', '#c0392b');
 
-  const unk = unclassifiedCodes(mb);
+  // Only surface unclassified codes when they're material. The strip is a
+  // safeguard for the incoming SFC code list — a new 'MA - Fault - Robot'
+  // landing silently in production is what it exists to catch. A stray
+  // 0.3h code is not that, and a permanent amber banner on a board slide
+  // trains everyone to ignore it, which defeats the point.
+  const UNCLASSIFIED_THRESHOLD_HRS = 1;
+  // Named now that reasonBars has recorded what fell into Other. Listing
+  // the top three by name means the biggest hidden item is always on the
+  // slide — on June data that's 115h of Waiting Quality Pass Off, which
+  // is a bigger single line than the Maintenance bar next to it.
+  const other = lastOtherContents['r-production'] || [];
+  const noteEl = document.getElementById('production-note');
+  if (noteEl) {
+    const named = other.slice(0, 3).map(e => `${e[0]} ${e[1].toFixed(0)}h`).join(', ');
+    noteEl.innerHTML =
+      `Excludes ${siteBreak.toFixed(0)}h contractual break time. ` +
+      `Maintenance and Toolroom shown in their own colours.` +
+      (other.length
+        ? `<br><strong>Other</strong> = ${other.length} smaller codes, largest being ${named}. Hover the bar for the full list.`
+        : '');
+  }
+
+  const unk = unclassifiedCodes(mb).filter(([, h]) => h >= UNCLASSIFIED_THRESHOLD_HRS);
   const ubox = document.getElementById('unclassified');
   if (unk.length) {
     ubox.innerHTML = `<strong>Unclassified reason codes — currently counted as production:</strong> ` +
@@ -326,6 +351,7 @@ function render() {
 }
 
 const MUTED = '#999', RED = '#c0392b';
+const lastOtherContents = {};
 
 function pareto(id, rows, key, colour) {
   const data = rows.map(r => r[key] || 0);
@@ -357,11 +383,21 @@ function pareto(id, rows, key, colour) {
   }));
 }
 
+// The codes rolled into the "Other" bar, biggest first. Returned so the
+// bar can name its own contents — a board slide shouldn't have a bar
+// nobody in the room can account for, and on June data Other is the
+// second-largest bar on the Production chart.
+function otherContents(entries, shown) {
+  return entries.slice(shown).sort((a, b) => b[1] - a[1]);
+}
+
 function reasonBars(id, entries, colour, total, extras) {
   // Top 4 plus an explicit "Other" — dropping the tail would make the
   // column look smaller than the department's actual downtime.
-  const top = entries.slice(0, 4);
-  const rest = entries.slice(4).reduce((s, e) => s + e[1], 0);
+  const SHOWN = 4;
+  const top = entries.slice(0, SHOWN);
+  const inOther = otherContents(entries, SHOWN);
+  const rest = inOther.reduce((s, e) => s + e[1], 0);
   const labels = top.map(e => e[0].length > 16 ? e[0].slice(0, 15) + '…' : e[0]);
   const data = top.map(e => e[1]);
   const colours = data.map(() => colour);
@@ -374,6 +410,7 @@ function reasonBars(id, entries, colour, total, extras) {
   // actually asks.
   (extras || []).forEach(e => { labels.push(e.label); data.push(e.hrs); colours.push(e.colour); });
 
+  lastOtherContents[id] = inOther;
   charts.push(new Chart(document.getElementById(id), {
     type: 'bar',
     data: { labels, datasets: [{ data, backgroundColor: colours, borderRadius: 2, maxBarThickness: 40 }] },
@@ -383,9 +420,15 @@ function reasonBars(id, entries, colour, total, extras) {
         tooltip: { callbacks: {
           title: c => {
             const i = c[0].dataIndex;
-            return i < 4 && entries[i] ? entries[i][0] : c[0].label;
+            return i < SHOWN && entries[i] ? entries[i][0] : c[0].label;
           },
-          label: c => c.parsed.y.toFixed(1) + 'h' + (total ? ` (${(c.parsed.y / total * 100).toFixed(0)}%)` : '') } } },
+          label: c => c.parsed.y.toFixed(1) + 'h' + (total ? ` (${(c.parsed.y / total * 100).toFixed(0)}%)` : ''),
+          // Hovering Other lists what's inside it, so the question
+          // "what's in that bar?" is answerable on the spot.
+          afterBody: c => c[0].label !== 'Other' ? [] :
+            inOther.slice(0, 8).map(e => `  ${e[0]} — ${e[1].toFixed(1)}h`)
+              .concat(inOther.length > 8 ? [`  + ${inOther.length - 8} more`] : []),
+        } } },
       scales: {
         x: { ticks: { color: MUTED, font: { size: 8 }, maxRotation: 38, minRotation: 38, autoSkip: false },
              grid: { display: false } },
