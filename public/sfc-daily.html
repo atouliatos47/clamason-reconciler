@@ -72,6 +72,12 @@
   .save-status.ok { color: #16a34a; }
   .save-status.err { color: #dc2626; }
 
+  .restored-note {
+    display: none; background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b;
+    border-radius: 6px; padding: 11px 14px; margin-bottom: 16px; font-size: 12px; color: #92400e; line-height: 1.5;
+  }
+  .restored-note strong { color: #78350f; }
+
   .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; display: none; }
 
   .results { display: none; }
@@ -146,6 +152,8 @@
 
   <div class="results" id="results">
 
+    <div class="restored-note" id="restored-note"></div>
+
     <div class="action-row">
       <div class="scope-badge" id="scope-badge"></div>
       <div class="date-field">
@@ -185,6 +193,102 @@
 <script>
 let file = null;
 let lastResult = null;
+let fileName = null;
+let checkedAt = null;
+
+// Persist the last check so closing the tab (or the whole app) doesn't throw
+// the results away. Cleared ONLY by the Clear / New Check button — there is
+// deliberately no expiry, because "still there when I come back" is the whole
+// point of it.
+//
+// The PDF File object itself is NOT stored: File isn't serialisable, and
+// base64-ing a PDF into a ~5MB localStorage budget is a quota failure waiting
+// to happen. Only the parsed summary is kept. That's enough to redraw every
+// number on the page, but not enough to re-POST to /api/save-sfc-daily, which
+// deliberately re-parses the file rather than trusting the browser. So a
+// restored check displays fully but needs the file re-picked before it can be
+// saved — the banner says so rather than letting you find out at the Save button.
+const STORAGE_KEY = 'clamason.sfcDaily.lastCheck.v1';
+
+function persist() {
+  if (!lastResult) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      v: 1,
+      result: lastResult,
+      fileName: fileName,
+      checkedAt: checkedAt,
+      saveDate: document.getElementById('save-date').value || '',
+      saveStatus: {
+        text: document.getElementById('save-status').textContent || '',
+        cls: document.getElementById('save-status').className || 'save-status',
+      },
+    }));
+  } catch (e) {
+    // Quota or private-browsing refusal. Persistence is a convenience, not a
+    // requirement — the page must keep working, so this is swallowed on purpose.
+    console.warn('Could not persist SFC daily check:', e);
+  }
+}
+
+function clearStored() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* nothing to do */ }
+}
+
+function restore() {
+  let saved;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    saved = JSON.parse(raw);
+  } catch (e) {
+    clearStored();   // corrupt or half-written — drop it rather than crash the page
+    return false;
+  }
+  if (!saved || saved.v !== 1 || !saved.result) { clearStored(); return false; }
+
+  lastResult = saved.result;
+  fileName = saved.fileName || null;
+  checkedAt = saved.checkedAt || null;
+
+  render(lastResult);
+  document.getElementById('results').style.display = 'block';
+
+  if (saved.saveDate) document.getElementById('save-date').value = saved.saveDate;
+  if (saved.saveStatus && saved.saveStatus.text) {
+    const el = document.getElementById('save-status');
+    el.textContent = saved.saveStatus.text;
+    el.className = saved.saveStatus.cls || 'save-status';
+  }
+
+  showRestoredNote();
+  return true;
+}
+
+function showRestoredNote() {
+  const note = document.getElementById('restored-note');
+  let when = 'a previous session';
+  if (checkedAt) {
+    const d = new Date(checkedAt);
+    if (!isNaN(d)) {
+      when = d.toLocaleString('en-GB', {
+        weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
+    }
+  }
+  note.innerHTML =
+    `<strong>Restored from your last check</strong> — run on ${when}` +
+    (fileName ? ` from <strong>${fileName}</strong>` : '') + '.<br>' +
+    'These figures are from that report, not from today. The PDF itself isn\'t kept, ' +
+    'so to Save this day you\'ll need to choose the file again and Run Check. ' +
+    'Press <strong>Clear / New Check</strong> to start fresh.';
+  note.style.display = 'block';
+}
+
+function hideRestoredNote() {
+  document.getElementById('restored-note').style.display = 'none';
+}
 
 // Display-only copy of config.py's category sets, for tagging rows in
 // the table below. NOT used for any calculation — that's done
@@ -218,6 +322,7 @@ function handleFile(input) {
   const f = input.files[0];
   if (!f) return;
   file = f;
+  fileName = f.name;
   document.getElementById('card-pdf').classList.add('done');
   document.getElementById('pdf-status').textContent = '✓ ' + f.name;
   document.getElementById('run-btn').disabled = false;
@@ -235,8 +340,15 @@ async function runCheck() {
     const d = await res.json();
     if (d.error) throw new Error(d.error);
     lastResult = d;
+    checkedAt = new Date().toISOString();
     render(d);
     document.getElementById('results').style.display = 'block';
+    // A fresh check supersedes anything restored, and clears any stale
+    // "Saved for ..." status left over from the previous report.
+    hideRestoredNote();
+    document.getElementById('save-status').textContent = '';
+    document.getElementById('save-status').className = 'save-status';
+    persist();
   } catch (e) {
     const eb = document.getElementById('error-box');
     eb.style.display = 'block';
@@ -315,6 +427,7 @@ async function saveSfcDaily() {
     if (d.error) throw new Error(d.error);
     statusEl.textContent = `✓ Saved for ${formatUKDate(d.date)}`;
     statusEl.className = 'save-status ok';
+    persist();   // so the tick is still there when you come back
   } catch (e) {
     statusEl.textContent = 'Error: ' + e.message;
     statusEl.className = 'save-status err';
@@ -326,6 +439,10 @@ async function saveSfcDaily() {
 function clearCheck() {
   file = null;
   lastResult = null;
+  fileName = null;
+  checkedAt = null;
+  clearStored();
+  hideRestoredNote();
 
   document.getElementById('pdf-file').value = '';
   document.getElementById('card-pdf').classList.remove('done');
@@ -341,7 +458,11 @@ function clearCheck() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Default the date first so restore() can overwrite it with the saved one.
   document.getElementById('save-date').valueAsDate = new Date();
+  restore();
+  // Keep the date picker in sync too, so changing it survives a reload.
+  document.getElementById('save-date').addEventListener('change', persist);
 });
 </script>
 </body>
