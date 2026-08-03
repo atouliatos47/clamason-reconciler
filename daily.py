@@ -16,6 +16,29 @@ it can't pick up the same class of bug Maintenance Daily's own MTTR
 had (that one summed DTA events sitewide, unfiltered by craft or job
 type). If Down Time Analysis isn't uploaded, mttr_hrs comes back None
 and the UI falls back to manual entry.
+
+WHAT 'MTTR' MEANS HERE, AND WHAT IT USED TO MEAN
+------------------------------------------------
+This used to read the DTA 'Down Time' column, which is
+Breakdown -> OnLine — the machine's TOTAL unavailability, including
+however long it sat waiting before anyone started. That's MDT, not
+MTTR, and on June 2026 data the difference is not cosmetic:
+
+    MTTA  Reported  -> Started    23.45 h   waiting
+    MTTR  Started   -> Finished   18.97 h   actual repair
+    MDT   Breakdown -> OnLine     42.83 h   what was being reported
+
+So the old figure was roughly 2.3x the real repair time. All three are
+now reported separately, because the gap between them IS the finding:
+more time is spent waiting for work to start than doing it.
+
+Note the craft filter does the toolroom exclusion by itself — asset
+type is NOT used for this. The DTA export has no craft column at all
+(it's run with Job Type: ALL), so a WO raised against a tool asset by
+a maintenance technician is still maintenance work, and a WO against a
+press by a toolmaker is not. Craft comes from the WO export and is
+already applied to wo_data before it reaches here. Filtering on asset
+codes as a proxy would get both of those cases wrong.
 """
 from config import (
     BREAKDOWN_JOB_TYPE, PLANNED_JOB_TYPES_DAILY, PROJECT_JOB_TYPES_DAILY,
@@ -67,24 +90,39 @@ def compute_daily_summary(wo_data, downtime_data=None):
     press_count = sum(1 for w in wo_data if w['known_machine'])
 
     mttr_hrs = None
+    mtta_hrs = None
+    mdt_hrs = None
     mttr_matched = 0
     mttr_unmatched = 0
     if downtime_data is not None:
-        dt_by_wo = {
-            d['wo']: d['downtime_hrs']
-            for d in downtime_data
-            if d.get('downtime_hrs') and d['downtime_hrs'] > 0
-        }
-        durations = []
+        # Keyed on the whole record now, not one column, so all three
+        # durations come from the same matched row.
+        dt_by_wo = {d['wo']: d for d in downtime_data}
+
+        repair, wait, total_dt = [], [], []
         for job in breakdown_jobs:
-            hrs = dt_by_wo.get(job['jobNo'])
-            if hrs is not None:
-                durations.append(hrs)
+            row = dt_by_wo.get(job['jobNo'])
+            if row is None:
+                mttr_unmatched += 1
+                continue
+            # A row can match on WO number but still have an unusable
+            # timestamp pair (blank cell, or Finished before Started).
+            # It only counts as matched if the repair duration is real,
+            # so mttr_matched stays an honest denominator.
+            if row.get('mttr_hrs') is not None:
+                repair.append(row['mttr_hrs'])
                 mttr_matched += 1
             else:
                 mttr_unmatched += 1
-        if durations:
-            mttr_hrs = round(sum(durations) / len(durations), 2)
+            if row.get('mtta_hrs') is not None:
+                wait.append(row['mtta_hrs'])
+            if row.get('mdt_hrs') is not None:
+                total_dt.append(row['mdt_hrs'])
+
+        mean = lambda L: round(sum(L) / len(L), 2) if L else None
+        mttr_hrs = mean(repair)
+        mtta_hrs = mean(wait)
+        mdt_hrs = mean(total_dt)
 
     return {
         'total_wos': total,
@@ -112,6 +150,8 @@ def compute_daily_summary(wo_data, downtime_data=None):
             'jobs': other_jobs,
         },
         'mttr_hrs': mttr_hrs,
+        'mtta_hrs': mtta_hrs,
+        'mdt_hrs': mdt_hrs,
         'mttr_matched': mttr_matched,
         'mttr_unmatched': mttr_unmatched,
         'all_jobs': wo_data,
