@@ -276,11 +276,11 @@ function render() {
   const oeeGauges =
     gauge('g-oee', 'OEE', d.oee_pct == null ? 'not uploaded'
       : `target ${TARGETS.oee}% · tick on ring<br>${d.oee_week_count} weeks uploaded`) +
-    gauge('g-prod', 'Total unplanned', `${prodOwn.toFixed(0)}h production<br>no target set`);
+    gauge('g-prod', 'Downtime (SFC)', `${prodOwn.toFixed(0)}h production + ${(siteFault + siteTool).toFixed(0)}h other depts<br>no target set`);
 
   const toolGauges =
     gauge('g-woT', 'Agility (tool WOs)', `vs ${mb.reduce((s, m) => s + (m.tool_events || 0), 0)} SFC events<br>no target set`) +
-    gauge('g-tool', 'Downtime (SFC)', `tool-related<br>no target set`);
+    gauge('g-tool', 'Downtime (SFC)', `${mb.reduce((s, m) => s + (m.tool_events || 0), 0)} tool-related events<br>no target set`);
 
   // MTBF is the headline: how long plant runs between failures. MTTR and
   // MTTF sit alongside as the two halves it decomposes into —
@@ -298,7 +298,7 @@ function render() {
   })();
   const maintGauges =
     gauge('g-mtbf', 'MTBF', mtbfNote) +
-    gauge('g-cover', 'WO coverage', `${siteFault.toFixed(0)}h SFC vs ${hrs(d.agility_maintenance_hrs)} Agility<br>target 100%`);
+    gauge('g-fault', 'Downtime (SFC)', `Agility ${hrs(d.agility_maintenance_hrs)} · ${fmt(100 - d.gap_pct, 1)}% covered<br>no target set`);
 
   document.getElementById('slide').innerHTML = `
     <div class="slide-head">
@@ -339,8 +339,7 @@ function render() {
   ring('g-woT', null, String(mb.reduce((s, m) => s + (m.wo_count || 0), 0)), '#bf7d2c');
   ring('g-tool', null, siteTool.toFixed(0) + 'h', '#c0392b');
   ring('g-mtbf', null, d.mtbf_days == null ? '–' : fmt(d.mtbf_days, 1) + 'd', '#2e6b4f');
-  ring('g-cover', d.gap_pct == null ? null : 100 - d.gap_pct,
-       d.gap_pct == null ? '–' : fmt(100 - d.gap_pct, 0) + '%', '#c0392b', 100);
+  ring('g-fault', null, siteFault.toFixed(0) + 'h', '#c0392b');
 
   // Only surface unclassified codes when they're material. The strip is a
   // safeguard for the incoming SFC code list — a new 'MA - Fault - Robot'
