@@ -405,6 +405,50 @@ function render() {
 }
 
 const MUTED = '#999', RED = '#c0392b';
+
+/**
+ * Prints each bar's value on the bar, the way the original board slide
+ * did. Reading a height off a gridline is guesswork at this size, and
+ * the point of the slide is that someone can quote a number from it
+ * without hovering anything.
+ *
+ * Handles both orientations: above the bar on the vertical Paretos, to
+ * the right of it on the horizontal reason charts. The Pareto's
+ * cumulative line is skipped — those values are percentages already
+ * plotted against the right-hand axis, and labelling every point would
+ * run a second row of numbers through the middle of the chart.
+ */
+const barValues = {
+  id: 'barValues',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    const horizontal = chart.options.indexAxis === 'y';
+    chart.data.datasets.forEach((ds, di) => {
+      const meta = chart.getDatasetMeta(di);
+      if (ds.type === 'line' || meta.type === 'line') return;
+      meta.data.forEach((el, i) => {
+        const v = ds.data[i];
+        if (v === null || v === undefined) return;
+        // Whole hours once past 100 — '386.6h' beside a bar is more
+        // digits than the number deserves at this size.
+        const text = (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + 'h';
+        ctx.save();
+        ctx.fillStyle = '#243547';
+        ctx.font = '600 8.5px Arial';
+        if (horizontal) {
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, el.x + 5, el.y);
+        } else {
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(text, el.x, el.y - 3);
+        }
+        ctx.restore();
+      });
+    });
+  },
+};
 // Axis ticks were the same washed-out grey as the section headings.
 // Darker so they survive a projector and a printed page.
 const TICK = '#555';
@@ -430,7 +474,9 @@ function pareto(id, rows, key, colour) {
       ],
     },
     options: {
-      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, bottom: 6, left: 2, right: 2 } },
+      responsive: true, maintainAspectRatio: false,
+      // Headroom so the value above the tallest bar is not clipped.
+      layout: { padding: { top: 14, bottom: 6, left: 2, right: 2 } },
       plugins: { legend: { display: false },
         tooltip: { callbacks: { label: c => c.dataset.type === 'line'
           ? 'cumulative ' + c.parsed.y.toFixed(1) + '%' : c.parsed.y.toFixed(1) + 'h' } } },
@@ -440,12 +486,15 @@ function pareto(id, rows, key, colour) {
         // in a column disagreed about how to write a machine name.
         x: { ticks: { color: TICK, font: { size: 8 }, maxRotation: 40, minRotation: 40, autoSkip: false },
              grid: { display: false } },
+        // grace keeps the tallest bar off the ceiling so its printed
+        // value has somewhere to sit.
         y: { ticks: { color: TICK, font: { size: 8 }, callback: v => v + 'h', maxTicksLimit: 6 },
-             grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true },
+             grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true, grace: '12%' },
         y1: { position: 'right', min: 0, max: 100, grid: { display: false },
               ticks: { color: TICK, font: { size: 8 }, stepSize: 50, callback: v => v + '%' } },
       },
     },
+    plugins: [barValues],
   }));
 }
 
@@ -578,7 +627,9 @@ function reasonBars(id, entries, colour, total, extras) {
       // and a Pareto's cumulative line is read left-to-right.
       indexAxis: 'y',
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 4, bottom: 4, left: 2, right: 10 } },
+      // Right padding leaves room for the value printed at the end of
+      // the longest bar.
+      layout: { padding: { top: 4, bottom: 4, left: 2, right: 36 } },
       plugins: { legend: { display: false },
         tooltip: { callbacks: {
           // Full name from the bar itself, not from an index into
@@ -600,6 +651,7 @@ function reasonBars(id, entries, colour, total, extras) {
              grid: { display: false } },
       },
     },
+    plugins: [barValues],
   }));
 }
 
