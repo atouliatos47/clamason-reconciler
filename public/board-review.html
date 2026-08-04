@@ -59,8 +59,11 @@
      whose whole point is three comparable columns. */
   .chart-note { font-size: 10px; color: #555; margin-top: 10px; line-height: 1.6; }
   .chart-note strong { color: #243547; }
-  .chart-wrap { position: relative; height: 155px; }
-  .chart-wrap.short { height: 135px; }
+  /* Taller than the plot alone needs: rotated tick labels are drawn
+     inside the canvas, so the height must cover the bars AND the angled
+     text beneath them. At 155/135 the longest names were clipped. */
+  .chart-wrap { position: relative; height: 172px; }
+  .chart-wrap.short { height: 158px; }
 
   .gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
   .gauge-label { font-size: 10px; color: #243547; font-weight: bold; margin-bottom: 5px; letter-spacing: 0.4px; text-transform: uppercase; }
@@ -409,10 +412,12 @@ function pareto(id, rows, key, colour) {
   const cum = data.map(v => { run += v; return total ? Math.round(run / total * 1000) / 10 : 0; });
   charts.push(new Chart(document.getElementById(id), {
     data: {
-      // One line, not a stacked [percent, name] pair. Rotated, a two-line
-      // label draws both lines at the angle and eats most of the chart's
-      // height; flattened it stays legible and matches the reason charts.
-      labels: rows.map((r, i) => `${cum[i].toFixed(0)}% ${r.machine}`),
+      // Machine name only. The cumulative percentage used to be prefixed
+      // here, but it costs 4-5 characters of a 15-character budget and
+      // the percentage is already on the line and the right-hand axis —
+      // so it was being paid for twice, and the cost was 'Finzer Line
+      // 20' and 'Finzer Line 17' both truncating to 'Finzer Line'.
+      labels: uniqueShortLabels(rows.map(r => r.machine)),
       datasets: [
         { type: 'bar', data, backgroundColor: colour, borderRadius: 2, maxBarThickness: 34, order: 2 },
         { type: 'line', data: cum, borderColor: RED, borderWidth: 1.4, pointRadius: 2,
@@ -420,7 +425,7 @@ function pareto(id, rows, key, colour) {
       ],
     },
     options: {
-      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8 } },
+      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, bottom: 2, left: 2, right: 2 } },
       plugins: { legend: { display: false },
         tooltip: { callbacks: { label: c => c.dataset.type === 'line'
           ? 'cumulative ' + c.parsed.y.toFixed(1) + '%' : c.parsed.y.toFixed(1) + 'h' } } },
@@ -428,15 +433,50 @@ function pareto(id, rows, key, colour) {
         // Same 38-degree tick style as the reason charts below. The
         // Pareto used flat two-line labels, which meant the two charts
         // in a column disagreed about how to write a machine name.
-        x: { ticks: { color: TICK, font: { size: 8.5 }, maxRotation: 38, minRotation: 38, autoSkip: false },
+        x: { ticks: { color: TICK, font: { size: 8 }, maxRotation: 40, minRotation: 40, autoSkip: false },
              grid: { display: false } },
-        y: { ticks: { color: TICK, font: { size: 8.5 }, callback: v => v + 'h' },
+        y: { ticks: { color: TICK, font: { size: 8 }, callback: v => v + 'h', maxTicksLimit: 6 },
              grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true },
         y1: { position: 'right', min: 0, max: 100, grid: { display: false },
-              ticks: { color: TICK, font: { size: 8.5 }, stepSize: 50, callback: v => v + '%' } },
+              ticks: { color: TICK, font: { size: 8 }, stepSize: 50, callback: v => v + '%' } },
       },
     },
   }));
+}
+
+// Tick labels are drawn at an angle inside a narrow column, so a long
+// name either overruns the chart box or collides with its neighbour.
+// 15 characters is what fits at 8px across a third of an A4 landscape
+// page; the full name is always in the tooltip.
+const MAX_TICK = 15;
+
+function shortLabel(text) {
+  const t = String(text);
+  return t.length > MAX_TICK ? t.slice(0, MAX_TICK - 1) + '…' : t;
+}
+
+/**
+ * Shorten a set of labels WITHOUT making any two of them identical.
+ *
+ * Plain head-truncation collapses codes that share a prefix:
+ * 'TOOL FAILURE - PRODUCTION' and 'TOOL FAILURE - SET UP' both become
+ * 'TOOL FAILURE -…', so the chart shows two bars with the same name and
+ * no way to tell which is which. Same for 'Finzer Line 20' and
+ * 'Finzer Line 17'.
+ *
+ * Where that would happen, the tail is used instead — '…PRODUCTION',
+ * '…SET UP' — because the distinguishing part of a code is almost always
+ * at the end.
+ */
+function uniqueShortLabels(names) {
+  const short = names.map(shortLabel);
+  const counts = {};
+  short.forEach(l => { counts[l] = (counts[l] || 0) + 1; });
+  return short.map((l, i) => {
+    if (counts[l] === 1) return l;
+    const full = String(names[i]);
+    return full.length > MAX_TICK ? '…' + full.slice(-(MAX_TICK - 1)) : full;
+  });
 }
 
 // The codes rolled into the "Other" bar, biggest first. Returned so the
@@ -458,20 +498,19 @@ function reasonBars(id, entries, colour, total, extras) {
   // One array of bar objects rather than three parallel arrays, so a
   // bar's label, colour and full name can't drift apart when the order
   // changes below.
-  const bars = top.map(e => ({
-    label: e[0].length > 16 ? e[0].slice(0, 15) + '…' : e[0],
-    full: e[0],
-    value: e[1],
-    colour,
-  }));
-  if (rest > 0.05) bars.push({ label: 'Other', full: 'Other', value: rest, colour });
+  const bars = top.map(e => ({ label: null, full: e[0], value: e[1], colour }));
+  if (rest > 0.05) bars.push({ label: null, full: 'Other', value: rest, colour });
 
   // `extras` appends other departments' totals to this chart, in their
   // own colours. On the Production column that turns "here are our
   // reason codes" into "here is every hour of unplanned downtime the
   // line lost, and who owns each part" — which is the question a board
   // actually asks.
-  (extras || []).forEach(e => bars.push({ label: e.label, full: e.label, value: e.hrs, colour: e.colour }));
+  (extras || []).forEach(e => bars.push({ label: null, full: e.label, value: e.hrs, colour: e.colour }));
+
+  // Labels shortened once, across the whole set, so duplicates can be
+  // spotted and disambiguated together.
+  uniqueShortLabels(bars.map(b => b.full)).forEach((l, i) => { bars[i].label = l; });
 
   // Sorted descending, same as the Pareto charts above. Appending the
   // department bars in fixed positions left Other and Toolroom out of
@@ -488,7 +527,7 @@ function reasonBars(id, entries, colour, total, extras) {
     type: 'bar',
     data: { labels, datasets: [{ data, backgroundColor: colours, borderRadius: 2, maxBarThickness: 40 }] },
     options: {
-      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8 } },
+      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, bottom: 2, left: 2, right: 2 } },
       plugins: { legend: { display: false },
         tooltip: { callbacks: {
           // Full name from the bar itself, not from an index into
@@ -502,9 +541,9 @@ function reasonBars(id, entries, colour, total, extras) {
               .concat(inOther.length > 8 ? [`  + ${inOther.length - 8} more`] : []),
         } } },
       scales: {
-        x: { ticks: { color: TICK, font: { size: 8.5 }, maxRotation: 38, minRotation: 38, autoSkip: false },
+        x: { ticks: { color: TICK, font: { size: 8 }, maxRotation: 40, minRotation: 40, autoSkip: false },
              grid: { display: false } },
-        y: { ticks: { color: TICK, font: { size: 8.5 }, callback: v => v + 'h' },
+        y: { ticks: { color: TICK, font: { size: 8 }, callback: v => v + 'h', maxTicksLimit: 6 },
              grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true },
       },
     },
