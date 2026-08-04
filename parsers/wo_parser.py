@@ -12,7 +12,7 @@ NOT happen here — that's reconciliation.py's job, same as in
 downtime_parser.py. This file only answers "is this a real Maintenance
 WO", not "does it matter for the press-fault gap report".
 """
-from config import MAINTENANCE_CRAFTS, MAINTENANCE_JOB_TYPES
+from config import MAINTENANCE_CRAFTS, MAINTENANCE_JOB_TYPES, TOOLROOM_CRAFTS
 
 
 def _clean(val):
@@ -55,9 +55,15 @@ def _collect_block_crafts(rows, start_idx):
     return resources, crafts, j
 
 
-def _parse_all_maintenance_wos(filepath):
-    """Shared core: walks every WO block, returns ALL Maintenance/
-    Electrician-craft WOs regardless of job type, plus asset_lookup.
+def _parse_all_maintenance_wos(filepath, craft_filter=MAINTENANCE_CRAFTS):
+    """Shared core: walks every WO block, returns every WO whose task
+    list carries one of `crafts`, regardless of job type, plus
+    asset_lookup.
+
+    `crafts` defaults to Maintenance/Electrician so every existing
+    caller behaves exactly as before. It exists so the same block-walk
+    can also count Toolmaker WOs without a second copy of the parsing
+    logic — the thing this module's docstring already warns about.
     Both parse_wo_file() (job-type-restricted, for the monthly board
     reconciliation) and parse_wo_file_all_types() (every job type, for
     the Daily View) build on this same walk, so there's only one place
@@ -93,11 +99,10 @@ def _parse_all_maintenance_wos(filepath):
         if asset_code and asset_name:
             asset_lookup[asset_code] = asset_name
 
-        resources, crafts, next_i = _collect_block_crafts(rows, i + 1)
+        resources, block_crafts, next_i = _collect_block_crafts(rows, i + 1)
         i = next_i - 1  # resume scan right after this job's block
 
-        is_maintenance_craft = any(c in MAINTENANCE_CRAFTS for c in crafts)
-        if is_maintenance_craft:
+        if any(c in craft_filter for c in block_crafts):
             records.append({
                 'jobNo': job_no,
                 'asset': asset_code,
@@ -105,7 +110,7 @@ def _parse_all_maintenance_wos(filepath):
                 'jobType': job_type,
                 'status': status,
                 'desc': desc,
-                'craft': ', '.join(sorted(set(crafts))),
+                'craft': ', '.join(sorted(set(block_crafts))),
                 'resource': ', '.join(resources),
             })
 
@@ -124,6 +129,18 @@ def parse_wo_file(filepath):
         if not r['jobType'] or r['jobType'].lower() in MAINTENANCE_JOB_TYPES
     ]
     return filtered, asset_lookup
+
+
+def parse_toolroom_wo_file(filepath):
+    """Toolmaker-craft WOs, every job type. Used only for the Toolroom
+    card on the board review.
+
+    Deliberately a separate call over the same file rather than a change
+    to parse_wo_file(): that function feeds the SFC-vs-Agility gap, a
+    number already presented to the board, and widening what it returns
+    would move it."""
+    records, _ = _parse_all_maintenance_wos(filepath, craft_filter=TOOLROOM_CRAFTS)
+    return records
 
 
 def parse_wo_file_all_types(filepath):
