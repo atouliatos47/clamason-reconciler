@@ -52,7 +52,10 @@
   .chart-label { display: flex; justify-content: space-between; font-size: 10px; color: #243547; font-weight: bold; margin: 14px 0 5px; letter-spacing: 0.4px; text-transform: uppercase; }
   .chart-label .meta { color: #777; font-weight: normal; }
   .chart-label .hrs { color: #243547; font-weight: bold; }
-  .chart-box { border: 1px solid #e8eaee; border-radius: 5px; padding: 8px; }
+  /* overflow:hidden is a backstop, not the fix — the heights above are.
+     But a chart whose labels spill into the section beneath it is worse
+     than one that clips them, so this guarantees the box holds. */
+  .chart-box { border: 1px solid #e8eaee; border-radius: 5px; padding: 8px; overflow: hidden; }
   /* Sits below the gauges, not above them. Between the chart and the
      gauges it pushed the Production column's gauges out of line with
      Toolroom and Maintenance, which reads as a layout fault on a slide
@@ -61,9 +64,9 @@
   .chart-note strong { color: #243547; }
   /* Taller than the plot alone needs: rotated tick labels are drawn
      inside the canvas, so the height must cover the bars AND the angled
-     text beneath them. At 155/135 the longest names were clipped. */
-  .chart-wrap { position: relative; height: 172px; }
-  .chart-wrap.short { height: 158px; }
+     text beneath them. */
+  .chart-wrap { position: relative; height: 182px; }
+  .chart-wrap.short { height: 172px; }
 
   .gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
   .gauge-label { font-size: 10px; color: #243547; font-weight: bold; margin-bottom: 5px; letter-spacing: 0.4px; text-transform: uppercase; }
@@ -425,7 +428,7 @@ function pareto(id, rows, key, colour) {
       ],
     },
     options: {
-      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, bottom: 2, left: 2, right: 2 } },
+      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, bottom: 6, left: 2, right: 2 } },
       plugins: { legend: { display: false },
         tooltip: { callbacks: { label: c => c.dataset.type === 'line'
           ? 'cumulative ' + c.parsed.y.toFixed(1) + '%' : c.parsed.y.toFixed(1) + 'h' } } },
@@ -448,7 +451,7 @@ function pareto(id, rows, key, colour) {
 // name either overruns the chart box or collides with its neighbour.
 // 15 characters is what fits at 8px across a third of an A4 landscape
 // page; the full name is always in the tooltip.
-const MAX_TICK = 15;
+const MAX_TICK = 13;
 
 function shortLabel(text) {
   const t = String(text);
@@ -458,24 +461,52 @@ function shortLabel(text) {
 /**
  * Shorten a set of labels WITHOUT making any two of them identical.
  *
- * Plain head-truncation collapses codes that share a prefix:
- * 'TOOL FAILURE - PRODUCTION' and 'TOOL FAILURE - SET UP' both become
- * 'TOOL FAILURE -…', so the chart shows two bars with the same name and
- * no way to tell which is which. Same for 'Finzer Line 20' and
- * 'Finzer Line 17'.
+ * Plain head-truncation collapses names that share a prefix. Both
+ * 'Finzer Line 20' and 'Finzer Line 17' become 'Finzer Line…', and both
+ * 'TOOL FAILURE - PRODUCTION' and 'TOOL FAILURE - SET UP' become
+ * 'TOOL FAILURE…' — two bars, same label, no way to tell them apart.
  *
- * Where that would happen, the tail is used instead — '…PRODUCTION',
- * '…SET UP' — because the distinguishing part of a code is almost always
- * at the end.
+ * So where names collide, what's shown is what's DIFFERENT about them:
+ * the text after their common prefix.
+ *
+ *   short distinguisher ('20', '17')  ->  keep the head too, put the
+ *                                         ellipsis in the middle:
+ *                                         'Finzer Lin…20'
+ *   long distinguisher ('PRODUCTION') ->  the head is mostly the shared
+ *                                         prefix and worth nothing, so
+ *                                         lead with the ellipsis:
+ *                                         '…PRODUCTION'
+ *
+ * Head-only truncation is deliberately never used for a collision, since
+ * that's the case that produced the duplicate in the first place.
  */
+function commonPrefixLength(names) {
+  if (names.length < 2) return 0;
+  let i = 0;
+  while (i < names[0].length && names.every(n => n[i] === names[0][i])) i += 1;
+  return i;
+}
+
 function uniqueShortLabels(names) {
-  const short = names.map(shortLabel);
+  const full = names.map(String);
+  const short = full.map(shortLabel);
   const counts = {};
   short.forEach(l => { counts[l] = (counts[l] || 0) + 1; });
+
   return short.map((l, i) => {
     if (counts[l] === 1) return l;
-    const full = String(names[i]);
-    return full.length > MAX_TICK ? '…' + full.slice(-(MAX_TICK - 1)) : full;
+
+    // Only the names this one actually collides with define the prefix —
+    // an unrelated third bar shouldn't drag the common prefix to zero.
+    const clashing = full.filter((_, j) => short[j] === l);
+    const cut = commonPrefixLength(clashing);
+    const tail = full[i].slice(cut) || full[i];
+
+    if (tail.length <= 4) {
+      const head = MAX_TICK - 1 - tail.length;
+      return head > 0 ? full[i].slice(0, head) + '…' + tail : '…' + tail;
+    }
+    return tail.length > MAX_TICK - 1 ? '…' + tail.slice(-(MAX_TICK - 1)) : '…' + tail;
   });
 }
 
@@ -527,7 +558,7 @@ function reasonBars(id, entries, colour, total, extras) {
     type: 'bar',
     data: { labels, datasets: [{ data, backgroundColor: colours, borderRadius: 2, maxBarThickness: 40 }] },
     options: {
-      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, bottom: 2, left: 2, right: 2 } },
+      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, bottom: 6, left: 2, right: 2 } },
       plugins: { legend: { display: false },
         tooltip: { callbacks: {
           // Full name from the bar itself, not from an index into
