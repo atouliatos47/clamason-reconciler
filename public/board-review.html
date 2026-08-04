@@ -66,7 +66,9 @@
      inside the canvas, so the height must cover the bars AND the angled
      text beneath them. */
   .chart-wrap { position: relative; height: 182px; }
-  .chart-wrap.short { height: 172px; }
+  /* Reason charts are horizontal now, so height is set by how many bars
+     there are, not by how much room angled labels need. */
+  .chart-wrap.short { height: 165px; }
 
   .gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
   .gauge-label { font-size: 10px; color: #243547; font-weight: bold; margin-bottom: 5px; letter-spacing: 0.4px; text-transform: uppercase; }
@@ -451,11 +453,16 @@ function pareto(id, rows, key, colour) {
 // name either overruns the chart box or collides with its neighbour.
 // 15 characters is what fits at 8px across a third of an A4 landscape
 // page; the full name is always in the tooltip.
+// Angled ticks under the Pareto bars — tight budget.
 const MAX_TICK = 13;
+// Horizontal ticks beside the reason bars — a whole column of width, so
+// almost every real reason code fits whole.
+const MAX_TICK_H = 24;
 
-function shortLabel(text) {
+function shortLabel(text, max) {
+  const limit = max || MAX_TICK;
   const t = String(text);
-  return t.length > MAX_TICK ? t.slice(0, MAX_TICK - 1) + '…' : t;
+  return t.length > limit ? t.slice(0, limit - 1) + '…' : t;
 }
 
 /**
@@ -487,9 +494,10 @@ function commonPrefixLength(names) {
   return i;
 }
 
-function uniqueShortLabels(names) {
+function uniqueShortLabels(names, max) {
+  const limit = max || MAX_TICK;
   const full = names.map(String);
-  const short = full.map(shortLabel);
+  const short = full.map(n => shortLabel(n, limit));
   const counts = {};
   short.forEach(l => { counts[l] = (counts[l] || 0) + 1; });
 
@@ -503,10 +511,10 @@ function uniqueShortLabels(names) {
     const tail = full[i].slice(cut) || full[i];
 
     if (tail.length <= 4) {
-      const head = MAX_TICK - 1 - tail.length;
+      const head = limit - 1 - tail.length;
       return head > 0 ? full[i].slice(0, head) + '…' + tail : '…' + tail;
     }
-    return tail.length > MAX_TICK - 1 ? '…' + tail.slice(-(MAX_TICK - 1)) : '…' + tail;
+    return tail.length > limit - 1 ? '…' + tail.slice(-(limit - 1)) : '…' + tail;
   });
 }
 
@@ -540,8 +548,9 @@ function reasonBars(id, entries, colour, total, extras) {
   (extras || []).forEach(e => bars.push({ label: null, full: e.label, value: e.hrs, colour: e.colour }));
 
   // Labels shortened once, across the whole set, so duplicates can be
-  // spotted and disambiguated together.
-  uniqueShortLabels(bars.map(b => b.full)).forEach((l, i) => { bars[i].label = l; });
+  // spotted and disambiguated together. Horizontal ticks afford far more
+  // room than angled ones, so the cap is much more generous here.
+  uniqueShortLabels(bars.map(b => b.full), MAX_TICK_H).forEach((l, i) => { bars[i].label = l; });
 
   // Sorted descending, same as the Pareto charts above. Appending the
   // department bars in fixed positions left Other and Toolroom out of
@@ -556,26 +565,39 @@ function reasonBars(id, entries, colour, total, extras) {
   lastOtherContents[id] = inOther;
   charts.push(new Chart(document.getElementById(id), {
     type: 'bar',
-    data: { labels, datasets: [{ data, backgroundColor: colours, borderRadius: 2, maxBarThickness: 40 }] },
+    data: { labels, datasets: [{ data, backgroundColor: colours, borderRadius: 2, maxBarThickness: 18 }] },
     options: {
-      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, bottom: 6, left: 2, right: 2 } },
+      // Horizontal. Reason codes run to 25 characters ('TOOL FAILURE -
+      // PRODUCTION', 'FAULT-FEEDER/DECOILER/STR') and there is no angle
+      // at which those fit beneath a bar in a third-of-a-page column —
+      // every attempt either clipped them at the box edge or truncated
+      // them into uselessness. Turned on their side the labels get a
+      // whole column of width, sit level, and need almost no shortening.
+      //
+      // The Pareto charts above stay vertical: machine names are short,
+      // and a Pareto's cumulative line is read left-to-right.
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 4, bottom: 4, left: 2, right: 10 } },
       plugins: { legend: { display: false },
         tooltip: { callbacks: {
           // Full name from the bar itself, not from an index into
           // `entries` — after sorting those no longer correspond.
           title: c => (bars[c[0].dataIndex] || {}).full || c[0].label,
-          label: c => c.parsed.y.toFixed(1) + 'h' + (total ? ` (${(c.parsed.y / total * 100).toFixed(0)}%)` : ''),
+          // Value is on x now that the bars are horizontal.
+          label: c => c.parsed.x.toFixed(1) + 'h' + (total ? ` (${(c.parsed.x / total * 100).toFixed(0)}%)` : ''),
           // Hovering Other lists what's inside it, so the question
           // "what's in that bar?" is answerable on the spot.
-          afterBody: c => c[0].label !== 'Other' ? [] :
+          afterBody: c => (bars[c[0].dataIndex] || {}).full !== 'Other' ? [] :
             inOther.slice(0, 8).map(e => `  ${e[0]} — ${e[1].toFixed(1)}h`)
               .concat(inOther.length > 8 ? [`  + ${inOther.length - 8} more`] : []),
         } } },
       scales: {
-        x: { ticks: { color: TICK, font: { size: 8 }, maxRotation: 40, minRotation: 40, autoSkip: false },
-             grid: { display: false } },
-        y: { ticks: { color: TICK, font: { size: 8 }, callback: v => v + 'h', maxTicksLimit: 6 },
+        // Hours along the bottom, categories down the side.
+        x: { ticks: { color: TICK, font: { size: 8 }, callback: v => v + 'h', maxTicksLimit: 5 },
              grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true },
+        y: { ticks: { color: TICK, font: { size: 8.5 }, autoSkip: false },
+             grid: { display: false } },
       },
     },
   }));
