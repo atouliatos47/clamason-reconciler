@@ -76,6 +76,16 @@ MAINTENANCE_JOB_TYPES = [
 # different area and must not appear in a Maintenance downtime report.
 MAINTENANCE_CRAFTS = ('maintenance', 'electrician')
 
+# Toolroom craft, for counting the toolroom's own work orders.
+#
+# Kept separate from MAINTENANCE_CRAFTS rather than added to it: the
+# board slide had a Toolroom card labelled 'Agility (tool WOs)' that was
+# actually showing the MAINTENANCE count, because that was the only WO
+# figure the reconciler produced. Widening MAINTENANCE_CRAFTS would have
+# fixed the label by breaking the gap report, which is scoped to
+# maintenance work on purpose.
+TOOLROOM_CRAFTS = ('toolmaker',)
+
 # --- SFC machine <-> Agility asset code mapping ----------------------------
 # Only machines in this dict can ever be reconciled — a WO on an asset
 # code NOT in here (a chiller, compressor, welder, etc.) can never be

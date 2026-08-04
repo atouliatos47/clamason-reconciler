@@ -17,7 +17,7 @@ from parsers.oee_parser import parse_oee_file, aggregate_oee
 # Agility plant asset codes: numeric, zero-padded, at most 6 digits.
 PLANT_ASSET_CODE = re.compile(r'^\d{1,6}$')
 from parsers.mtbf_parser import parse_mtbf_file, summarise_mtbf
-from parsers.wo_parser import parse_wo_file, parse_wo_file_all_types
+from parsers.wo_parser import parse_wo_file, parse_wo_file_all_types, parse_toolroom_wo_file
 from reconciliation import reconcile
 from report_pdf import build_gap_pdf
 from daily import compute_daily_summary
@@ -148,13 +148,32 @@ def _parse_uploads():
     asset_lookup = {}
     wo_data = []
     wo_provided = bool(wo_file)
+    toolroom_wos = None
     if wo_file:
         with saved_upload(wo_file, 'agility_wo') as path:
             wo_data, asset_lookup = parse_wo_file(path)
+            # Same file, second pass, Toolmaker craft. The board review's
+            # Toolroom card previously showed the MAINTENANCE work-order
+            # count under a 'tool WOs' label, because that was the only
+            # WO figure the reconciler produced. Kept as its own pass so
+            # nothing about the maintenance path or the gap figure moves.
+            toolroom_records = parse_toolroom_wo_file(path)
+        toolroom_wos = {
+            'total': len(toolroom_records),
+            'completed': sum(1 for r in toolroom_records
+                             if r['status'].strip().lower() == 'completed'),
+            # Cancelled jobs are counted in 'total' — the card says WOs
+            # RAISED, and a cancelled WO was still raised. Reported
+            # separately so the note can say so rather than leaving the
+            # reader to assume every one was worked.
+            'cancelled': sum(1 for r in toolroom_records
+                             if r['status'].strip().lower() == 'cancelled'),
+        }
 
     extras = {
         'oee': _parse_oee_uploads(),
         'mtbf': _parse_mtbf_upload(),
+        'toolroom_wos': toolroom_wos,
     }
 
     return sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided, extras

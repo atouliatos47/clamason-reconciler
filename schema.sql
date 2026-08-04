@@ -102,6 +102,16 @@ CREATE TABLE IF NOT EXISTS monthly_runs (
     mtbf_downtime_hrs       NUMERIC,
     mtbf_scopes             JSONB,      -- {all, plant, tools} summaries
 
+    -- Toolmaker-craft work orders, from the same Agility export as the
+    -- maintenance WOs but a separate craft pass. The board review's
+    -- Toolroom card used to show the maintenance count under a 'tool
+    -- WOs' label; these are the real figures.
+    -- total INCLUDES cancelled jobs (the card reads 'WOs raised'), with
+    -- completed and cancelled stored alongside so the note can qualify it.
+    toolroom_wo_count       INTEGER,
+    toolroom_wo_completed   INTEGER,
+    toolroom_wo_cancelled   INTEGER,
+
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -150,6 +160,9 @@ ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_wait_hrs           NUMERI
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_jobs               INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_downtime_hrs       NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_scopes             JSONB;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_count       INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_completed   INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_cancelled   INTEGER;
 
 
 -- ---------------------------------------------------------------------------

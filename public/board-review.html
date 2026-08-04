@@ -297,8 +297,23 @@ function render() {
       : `target ${TARGETS.oee}% · tick on ring<br>${d.oee_week_count} weeks uploaded`) +
     gauge('g-prod', 'Downtime (SFC)', `production-owned reasons only<br>no target set`);
 
+  // Toolmaker-craft work orders. This card used to show
+  // machine_breakdown.wo_count, which is the MAINTENANCE figure — the
+  // only WO count the reconciler produced — so the Toolroom column was
+  // reporting maintenance activity under a toolroom label.
+  //
+  // total counts every WO raised, cancelled ones included, because
+  // 'WOs raised' is what the card claims. The note qualifies it rather
+  // than leaving the reader to assume all of them were worked.
+  const toolWos = d.toolroom_wo_count;
+  const toolEvents = mb.reduce((s, m) => s + (m.tool_events || 0), 0);
+  const toolWoNote = toolWos == null
+    ? 'no WO file uploaded'
+    : `${d.toolroom_wo_completed} completed${d.toolroom_wo_cancelled ? ', ' + d.toolroom_wo_cancelled + ' cancelled' : ''}`
+      + `<br>vs ${toolEvents} SFC tool events`;
+
   const toolGauges =
-    gauge('g-woT', 'Agility (tool WOs)', `vs ${mb.reduce((s, m) => s + (m.tool_events || 0), 0)} SFC events<br>no target set`) +
+    gauge('g-woT', 'Agility (tool WOs)', toolWoNote) +
     gauge('g-tool', 'Downtime (SFC)', `${mb.reduce((s, m) => s + (m.tool_events || 0), 0)} tool-related events<br>no target set`);
 
   // MTBF is the headline: how long plant runs between failures. MTTR and
@@ -363,7 +378,7 @@ function render() {
   //
   // The by-owner total is still on the chart above, in its header.
   ring('g-prod', null, prodOwn.toFixed(0) + 'h', '#c0392b');
-  ring('g-woT', null, String(mb.reduce((s, m) => s + (m.wo_count || 0), 0)), '#bf7d2c');
+  ring('g-woT', null, toolWos == null ? '–' : String(toolWos), '#bf7d2c');
   ring('g-tool', null, siteTool.toFixed(0) + 'h', '#c0392b');
   ring('g-mtbf', null, d.mtbf_days == null ? '–' : fmt(d.mtbf_days, 1) + 'd', '#2e6b4f');
   ring('g-fault', null, siteFault.toFixed(0) + 'h', '#c0392b');

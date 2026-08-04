@@ -107,6 +107,15 @@ def save_run(result, period_label):
         }) if mtbf else None,
     })
 
+    # NULL when no WO file was uploaded — distinct from zero, which would
+    # claim the toolroom raised nothing that month.
+    tw = result.get('toolroom_wos') or {}
+    row.update({
+        'toolroom_wo_count': tw.get('total'),
+        'toolroom_wo_completed': tw.get('completed'),
+        'toolroom_wo_cancelled': tw.get('cancelled'),
+    })
+
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -120,7 +129,8 @@ def save_run(result, period_label):
                      oee_quality_pct, oee_week_count, oee_machine_count, oee_run_hrs,
                      oee_net_avail_hrs, oee_total_parts, oee_scrap_parts, oee_per_machine,
                      mtbf_days, mtbf_assets, mtbf_asset_count, mtbf_mttr_hrs,
-                     mtbf_wait_hrs, mtbf_jobs, mtbf_downtime_hrs, mtbf_scopes)
+                     mtbf_wait_hrs, mtbf_jobs, mtbf_downtime_hrs, mtbf_scopes,
+                     toolroom_wo_count, toolroom_wo_completed, toolroom_wo_cancelled)
                 VALUES
                     (%(period)s, %(period_label)s, %(machine_count)s, %(total_hrs)s, %(total_events)s,
                      %(maintenance_hrs)s, %(toolroom_hrs)s, %(agility_maintenance_hrs)s,
@@ -131,7 +141,8 @@ def save_run(result, period_label):
                      %(oee_quality_pct)s, %(oee_week_count)s, %(oee_machine_count)s, %(oee_run_hrs)s,
                      %(oee_net_avail_hrs)s, %(oee_total_parts)s, %(oee_scrap_parts)s, %(oee_per_machine)s,
                      %(mtbf_days)s, %(mtbf_assets)s, %(mtbf_asset_count)s, %(mtbf_mttr_hrs)s,
-                     %(mtbf_wait_hrs)s, %(mtbf_jobs)s, %(mtbf_downtime_hrs)s, %(mtbf_scopes)s)
+                     %(mtbf_wait_hrs)s, %(mtbf_jobs)s, %(mtbf_downtime_hrs)s, %(mtbf_scopes)s,
+                     %(toolroom_wo_count)s, %(toolroom_wo_completed)s, %(toolroom_wo_cancelled)s)
                 ON CONFLICT (period) DO UPDATE SET
                     period_label = EXCLUDED.period_label,
                     machine_count = EXCLUDED.machine_count,
@@ -171,7 +182,10 @@ def save_run(result, period_label):
                     mtbf_wait_hrs = EXCLUDED.mtbf_wait_hrs,
                     mtbf_jobs = EXCLUDED.mtbf_jobs,
                     mtbf_downtime_hrs = EXCLUDED.mtbf_downtime_hrs,
-                    mtbf_scopes = EXCLUDED.mtbf_scopes
+                    mtbf_scopes = EXCLUDED.mtbf_scopes,
+                    toolroom_wo_count = EXCLUDED.toolroom_wo_count,
+                    toolroom_wo_completed = EXCLUDED.toolroom_wo_completed,
+                    toolroom_wo_cancelled = EXCLUDED.toolroom_wo_cancelled
             """, row)
         conn.commit()
 
