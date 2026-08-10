@@ -182,6 +182,7 @@ def _compute(totals):
     parts = totals['total_parts']
     ideal = totals['ideal_parts']
     scrap = totals['scrap_parts']
+    total_avail = totals['total_avail_hrs']
 
     avail = round(run / net * 100, 2) if net else None
     perf_raw = round(parts / ideal * 100, 2) if ideal else None
@@ -201,6 +202,19 @@ def _compute(totals):
         q = quality if quality is not None else 100.0
         oee = round(avail / 100 * perf / 100 * q / 100 * 100, 2)
 
+    # Utilization is the fourth factor OEE deliberately leaves out: how
+    # much of the full calendar period this machine was even scheduled
+    # to run, before Availability/Performance/Quality get a say. OEE
+    # judges only the scheduled window (net_avail_hrs); TEEP judges every
+    # hour that exists (total_avail_hrs) — the two numbers can look very
+    # different on a site that isn't scheduled 24/7, and that gap is the
+    # whole point of tracking TEEP alongside OEE rather than instead of it.
+    utilization = round(net / total_avail * 100, 2) if total_avail else None
+
+    teep = None
+    if oee is not None and utilization is not None:
+        teep = round(oee * utilization / 100, 2)
+
     return {
         'availability_pct': avail,
         'performance_pct': perf,
@@ -208,6 +222,8 @@ def _compute(totals):
         'quality_pct': quality,
         'oee_pct': oee,
         'quality_unavailable': scrap_exceeds_parts,
+        'utilization_pct': utilization,
+        'teep_pct': teep,
     }
 
 
@@ -323,5 +339,12 @@ def apply_efacs_scrap_correction(oee_result, efacs_scrap_qty):
     perf = fleet['performance_pct']
     if avail is not None and perf is not None:
         fleet['oee_pct'] = round(avail / 100 * perf / 100 * quality / 100 * 100, 2)
+
+    # teep_pct is derived from oee_pct (teep = oee * utilization / 100),
+    # so it goes stale the moment oee_pct changes above unless it's
+    # recomputed here too. utilization_pct itself doesn't depend on
+    # quality/scrap at all, so it's untouched — only teep_pct needs it.
+    if fleet['oee_pct'] is not None and fleet.get('utilization_pct') is not None:
+        fleet['teep_pct'] = round(fleet['oee_pct'] * fleet['utilization_pct'] / 100, 2)
 
     return oee_result

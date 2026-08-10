@@ -241,6 +241,11 @@ def dashboard():
     return send_from_directory('public', 'dashboard.html')
 
 
+@bp.route('/teep')
+def teep_page():
+    return send_from_directory('public', 'teep.html')
+
+
 @bp.route('/daily')
 def daily_view():
     return send_from_directory('public', 'daily.html')

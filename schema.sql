@@ -78,6 +78,9 @@ CREATE TABLE IF NOT EXISTS monthly_runs (
     oee_machine_count       INTEGER,
     oee_run_hrs             NUMERIC,
     oee_net_avail_hrs       NUMERIC,
+    oee_total_avail_hrs     NUMERIC,   -- calendar hours (24/7) — TEEP's denominator, OEE's isn't
+    oee_utilization_pct     NUMERIC,   -- net_avail / total_avail — the factor OEE leaves out
+    oee_teep_pct            NUMERIC,   -- oee_pct * utilization_pct / 100
     oee_total_parts         NUMERIC,
     oee_scrap_parts         NUMERIC,
     oee_per_machine         JSONB,      -- full per-machine detail, for the board review
@@ -153,6 +156,9 @@ ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_week_count          INTEGE
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_machine_count       INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_run_hrs             NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_net_avail_hrs       NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_total_avail_hrs     NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_utilization_pct     NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_teep_pct            NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_total_parts         NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_scrap_parts         NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_per_machine         JSONB;
