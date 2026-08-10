@@ -302,18 +302,26 @@ function render() {
   // only WO count the reconciler produced — so the Toolroom column was
   // reporting maintenance activity under a toolroom label.
   //
-  // total counts every WO raised, cancelled ones included, because
-  // 'WOs raised' is what the card claims. The note qualifies it rather
-  // than leaving the reader to assume all of them were worked.
-  const toolWos = d.toolroom_wo_count;
-  const toolEvents = mb.reduce((s, m) => s + (m.tool_events || 0), 0);
-  const toolWoNote = toolWos == null
+  // Second correction, same card: moved from a raw 'WOs raised this
+  // month' count to the 'open' backlog figure, to match the board's own
+  // Toolroom slide ('Tools awaiting repair / maintenance', target <25)
+  // instead of a number with no board-approved target to read against.
+  const toolOpen = d.toolroom_wo_open;
+  // toolroom_wo_count existing but toolroom_wo_open missing means this
+  // run was saved before the backlog column existed, not that no WO file
+  // was uploaded — those two need different messages, or a genuinely old
+  // run looks like a data-entry gap it isn't.
+  const toolWoUploaded = d.toolroom_wo_count != null;
+  const TOOLROOM_BACKLOG_TARGET = 25;
+  const toolWoNote = !toolWoUploaded
     ? 'no WO file uploaded'
-    : `${d.toolroom_wo_completed} completed${d.toolroom_wo_cancelled ? ', ' + d.toolroom_wo_cancelled + ' cancelled' : ''}`
-      + `<br>vs ${toolEvents} SFC tool events`;
+    : toolOpen == null
+      ? 're-save this run to populate backlog'
+      : `target &lt;${TOOLROOM_BACKLOG_TARGET}`
+        + `<br>${d.toolroom_wo_completed} completed, ${d.toolroom_wo_cancelled} cancelled this period`;
 
   const toolGauges =
-    gauge('g-woT', 'Agility (tool WOs)', toolWoNote) +
+    gauge('g-woT', 'Tools Awaiting Repair', toolWoNote) +
     gauge('g-tool', 'Downtime (SFC)', `${mb.reduce((s, m) => s + (m.tool_events || 0), 0)} tool-related events<br>no target set`);
 
   // MTBF is the headline: how long plant runs between failures. MTTR and
@@ -378,7 +386,13 @@ function render() {
   //
   // The by-owner total is still on the chart above, in its header.
   ring('g-prod', null, prodOwn.toFixed(0) + 'h', '#c0392b');
-  ring('g-woT', null, toolWos == null ? '–' : String(toolWos), '#bf7d2c');
+  // Plain frame, not a target arc — ring()'s own doc explains why: a
+  // filled arc claims a proportion, and a count against a ceiling target
+  // doesn't have the same 'more fill = more good' meaning a percentage
+  // does. Colour carries the target instead: red once backlog exceeds it,
+  // same red already used for the downtime figures on this page.
+  ring('g-woT', null, toolOpen == null ? '–' : String(toolOpen),
+    toolOpen != null && toolOpen > TOOLROOM_BACKLOG_TARGET ? '#c0392b' : '#bf7d2c');
   ring('g-tool', null, siteTool.toFixed(0) + 'h', '#c0392b');
   ring('g-mtbf', null, d.mtbf_days == null ? '–' : fmt(d.mtbf_days, 1) + 'd', '#2e6b4f');
   ring('g-fault', null, siteFault.toFixed(0) + 'h', '#c0392b');

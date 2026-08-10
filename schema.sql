@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS monthly_runs (
     toolroom_wo_count       INTEGER,
     toolroom_wo_completed   INTEGER,
     toolroom_wo_cancelled   INTEGER,
+    toolroom_wo_open        INTEGER,
 
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -163,6 +164,7 @@ ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS mtbf_scopes             JSONB;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_count       INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_completed   INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_cancelled   INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_open        INTEGER;
 
 
 -- ---------------------------------------------------------------------------

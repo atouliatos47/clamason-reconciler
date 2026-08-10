@@ -154,6 +154,12 @@ def _parse_uploads():
             # count under a 'tool WOs' label, because that was the only
             # WO figure the reconciler produced. Kept as its own pass so
             # nothing about the maintenance path or the gap figure moves.
+            #
+            # Second correction, same card: the gauge itself moved from a
+            # raw 'WOs raised this month' count to the 'open' backlog
+            # figure below, to match the board's own Toolroom slide
+            # ('Tools awaiting repair / maintenance', target <25) instead
+            # of a number with no board-approved target to read against.
             toolroom_records = parse_toolroom_wo_file(path)
         toolroom_wos = {
             'total': len(toolroom_records),
@@ -166,6 +172,21 @@ def _parse_uploads():
             'cancelled': sum(1 for r in toolroom_records
                              if r['status'].strip().lower() == 'cancelled'),
         }
+        # 'open' is everything left over — Open, Scheduled, Accepted Job,
+        # and whatever else Agility's status field produces — rather than
+        # an explicit allow-list. Same residual-bucket reasoning as the
+        # reason-code categorisation elsewhere: a new status string should
+        # land here and stay visible, not silently vanish from the count.
+        #
+        # This is the board's "Tools awaiting repair / maintenance" figure
+        # (target <25). One caveat worth knowing if the number looks low:
+        # it's scoped to WOs whose Start Date falls inside the uploaded
+        # file's period, same as 'total' above, so it reads as "still open
+        # from what was raised this period" rather than a true live
+        # backlog that would also carry in older unfinished jobs.
+        toolroom_wos['open'] = (
+            toolroom_wos['total'] - toolroom_wos['completed'] - toolroom_wos['cancelled']
+        )
 
     extras = {
         'oee': _parse_oee_uploads(),
