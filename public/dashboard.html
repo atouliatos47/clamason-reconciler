@@ -159,12 +159,17 @@ function hasOee(runs) {
 function oeeSection(latest, prev) {
   if (latest.oee_pct === null || latest.oee_pct === undefined) return '';
   const weeks = latest.oee_week_count;
-  // Quality sits at ~100% because SFC's scrap field is barely populated,
-  // not because nothing was scrapped. Saying so on the card stops the
-  // number being read as a quality result.
-  const qualityNote = latest.oee_scrap_parts !== null
-    ? `${Number(latest.oee_scrap_parts).toLocaleString()} scrap parts logged in SFC`
-    : '';
+  // Quality sits at ~100% either way — but why differs by source. On SFC's
+  // own scrap field (barely populated) that's mostly "nothing was logged",
+  // not "nothing was scrapped". On EFACS (the real works-order figure) it's
+  // genuine: scrap in the thousands barely moves a denominator in the tens
+  // of millions. The note has to say which one it's reading, or a real
+  // result and an under-counted one look identical on the card.
+  const qualityNote = latest.oee_quality_source === 'efacs'
+    ? `${Number(latest.efacs_scrap_qty).toLocaleString()} scrap parts (EFACS)`
+    : latest.oee_scrap_parts !== null
+      ? `${Number(latest.oee_scrap_parts).toLocaleString()} scrap parts logged in SFC`
+      : '';
   return `
     <div class="machine-card">
       <h3>OEE — ${weeks} week${weeks === 1 ? '' : 's'} uploaded${latest.oee_machine_count ? ', ' + latest.oee_machine_count + ' machines' : ''}</h3>

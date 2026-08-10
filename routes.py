@@ -12,12 +12,13 @@ from flask import Blueprint, request, jsonify, send_file, send_from_directory
 from file_utils import saved_upload
 from parsers.sfc_monthly_xlsx import parse_monthly_summary_xlsx
 from parsers.downtime_parser import parse_downtime_file
-from parsers.oee_parser import parse_oee_file, aggregate_oee
+from parsers.oee_parser import parse_oee_file, aggregate_oee, apply_efacs_scrap_correction
 
 # Agility plant asset codes: numeric, zero-padded, at most 6 digits.
 PLANT_ASSET_CODE = re.compile(r'^\d{1,6}$')
 from parsers.mtbf_parser import parse_mtbf_file, summarise_mtbf
 from parsers.wo_parser import parse_wo_file, parse_wo_file_all_types, parse_toolroom_wo_file
+from parsers.efacs_scrap_parser import parse_efacs_scrap_file
 from reconciliation import reconcile
 from report_pdf import build_gap_pdf
 from daily import compute_daily_summary
@@ -119,6 +120,22 @@ def _parse_mtbf_upload():
     }
 
 
+def _parse_efacs_scrap_upload():
+    """EFACS 'Cost of Scrap' export, or None if not uploaded.
+
+    Optional, same as OEE and MTBF — a check run without it behaves
+    exactly as before (fleet quality stays SFC-sourced). See
+    oee_parser.apply_efacs_scrap_correction for why this file exists:
+    SFC's own scrap tracking is badly under-populated next to EFACS's.
+    """
+    efacs_file = request.files.get('efacs_scrap')
+    if not efacs_file or not efacs_file.filename:
+        return None
+
+    with saved_upload(efacs_file, 'efacs_scrap') as path:
+        return parse_efacs_scrap_file(path)
+
+
 def _parse_uploads():
     """Shared upload-handling for both routes below. Returns
     (sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided, extras)
@@ -188,8 +205,14 @@ def _parse_uploads():
             toolroom_wos['total'] - toolroom_wos['completed'] - toolroom_wos['cancelled']
         )
 
+    efacs_scrap = _parse_efacs_scrap_upload()
+    oee_result = _parse_oee_uploads()
+    if efacs_scrap:
+        apply_efacs_scrap_correction(oee_result, efacs_scrap['total_quantity'])
+
     extras = {
-        'oee': _parse_oee_uploads(),
+        'oee': oee_result,
+        'efacs_scrap': efacs_scrap,
         'mtbf': _parse_mtbf_upload(),
         'toolroom_wos': toolroom_wos,
     }

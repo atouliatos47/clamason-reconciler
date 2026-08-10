@@ -292,9 +292,13 @@ function render() {
       <div class="gauge-box"><div class="gauge-ring"><canvas id="${id}"></canvas></div>
       <div class="gauge-note">${note}</div></div></div>`;
 
+  // Quality via EFACS only shows up here when it actually changed the
+  // source — d.oee_quality_source is 'sfc' on any run saved before this
+  // correction existed, and that's not worth a note; only 'efacs' is.
+  const qualityViaEfacs = d.oee_quality_source === 'efacs' ? '<br>quality via EFACS scrap' : '';
   const oeeGauges =
     gauge('g-oee', 'OEE', d.oee_pct == null ? 'not uploaded'
-      : `target ${TARGETS.oee}% · tick on ring<br>${d.oee_week_count} weeks uploaded`) +
+      : `target ${TARGETS.oee}% · tick on ring<br>${d.oee_week_count} weeks uploaded${qualityViaEfacs}`) +
     gauge('g-prod', 'Downtime (SFC)', `production-owned reasons only<br>no target set`);
 
   // Toolmaker-craft work orders. This card used to show

@@ -176,6 +176,13 @@
         <input type="file" id="mtbf-file" accept=".xlsx,.xls" onchange="handleFile(this,'mtbf','card-mtbf','mtbf-status')">
         <div class="file-status" id="mtbf-status"></div>
       </div>
+      <div class="upload-card optional" id="card-efacs">
+        <h3>♻️ EFACS Cost of Scrap</h3>
+        <p>Corrects OEE Quality % — SFC's own scrap count is badly under-populated</p>
+        <label class="upload-btn" for="efacs-file">Choose File</label>
+        <input type="file" id="efacs-file" accept=".xlsx,.xls" onchange="handleFile(this,'efacs','card-efacs','efacs-status')">
+        <div class="file-status" id="efacs-status"></div>
+      </div>
     </div>
     <div class="error-box" id="error-box"></div>
     <div class="error-box" id="warning-box" style="background:#fef3c7;border-color:#d97706;color:#92400e;"></div>
@@ -250,6 +257,7 @@ const FILE_UI = {
   wo: { cardId: 'card-wo', statusId: 'wo-status' },
   mtbf: { cardId: 'card-mtbf', statusId: 'mtbf-status' },
   oee: { cardId: 'card-oee', statusId: 'oee-status' },
+  efacs: { cardId: 'card-efacs', statusId: 'efacs-status' },
 };
 
 // Same reasoning as the Daily Check page: persist in-progress work to
@@ -377,6 +385,7 @@ async function runCheck() {
     if (files.wo) fd.append('agility_wo', files.wo);
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
     if (files.oee) fd.append('oee_monthly', files.oee);
+    if (files.efacs) fd.append('efacs_scrap', files.efacs);
 
     const res = await fetch('/api/maintenance-check', { method: 'POST', body: fd });
     const d = await res.json();
@@ -428,7 +437,7 @@ function renderOee(d) {
     <div class="kpi-row">
       <div class="kpi"><label>Availability</label><div class="val">${f.availability_pct}%</div><div class="sub">${f.run_time_hrs.toLocaleString()}h run / ${f.net_avail_hrs.toLocaleString()}h net</div></div>
       <div class="kpi"><label>Performance</label><div class="val">${f.performance_pct}%</div><div class="sub">${f.performance_pct_raw > 100 ? 'raw ' + f.performance_pct_raw + '%, capped' : 'parts vs ideal'}</div></div>
-      <div class="kpi"><label>Quality</label><div class="val">${f.quality_pct === null ? 'n/a' : f.quality_pct + '%'}</div><div class="sub">${f.scrap_parts.toLocaleString()} scrap logged</div></div>
+      <div class="kpi"><label>Quality</label><div class="val">${f.quality_pct === null ? 'n/a' : f.quality_pct + '%'}</div><div class="sub">${f.quality_source === 'efacs' ? f.efacs_scrap_parts.toLocaleString() + ' scrap (EFACS)' : f.scrap_parts.toLocaleString() + ' scrap logged'}</div></div>
       <div class="kpi green"><label>OEE</label><div class="val">${f.oee_pct}%</div><div class="sub">A × P × Q</div></div>
     </div>
     <div style="font-size:11px;color:#888;margin-top:10px;line-height:1.6;">
@@ -527,6 +536,7 @@ async function generateReport() {
     if (files.wo) fd.append('agility_wo', files.wo);
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
     if (files.oee) fd.append('oee_monthly', files.oee);
+    if (files.efacs) fd.append('efacs_scrap', files.efacs);
 
     const res = await fetch('/api/generate-report', { method: 'POST', body: fd });
 
@@ -584,6 +594,7 @@ async function saveRun() {
     if (files.wo) fd.append('agility_wo', files.wo);
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
     if (files.oee) fd.append('oee_monthly', files.oee);
+    if (files.efacs) fd.append('efacs_scrap', files.efacs);
     fd.append('period_label', label);
 
     const res = await fetch('/api/save-run', { method: 'POST', body: fd });

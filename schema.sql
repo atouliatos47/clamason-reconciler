@@ -112,6 +112,9 @@ CREATE TABLE IF NOT EXISTS monthly_runs (
     toolroom_wo_completed   INTEGER,
     toolroom_wo_cancelled   INTEGER,
     toolroom_wo_open        INTEGER,
+    oee_quality_source      TEXT,
+    efacs_scrap_qty         NUMERIC,
+    efacs_scrap_cost        NUMERIC,
 
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -165,6 +168,9 @@ ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_count       INTEGE
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_completed   INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_cancelled   INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_open        INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_quality_source      TEXT;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS efacs_scrap_qty         NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS efacs_scrap_cost        NUMERIC;
 
 
 -- ---------------------------------------------------------------------------

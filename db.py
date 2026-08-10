@@ -85,8 +85,26 @@ def save_run(result, period_label):
         'oee_run_hrs': fleet.get('run_time_hrs'),
         'oee_net_avail_hrs': fleet.get('net_avail_hrs'),
         'oee_total_parts': fleet.get('total_parts'),
+        # Always SFC's own figure, whether or not EFACS corrected the
+        # quality/OEE that were computed from it — see oee_quality_source
+        # below for which one actually fed those two columns this run.
         'oee_scrap_parts': fleet.get('scrap_parts'),
         'oee_per_machine': json.dumps(oee.get('per_machine', [])) if oee else None,
+        # 'sfc' / 'efacs' / NULL (no OEE file uploaded at all). See
+        # oee_parser.apply_efacs_scrap_correction for why EFACS is
+        # preferred when available: SFC's own scrap count is badly
+        # under-populated.
+        'oee_quality_source': fleet.get('quality_source'),
+    })
+
+    # EFACS Cost of Scrap — optional, same NULL-on-absence pattern as OEE/
+    # MTBF above. Kept as its own pair of columns (not folded into the OEE
+    # block) because it's useful board context even in months nobody
+    # uploads an OEE file to correct.
+    efacs = result.get('efacs_scrap') or {}
+    row.update({
+        'efacs_scrap_qty': efacs.get('total_quantity'),
+        'efacs_scrap_cost': efacs.get('total_cost'),
     })
 
     # Flat columns carry the PLANT scope specifically — see schema.sql.
@@ -132,7 +150,7 @@ def save_run(result, period_label):
                      mtbf_days, mtbf_assets, mtbf_asset_count, mtbf_mttr_hrs,
                      mtbf_wait_hrs, mtbf_jobs, mtbf_downtime_hrs, mtbf_scopes,
                      toolroom_wo_count, toolroom_wo_completed, toolroom_wo_cancelled,
-                     toolroom_wo_open)
+                     toolroom_wo_open, oee_quality_source, efacs_scrap_qty, efacs_scrap_cost)
                 VALUES
                     (%(period)s, %(period_label)s, %(machine_count)s, %(total_hrs)s, %(total_events)s,
                      %(maintenance_hrs)s, %(toolroom_hrs)s, %(agility_maintenance_hrs)s,
@@ -145,7 +163,7 @@ def save_run(result, period_label):
                      %(mtbf_days)s, %(mtbf_assets)s, %(mtbf_asset_count)s, %(mtbf_mttr_hrs)s,
                      %(mtbf_wait_hrs)s, %(mtbf_jobs)s, %(mtbf_downtime_hrs)s, %(mtbf_scopes)s,
                      %(toolroom_wo_count)s, %(toolroom_wo_completed)s, %(toolroom_wo_cancelled)s,
-                     %(toolroom_wo_open)s)
+                     %(toolroom_wo_open)s, %(oee_quality_source)s, %(efacs_scrap_qty)s, %(efacs_scrap_cost)s)
                 ON CONFLICT (period) DO UPDATE SET
                     period_label = EXCLUDED.period_label,
                     machine_count = EXCLUDED.machine_count,
@@ -189,7 +207,10 @@ def save_run(result, period_label):
                     toolroom_wo_count = EXCLUDED.toolroom_wo_count,
                     toolroom_wo_completed = EXCLUDED.toolroom_wo_completed,
                     toolroom_wo_cancelled = EXCLUDED.toolroom_wo_cancelled,
-                    toolroom_wo_open = EXCLUDED.toolroom_wo_open
+                    toolroom_wo_open = EXCLUDED.toolroom_wo_open,
+                    oee_quality_source = EXCLUDED.oee_quality_source,
+                    efacs_scrap_qty = EXCLUDED.efacs_scrap_qty,
+                    efacs_scrap_cost = EXCLUDED.efacs_scrap_cost
             """, row)
         conn.commit()
 

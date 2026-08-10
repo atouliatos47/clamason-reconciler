@@ -270,3 +270,58 @@ def aggregate_oee(weekly_records):
 
     per_machine.sort(key=lambda m: (m['oee_pct'] is None, m['oee_pct']))
     return {'fleet': fleet, 'per_machine': per_machine}
+
+
+def apply_efacs_scrap_correction(oee_result, efacs_scrap_qty):
+    """Recompute FLEET quality/OEE using EFACS's scrap count in place of
+    SFC's own scrap_parts total.
+
+    SFC's scrap field is badly under-populated — July 2026 it logged 125
+    scrap parts fleet-wide against EFACS's real 4,995, a ~40x gap (June
+    2026 was a smaller but still real ~4x gap: 1,777 vs 6,955). EFACS is
+    the system of record here — it's driven by the works-order booking
+    process, not a shop-floor sensor count — so its total is the one
+    that should feed the board's Quality figure.
+
+    FLEET ONLY. EFACS's Cost of Scrap export has no machine or press
+    column — it's keyed by works order and part — so there is no
+    EFACS-sourced equivalent for per-machine quality/OEE. per_machine is
+    returned completely untouched; only fleet changes. Anywhere this
+    correction shows on a slide or report needs to make that scope
+    clear, or a reader could assume every machine's figure moved when
+    only the fleet total did.
+
+    Mutates and returns oee_result rather than the more defensive
+    deepcopy-and-return — routes.py calls this exactly once, immediately
+    after aggregate_oee() produces oee_result, on a dict nothing else
+    holds a reference to yet.
+
+    Returns oee_result unchanged (fleet.quality_source left as 'sfc') if
+    oee_result is None (no OEE file uploaded — nothing to correct) or if
+    EFACS's count somehow exceeds total parts produced (would produce a
+    negative quality, the same guard _compute() already applies to SFC's
+    own scrap figure).
+    """
+    if oee_result is None:
+        return None
+
+    fleet = oee_result['fleet']
+    fleet['quality_source'] = 'sfc'  # default; overwritten below on success
+    parts = fleet['total_parts']
+
+    if parts <= 0 or efacs_scrap_qty > parts:
+        return oee_result
+
+    quality = round((parts - efacs_scrap_qty) / parts * 100, 4)
+    fleet['sfc_scrap_parts'] = fleet['scrap_parts']  # kept for audit trail
+    fleet['efacs_scrap_parts'] = efacs_scrap_qty
+    fleet['quality_pct'] = quality
+    fleet['quality_source'] = 'efacs'
+    fleet['quality_unavailable'] = False
+
+    avail = fleet['availability_pct']
+    perf = fleet['performance_pct']
+    if avail is not None and perf is not None:
+        fleet['oee_pct'] = round(avail / 100 * perf / 100 * quality / 100 * 100, 2)
+
+    return oee_result
