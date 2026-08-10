@@ -106,9 +106,29 @@ def compute_repair_times(rows):
 
 def compute_gap(sfc_summary, matched_wos):
     """Fleet-wide gap: SFC maintenance hours vs Agility hours actually
-    matched to a real press-fault-relevant breakdown WO."""
+    matched to a real press-fault-relevant breakdown WO.
+
+    agility_maintenance_hrs and wo_count come from matched_wos alone, so
+    they're real numbers even when no SFC file was uploaded — only the
+    two figures that need an SFC baseline to mean anything (gap_hrs,
+    gap_pct) come back None in that case.
+
+    None, not 0, deliberately: sfc_hrs=0 zero-divides to gap_pct=0 by
+    the guard below, and 0% reads as 'fully covered' on the board slide
+    and the PDF. That's a real claim about genuinely-zero SFC downtime,
+    not the same thing as 'no SFC file to compare against yet' — the
+    two must stay visibly different, or a partial run looks like a
+    perfect one.
+    """
     agility_hrs = round(sum(d['downtime_hrs'] for d in matched_wos), 2)
-    sfc_hrs = sfc_summary['maintenance_hrs']
+    sfc_hrs = sfc_summary.get('maintenance_hrs')
+    if sfc_hrs is None:
+        return {
+            'agility_maintenance_hrs': agility_hrs,
+            'gap_hrs': None,
+            'gap_pct': None,
+            'wo_count': len(matched_wos),
+        }
     gap_hrs = round(sfc_hrs - agility_hrs, 2)
     gap_pct = round((gap_hrs / sfc_hrs * 100) if sfc_hrs > 0 else 0, 1)
     return {

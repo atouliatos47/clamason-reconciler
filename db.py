@@ -37,10 +37,19 @@ def save_run(result, period_label):
     """Store one month's reconciliation result. result is the dict
     returned by reconciliation.reconcile(). Re-saving the same period
     (matched on the raw `period` string from SFC) overwrites the
-    previous row rather than creating a duplicate."""
-    sfc = result['sfc_summary']
+    previous row rather than creating a duplicate.
+
+    sfc_summary itself is optional now — see routes._parse_uploads —
+    so it's read with .get() rather than assumed present, and its
+    'period' string (normally straight from the SFC file) falls back to
+    the user-typed period_label when there's no SFC file to take it
+    from. Without that fallback every SFC-less save would write the
+    same '' period and silently overwrite the last one instead of
+    creating its own row.
+    """
+    sfc = result.get('sfc_summary') or {}
     row = {
-        'period': sfc.get('period', ''),
+        'period': sfc.get('period') or period_label,
         'period_label': period_label,
         'machine_count': sfc.get('machine_count'),
         'total_hrs': sfc.get('total_hrs'),

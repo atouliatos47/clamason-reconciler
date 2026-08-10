@@ -139,16 +139,16 @@
 
   <div class="upload-section">
     <h2>Upload Monthly Files</h2>
-    <p>SFC Monthly Downtime Summary xlsx and Agility Down Time Analysis are required. Selective Work Orders is required for an accurate gap figure, but the check will still run without it.</p>
+    <p>Every file below is optional — upload whatever you have and the check runs on that. Add the rest as they come in; nothing needs to be re-uploaded to get a fuller result later.</p>
     <div class="upload-grid">
-      <div class="upload-card" id="card-ds">
+      <div class="upload-card optional" id="card-ds">
         <h3>📄 SFC Monthly Downtime Summary</h3>
         <p>UK Monthly Downtime Summary xlsx</p>
         <label class="upload-btn" for="ds-file">Choose File</label>
         <input type="file" id="ds-file" accept=".xlsx,.xls" onchange="handleFile(this,'ds','card-ds','ds-status')">
         <div class="file-status" id="ds-status"></div>
       </div>
-      <div class="upload-card" id="card-dt">
+      <div class="upload-card optional" id="card-dt">
         <h3>⏱️ Agility Down Time</h3>
         <p>Down Time Analysis export (AG3-205) for the same period</p>
         <label class="upload-btn" for="dt-file">Choose File</label>
@@ -315,7 +315,7 @@ function restorePersistedProgress() {
       document.getElementById(FILE_UI[key].cardId).classList.add('done');
       document.getElementById(FILE_UI[key].statusId).textContent = '✓ ' + fd.name;
     }
-    document.getElementById('run-btn').disabled = !(files.ds && files.dt);
+    document.getElementById('run-btn').disabled = Object.keys(files).length === 0;
     if (state.periodLabel) document.getElementById('period-label').value = state.periodLabel;
     if (state.warning) {
       const wb = document.getElementById('warning-box');
@@ -367,7 +367,7 @@ function handleFile(input, key, cardId, statusId) {
   files[key] = f;
   document.getElementById(cardId).classList.add('done');
   document.getElementById(statusId).textContent = '✓ ' + f.name;
-  document.getElementById('run-btn').disabled = !(files.ds && files.dt);
+  document.getElementById('run-btn').disabled = Object.keys(files).length === 0;
   persistProgress();
 }
 
@@ -380,8 +380,8 @@ async function runCheck() {
 
   try {
     const fd = new FormData();
-    fd.append('daily_summary', files.ds);
-    fd.append('agility_downtime', files.dt);
+    if (files.ds) fd.append('daily_summary', files.ds);
+    if (files.dt) fd.append('agility_downtime', files.dt);
     if (files.wo) fd.append('agility_wo', files.wo);
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
     if (files.oee) fd.append('oee_monthly', files.oee);
@@ -481,20 +481,29 @@ function renderMtbf(d) {
 }
 
 function render(d) {
-  const s = d.sfc_summary;
+  const s = d.sfc_summary || {};
+  // sfc_summary is {} (not present in the object at all) when that file
+  // wasn't uploaded this run — Object.keys length is the cheapest way
+  // to tell "genuinely empty" apart from "uploaded but reported zeros".
+  const hasSfc = Object.keys(s).length > 0;
 
   // Both are no-ops when their file wasn't uploaded — they hide their
   // own box rather than leaving a stale one from a previous run visible.
   renderOee(d);
   renderMtbf(d);
 
-  const statement = `SFC logged ${s.total_hrs}h of downtime in total for this period (${s.period || 'period not detected'}).\n\nOf that, ${s.maintenance_hrs}h is attributable to maintenance fault codes (press faults, feeder/decoiler faults, lubrication). Agility shows ${d.agility_maintenance_hrs}h logged against breakdown work orders for the same window.\n\nGap: ${d.gap_hrs}h (${d.gap_pct}%) of maintenance-attributable SFC downtime has no matching breakdown WO in Agility.`;
+  const statement = hasSfc
+    ? `SFC logged ${s.total_hrs}h of downtime in total for this period (${s.period || 'period not detected'}).\n\nOf that, ${s.maintenance_hrs}h is attributable to maintenance fault codes (press faults, feeder/decoiler faults, lubrication). Agility shows ${d.agility_maintenance_hrs}h logged against breakdown work orders for the same window.\n\nGap: ${d.gap_hrs}h (${d.gap_pct}%) of maintenance-attributable SFC downtime has no matching breakdown WO in Agility.`
+    : `No SFC Monthly Downtime Summary uploaded this run, so there's no gap % or reason-code breakdown yet — showing what the other files give us. Agility shows ${d.agility_maintenance_hrs}h logged against breakdown work orders on SFC-monitored presses. Add the SFC file when you have it for the full picture.`;
   document.getElementById('statement-text').innerText = statement;
 
-  document.getElementById('kpi-row').innerHTML = `
+  document.getElementById('kpi-row').innerHTML = hasSfc ? `
     <div class="kpi red"><label>SFC Maintenance Hours</label><div class="val">${s.maintenance_hrs}h</div><div class="sub">From daily summary PDF</div></div>
     <div class="kpi green"><label>Agility Breakdown Hours</label><div class="val">${d.agility_maintenance_hrs}h</div><div class="sub">From Down Time Analysis</div></div>
     <div class="kpi"><label>Gap</label><div class="val">${d.gap_hrs}h</div><div class="sub">${d.gap_pct}% unaccounted for</div></div>
+  ` : `
+    <div class="kpi green"><label>Agility Breakdown Hours</label><div class="val">${d.agility_maintenance_hrs}h</div><div class="sub">From Down Time Analysis</div></div>
+    <div class="kpi"><label>Gap</label><div class="val">n/a</div><div class="sub">Needs the SFC file to compute</div></div>
   `;
 
   const sch = s.scheduled_hrs || 0;
@@ -502,14 +511,14 @@ function render(d) {
   const poh = s.planned_offline_hrs || 0;
   const mc  = s.machine_count || 0;
   const actualRun = Math.max(0, sch - (s.maintenance_hrs || 0) - (s.toolroom_hrs || 0)).toFixed(2);
-  document.getElementById('sched-row').innerHTML = `
+  document.getElementById('sched-row').innerHTML = hasSfc ? `
     <div class="kpi"><label>Machines Monitored</label><div class="val">${mc}</div><div class="sub">Period: ${s.period_hrs || 24}h</div></div>
     <div class="kpi"><label>Max Possible Hours</label><div class="val">${mph}h</div><div class="sub">${mc} machines × ${s.period_hrs || 24}h</div></div>
     <div class="kpi"><label>Planned Offline</label><div class="val">${poh}h</div><div class="sub">Removed from schedule</div></div>
     <div class="kpi green"><label>Scheduled to Run</label><div class="val">${sch}h</div><div class="sub">Max − planned offline</div></div>
     <div class="kpi red"><label>Lost to Maintenance</label><div class="val">${s.maintenance_hrs}h</div><div class="sub">Press faults, feeders, lubrication</div></div>
     <div class="kpi"><label>Net Available</label><div class="val">${actualRun}h</div><div class="sub">After all losses</div></div>
-  `;
+  ` : '<div style="grid-column:1/-1;text-align:center;color:#888;padding:16px;font-size:13px">Needs the SFC Monthly Downtime Summary file — not uploaded this run</div>';
 
   document.getElementById('wo-tbody').innerHTML = d.matched_wos.length
     ? d.matched_wos.map(r => `<tr>
@@ -521,9 +530,11 @@ function render(d) {
       </tr>`).join('')
     : '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px">No breakdown work orders found for this period</td></tr>';
 
-  document.getElementById('reason-tbody').innerHTML = Object.entries(s.reasons)
-    .filter(([k]) => ['FAULT - PRESS','FAULT-FEEDER/DECOILER/STR','FAULT-SHAKER/CONVEYOR','FAULT-FEEDER/DECOILER/STRAIGHTENER','LUBRICATION/OIL REFILL'].includes(k.toUpperCase()))
-    .map(([k, v]) => `<tr><td>${k}</td><td>${v}h</td></tr>`).join('') || '<tr><td colspan="2" style="text-align:center;color:#888;padding:20px">No maintenance-coded reasons found</td></tr>';
+  document.getElementById('reason-tbody').innerHTML = hasSfc
+    ? (Object.entries(s.reasons || {})
+        .filter(([k]) => ['FAULT - PRESS','FAULT-FEEDER/DECOILER/STR','FAULT-SHAKER/CONVEYOR','FAULT-FEEDER/DECOILER/STRAIGHTENER','LUBRICATION/OIL REFILL'].includes(k.toUpperCase()))
+        .map(([k, v]) => `<tr><td>${k}</td><td>${v}h</td></tr>`).join('') || '<tr><td colspan="2" style="text-align:center;color:#888;padding:20px">No maintenance-coded reasons found</td></tr>')
+    : '<tr><td colspan="2" style="text-align:center;color:#888;padding:20px">SFC Monthly Downtime Summary not uploaded this run</td></tr>';
 }
 async function generateReport() {
   const btn = document.getElementById('report-btn');
@@ -531,8 +542,8 @@ async function generateReport() {
   btn.textContent = '⏳ Generating PDF...';
   try {
     const fd = new FormData();
-    fd.append('daily_summary', files.ds);
-    fd.append('agility_downtime', files.dt);
+    if (files.ds) fd.append('daily_summary', files.ds);
+    if (files.dt) fd.append('agility_downtime', files.dt);
     if (files.wo) fd.append('agility_wo', files.wo);
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
     if (files.oee) fd.append('oee_monthly', files.oee);
@@ -589,8 +600,8 @@ async function saveRun() {
 
   try {
     const fd = new FormData();
-    fd.append('daily_summary', files.ds);
-    fd.append('agility_downtime', files.dt);
+    if (files.ds) fd.append('daily_summary', files.ds);
+    if (files.dt) fd.append('agility_downtime', files.dt);
     if (files.wo) fd.append('agility_wo', files.wo);
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
     if (files.oee) fd.append('oee_monthly', files.oee);

@@ -145,19 +145,30 @@ def _parse_uploads():
     separate from the reconciliation inputs because neither feeds the
     SFC-vs-Agility gap calculation — they're additional context for the
     board review, and a missing one must never change the gap figure.
+
+    EVERY upload here is optional, SFC Monthly Downtime Summary and
+    Agility Down Time Analysis included. A check with just one file
+    still runs — it just can't compute whatever that file alone doesn't
+    cover (no SFC file means no gap %; see reconciliation.compute_gap).
+    The only thing this function still refuses is a request with
+    nothing in it at all, since there'd be nothing to reconcile.
     """
     ds_file = request.files.get('daily_summary')
     dt_file = request.files.get('agility_downtime')
     wo_file = request.files.get('agility_wo')
 
-    if not ds_file or not dt_file:
-        raise ValueError('Need the SFC Monthly Downtime Summary xlsx and the Agility Down Time Analysis xlsx')
+    if not any(f.filename for f in request.files.values()):
+        raise ValueError('Upload at least one file to run a check')
 
-    with saved_upload(ds_file, 'sfc_summary') as path:
-        sfc_summary = parse_monthly_summary_xlsx(path)
+    sfc_summary = {}
+    if ds_file and ds_file.filename:
+        with saved_upload(ds_file, 'sfc_summary') as path:
+            sfc_summary = parse_monthly_summary_xlsx(path)
 
-    with saved_upload(dt_file, 'agility_downtime') as path:
-        downtime_data = parse_downtime_file(path)
+    downtime_data = []
+    if dt_file and dt_file.filename:
+        with saved_upload(dt_file, 'agility_downtime') as path:
+            downtime_data = parse_downtime_file(path)
 
     asset_lookup = {}
     wo_data = []
@@ -451,6 +462,15 @@ def maintenance_check():
 def generate_report():
     try:
         sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided, extras = _parse_uploads()
+        # The PDF's entire content is the SFC-vs-Agility gap narrative —
+        # there's no meaningful partial version of it. Say so plainly
+        # rather than handing report_pdf.py an empty sfc_summary it was
+        # never written to expect.
+        if not sfc_summary:
+            return jsonify({'error': 'PDF report needs the SFC Monthly Downtime Summary file — '
+                                      'that one hasn\'t been uploaded yet. Everything else '
+                                      '(the on-page results, saving to the trend dashboard) '
+                                      'works fine without it.'})
         result = reconcile(sfc_summary, downtime_data, wo_data, asset_lookup, wo_file_provided=wo_provided)
         result.update(extras)
         pdf_buf = build_gap_pdf(result)

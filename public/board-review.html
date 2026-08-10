@@ -344,7 +344,9 @@ function render() {
   })();
   const maintGauges =
     gauge('g-mtbf', 'MTBF', mtbfNote) +
-    gauge('g-fault', 'Downtime (SFC)', `Agility ${hrs(d.agility_maintenance_hrs)} · ${fmt(100 - d.gap_pct, 1)}% covered<br>no target set`);
+    gauge('g-fault', 'Downtime (SFC)', d.gap_pct == null
+      ? `Agility ${hrs(d.agility_maintenance_hrs)} · no SFC file this run<br>no target set`
+      : `Agility ${hrs(d.agility_maintenance_hrs)} · ${fmt(100 - d.gap_pct, 1)}% covered<br>no target set`);
 
   document.getElementById('slide').innerHTML = `
     <div class="slide-head">

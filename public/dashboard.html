@@ -117,7 +117,12 @@ const NAVY = '#243547', LIME = '#95C11F', RED = '#dc2626', AMBER = '#d97706';
 function fmt(n, d=1) { return (n === null || n === undefined) ? '—' : Number(n).toFixed(d); }
 
 function deltaBadge(curr, prev, higherIsWorse) {
-  if (prev === null || prev === undefined) return '';
+  // Both need guarding, not just prev — a partial run (no SFC file this
+  // time) has curr=null on SFC-derived figures even when last month's
+  // full run gave a real prev. Without this, null-prev coerces to 0 in
+  // the subtraction below and shows a fabricated swing instead of "no
+  // comparison possible".
+  if (prev === null || prev === undefined || curr === null || curr === undefined) return '';
   const diff = curr - prev;
   if (Math.abs(diff) < 0.05) return `<span class="delta flat">— no change vs prior month</span>`;
   const worse = higherIsWorse ? diff > 0 : diff < 0;
