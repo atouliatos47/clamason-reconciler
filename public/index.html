@@ -163,13 +163,11 @@
         <div class="file-status" id="wo-status"></div>
       </div>
       <div class="upload-card optional" id="card-oee">
-        <h3>📈 SFC Weekly OEE</h3>
-        <p>Weekly UK OEE By Machine Tabular — select every week in the month</p>
-        <label class="upload-btn" for="oee-file">Choose Files</label>
-        <input type="file" id="oee-file" accept=".xls" multiple onchange="handleOeeFiles(this)">
+        <h3>📈 SFC Monthly OEE</h3>
+        <p>Monthly UK OEE By Machine Tabular (Hours)</p>
+        <label class="upload-btn" for="oee-file">Choose File</label>
+        <input type="file" id="oee-file" accept=".xls" onchange="handleFile(this,'oee','card-oee','oee-status')">
         <div class="file-status" id="oee-status"></div>
-        <div class="file-list" id="oee-list"></div>
-        <div class="hint">SFC weeks run Sun–Sun, so they won't match month ends exactly</div>
       </div>
       <div class="upload-card optional" id="card-mtbf">
         <h3>📉 Agility MTBF</h3>
@@ -243,11 +241,6 @@
 
 <script>
 const files = {};
-// OEE is the only multi-file input — a month is 4 or 5 weekly exports.
-// Kept in its own array rather than in `files` so nothing that iterates
-// FILE_UI (persistence, restore, the run-button check) has to special-case
-// a value that's a list instead of a File.
-let oeeFiles = [];
 let lastResult = null;
 
 const STORAGE_KEY = 'monthly-check-progress';
@@ -256,6 +249,7 @@ const FILE_UI = {
   dt: { cardId: 'card-dt', statusId: 'dt-status' },
   wo: { cardId: 'card-wo', statusId: 'wo-status' },
   mtbf: { cardId: 'card-mtbf', statusId: 'mtbf-status' },
+  oee: { cardId: 'card-oee', statusId: 'oee-status' },
 };
 
 // Same reasoning as the Daily Check page: persist in-progress work to
@@ -286,13 +280,8 @@ async function persistProgress() {
     for (const key of Object.keys(FILE_UI)) {
       if (files[key]) fileData[key] = { name: files[key].name, data: await fileToDataURL(files[key]) };
     }
-    const oeeData = [];
-    for (const f of oeeFiles) {
-      oeeData.push({ name: f.name, data: await fileToDataURL(f) });
-    }
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
       fileData,
-      oeeData,
       result: lastResult,
       periodLabel: document.getElementById('period-label').value,
       warning: document.getElementById('warning-box').textContent,
@@ -318,10 +307,6 @@ function restorePersistedProgress() {
       document.getElementById(FILE_UI[key].cardId).classList.add('done');
       document.getElementById(FILE_UI[key].statusId).textContent = '✓ ' + fd.name;
     }
-    if (Array.isArray(state.oeeData)) {
-      oeeFiles = state.oeeData.map(f => dataURLToFile(f.data, f.name));
-      renderOeeList();
-    }
     document.getElementById('run-btn').disabled = !(files.ds && files.dt);
     if (state.periodLabel) document.getElementById('period-label').value = state.periodLabel;
     if (state.warning) {
@@ -344,9 +329,6 @@ function restorePersistedProgress() {
 
 function clearCheck() {
   for (const key of Object.keys(files)) delete files[key];
-  oeeFiles = [];
-  document.getElementById('oee-file').value = '';
-  renderOeeList();
   lastResult = null;
   clearPersistedProgress();
 
@@ -371,31 +353,6 @@ document.addEventListener('DOMContentLoaded', () => {
   restorePersistedProgress();
 });
 
-function handleOeeFiles(input) {
-  const picked = Array.from(input.files || []);
-  if (!picked.length) return;
-  // Sorted by name so Wk23..Wk26 list in week order regardless of the
-  // order the file picker happened to return them in.
-  oeeFiles = picked.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-  renderOeeList();
-  persistProgress();
-}
-
-function renderOeeList() {
-  const card = document.getElementById('card-oee');
-  const status = document.getElementById('oee-status');
-  const list = document.getElementById('oee-list');
-  if (!oeeFiles.length) {
-    card.classList.remove('done');
-    status.textContent = '';
-    list.innerHTML = '';
-    return;
-  }
-  card.classList.add('done');
-  status.textContent = `\u2713 ${oeeFiles.length} week${oeeFiles.length === 1 ? '' : 's'} selected`;
-  list.innerHTML = oeeFiles.map(f => `<div>\u2713 ${f.name}</div>`).join('');
-}
-
 function handleFile(input, key, cardId, statusId) {
   const f = input.files[0];
   if (!f) return;
@@ -419,8 +376,7 @@ async function runCheck() {
     fd.append('agility_downtime', files.dt);
     if (files.wo) fd.append('agility_wo', files.wo);
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
-    // Same field name repeated — Flask reads them with getlist('oee_weekly').
-    oeeFiles.forEach(f => fd.append('oee_weekly', f));
+    if (files.oee) fd.append('oee_monthly', files.oee);
 
     const res = await fetch('/api/maintenance-check', { method: 'POST', body: fd });
     const d = await res.json();
@@ -570,8 +526,7 @@ async function generateReport() {
     fd.append('agility_downtime', files.dt);
     if (files.wo) fd.append('agility_wo', files.wo);
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
-    // Same field name repeated — Flask reads them with getlist('oee_weekly').
-    oeeFiles.forEach(f => fd.append('oee_weekly', f));
+    if (files.oee) fd.append('oee_monthly', files.oee);
 
     const res = await fetch('/api/generate-report', { method: 'POST', body: fd });
 
@@ -628,8 +583,7 @@ async function saveRun() {
     fd.append('agility_downtime', files.dt);
     if (files.wo) fd.append('agility_wo', files.wo);
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
-    // Same field name repeated — Flask reads them with getlist('oee_weekly').
-    oeeFiles.forEach(f => fd.append('oee_weekly', f));
+    if (files.oee) fd.append('oee_monthly', files.oee);
     fd.append('period_label', label);
 
     const res = await fetch('/api/save-run', { method: 'POST', body: fd });

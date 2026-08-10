@@ -32,52 +32,49 @@ bp = Blueprint('routes', __name__)
 
 
 def _parse_oee_uploads():
-    """Aggregate however many weekly SFC OEE .xls files were uploaded.
+    """Parse the single monthly SFC OEE .xls upload, if one was provided.
 
-    Returns None when none were provided — OEE is optional, so a check
+    Returns None when none was provided — OEE is optional, so a check
     run without it behaves exactly as it did before.
 
-    Each file gets its own temp path (oee_weekly_0, _1, ...) because
-    saved_upload() derives the path from the prefix alone; reusing one
-    prefix for several files would have each overwrite the last.
+    SFC also produces a 'Monthly UK OEE By Machine Tabular' export
+    covering a calendar month directly, sidestepping the old
+    Sunday-Sunday weekly-file boundary problem entirely. Its Sub Totals
+    rows use the exact same column layout as the weekly export, so
+    parse_oee_file() needs no changes — only the number of files
+    expected here.
 
-    The parser reports the date range it found in each file rather than
-    inferring a month, and those ranges are passed straight through to
-    the UI. SFC weeks run Sunday-Sunday and never line up with month
-    ends — June 2026 is Wk23 (starts 31 May) to Wk26 (ends 28 Jun) — so
-    which weeks make up a month is the user's call, made visible by
-    showing the ranges rather than silently assumed here.
+    aggregate_oee() still takes a list of "week" record-lists so it can
+    sum raw hours/parts before computing percentages (see oee_parser.py
+    for why that order matters); a single monthly file is simply passed
+    as a one-item list.
     """
-    oee_files = [f for f in request.files.getlist('oee_weekly') if f and f.filename]
-    if not oee_files:
+    oee_file = request.files.get('oee_monthly')
+    if not oee_file or not oee_file.filename:
         return None
 
-    weeks, ranges = [], []
-    for i, f in enumerate(oee_files):
-        try:
-            with saved_upload(f, f'oee_weekly_{i}') as path:
-                records, date_range = parse_oee_file(path)
-        except Exception as exc:
-            # xlrd's own message for a modern workbook is 'Excel xlsx
-            # file; not supported', which tells the user nothing about
-            # what they should have picked. The SFC OEE export is
-            # legacy .xls — an easy field to drop the wrong file into
-            # when four others on the page take .xlsx.
-            raise ValueError(
-                f"Couldn't read '{f.filename}' as an SFC weekly OEE export. "
-                "It must be the 'Weekly UK OEE By Machine Tabular' file, "
-                f"which SFC produces as legacy .xls. ({exc})"
-            )
-        if not records:
-            raise ValueError(
-                f"No OEE data found in '{f.filename}' — expected the SFC "
-                "'Weekly UK OEE By Machine Tabular' .xls export"
-            )
-        weeks.append(records)
-        ranges.append({'file': f.filename, 'range': date_range})
+    try:
+        with saved_upload(oee_file, 'oee_monthly') as path:
+            records, date_range = parse_oee_file(path)
+    except Exception as exc:
+        # xlrd's own message for a modern workbook is 'Excel xlsx file;
+        # not supported', which tells the user nothing about what they
+        # should have picked. The SFC OEE export is legacy .xls — an
+        # easy field to drop the wrong file into when the others on the
+        # page take .xlsx.
+        raise ValueError(
+            f"Couldn't read '{oee_file.filename}' as an SFC monthly OEE export. "
+            "It must be the 'Monthly UK OEE By Machine Tabular' file, "
+            f"which SFC produces as legacy .xls. ({exc})"
+        )
+    if not records:
+        raise ValueError(
+            f"No OEE data found in '{oee_file.filename}' — expected the SFC "
+            "'Monthly UK OEE By Machine Tabular' .xls export"
+        )
 
-    result = aggregate_oee(weeks)
-    result['week_ranges'] = ranges
+    result = aggregate_oee([records])
+    result['week_ranges'] = [{'file': oee_file.filename, 'range': date_range}]
     return result
 
 
