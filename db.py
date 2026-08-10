@@ -253,7 +253,8 @@ def get_all_runs():
         'mtta_hrs_all', 'mttr_hrs_all', 'mdt_hrs_all',
         'oee_pct', 'oee_availability_pct', 'oee_performance_pct',
         'oee_performance_pct_raw', 'oee_quality_pct', 'oee_run_hrs',
-        'oee_net_avail_hrs', 'oee_total_parts', 'oee_scrap_parts',
+        'oee_net_avail_hrs', 'oee_total_avail_hrs', 'oee_utilization_pct',
+        'oee_teep_pct', 'oee_total_parts', 'oee_scrap_parts',
         'mtbf_days', 'mtbf_mttr_hrs', 'mtbf_wait_hrs', 'mtbf_downtime_hrs',
     ]
     result = []

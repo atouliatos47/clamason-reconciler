@@ -218,6 +218,8 @@ function render(runs) {
       <h3>TEEP, OEE &amp; Utilization — Trend</h3>
       <div class="canvas-wrap"><canvas id="teepChart"></canvas></div>
     </div>
+
+    ${perMachineSection(latest)}
   `;
 
   const labels = runs.map(r => r.period_label || r.period);
@@ -240,6 +242,78 @@ function render(runs) {
       plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
                  tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}%` } } },
       scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+    },
+  });
+
+  drawMachineChart(latest);
+}
+
+// oee_per_machine is a JSONB column — psycopg2 auto-adapts JSONB to a
+// native Python list on the way out, so it should already arrive as a
+// real JS array once Flask's jsonify serializes it. Handled defensively
+// here anyway rather than assumed, since nothing else in this codebase
+// reads this column yet to confirm it against.
+function parsePerMachine(latest) {
+  const raw = latest.oee_per_machine;
+  if (!raw) return [];
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw); } catch (e) { return []; }
+  }
+  return raw;
+}
+
+function perMachineSection(latest) {
+  const machines = parsePerMachine(latest)
+    .filter(m => m.utilization_pct !== null && m.utilization_pct !== undefined);
+  if (machines.length === 0) return '';
+
+  const barHeight = Math.max(220, machines.length * 32 + 60);
+  return `
+    <div class="machine-card">
+      <h3>Utilization by Machine — ${latest.period_label || latest.period}</h3>
+      <div class="canvas-wrap" style="height:${barHeight}px;"><canvas id="machineUtilChart"></canvas></div>
+    </div>`;
+}
+
+function drawMachineChart(latest) {
+  const el = document.getElementById('machineUtilChart');
+  if (!el) return;
+
+  const machines = parsePerMachine(latest)
+    .filter(m => m.utilization_pct !== null && m.utilization_pct !== undefined)
+    .sort((a, b) => b.utilization_pct - a.utilization_pct);
+
+  new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: machines.map(m => m.machine),
+      datasets: [{
+        label: 'Utilization %',
+        data: machines.map(m => m.utilization_pct),
+        backgroundColor: AMBER,
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (c) => {
+              const m = machines[c.dataIndex];
+              const oee = m.oee_pct == null ? '—' : Number(m.oee_pct).toFixed(1) + '%';
+              const teep = m.teep_pct == null ? '—' : Number(m.teep_pct).toFixed(1) + '%';
+              return [`Utilization: ${Number(c.parsed.x).toFixed(1)}%`, `OEE: ${oee}`, `TEEP: ${teep}`];
+            },
+          },
+        },
+      },
+      scales: {
+        x: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } },
+        y: { ticks: { autoSkip: false, font: { size: 11 } } },
+      },
     },
   });
 }
