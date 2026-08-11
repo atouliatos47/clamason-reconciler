@@ -36,20 +36,34 @@ def init_schema():
 def save_run(result, period_label):
     """Store one month's reconciliation result. result is the dict
     returned by reconciliation.reconcile(). Re-saving the same period
-    (matched on the raw `period` string from SFC) overwrites the
+    (matched on period_label, the user-typed identifier) overwrites the
     previous row rather than creating a duplicate.
 
-    sfc_summary itself is optional now — see routes._parse_uploads —
-    so it's read with .get() rather than assumed present, and its
-    'period' string (normally straight from the SFC file) falls back to
-    the user-typed period_label when there's no SFC file to take it
-    from. Without that fallback every SFC-less save would write the
-    same '' period and silently overwrite the last one instead of
-    creating its own row.
+    Used to key on sfc_summary's own 'period' string when present,
+    falling back to period_label only when SFC data was missing. That
+    broke the moment a month went from no-SFC to has-SFC between two
+    saves: the conflict key changed underneath it, so the second save
+    landed as a new row instead of overwriting the first. period_label
+    is what actually stays stable across every save of the same month,
+    so it's now the only thing this keys on, regardless of which files
+    happen to be attached this time.
     """
     sfc = result.get('sfc_summary') or {}
     row = {
-        'period': sfc.get('period') or period_label,
+        # Always period_label, never sfc.get('period'). SFC's own period
+        # string used to be preferred here when present — but a month can
+        # go from "no SFC file yet" to "SFC file arrived" between two
+        # saves of what's genuinely the same period, and SFC's string
+        # isn't guaranteed to stay identical between those two uploads.
+        # That's not a hypothetical: it's exactly what happened the first
+        # time this shipped — a partial July save keyed on the typed
+        # label, a later complete one keyed on SFC's own date-range
+        # string, and two rows where one was meant, because the conflict
+        # key changed out from under it. period_label is what the person
+        # actually chose to call this period; it's the only thing
+        # guaranteed to stay stable across every save of the same month
+        # regardless of which files happen to be attached this time.
+        'period': period_label,
         'period_label': period_label,
         'machine_count': sfc.get('machine_count'),
         'total_hrs': sfc.get('total_hrs'),
