@@ -299,7 +299,7 @@ function render() {
   const qualityViaEfacs = d.oee_quality_source === 'efacs' ? '<br>quality via EFACS scrap' : '';
   const oeeGauges =
     gauge('g-oee', 'OEE', d.oee_pct == null ? 'not uploaded'
-      : `target ${TARGETS.oee}% · tick on ring<br>${d.oee_week_count} weeks uploaded${qualityViaEfacs}`) +
+      : `target ${TARGETS.oee}% · tick on ring<br>${d.oee_machine_count || '—'} machines${qualityViaEfacs}`) +
     gauge('g-prod', 'Downtime (SFC)', `production-owned reasons only<br>no target set`);
 
   // Toolmaker-craft work orders. This card used to show
@@ -431,9 +431,9 @@ function render() {
   const unk = unclassifiedCodes(mb).filter(([, h]) => h >= UNCLASSIFIED_THRESHOLD_HRS);
   const ubox = document.getElementById('unclassified');
   if (unk.length) {
-    ubox.innerHTML = `<strong>Unclassified reason codes — currently counted as production:</strong> ` +
+    ubox.innerHTML = `<strong>Uncategorised reason codes — currently counted under Production:</strong> ` +
       unk.map(([r, h]) => `${r} (${h.toFixed(1)}h)`).join(', ') +
-      `. Assign these in config.py so they reach the right department.`;
+      `. May belong to Maintenance or Toolroom instead.`;
     ubox.style.display = 'block';
   } else {
     ubox.style.display = 'none';
