@@ -39,7 +39,7 @@ import io
 
 import xlrd
 
-from config import SHIFT_HOURS_PER_WEEK
+from config import SHIFT_HOURS_PER_WEEK, NON_MACHINE_SHEETS
 
 
 # Fixed column positions in the Sub Totals row. SFC emits merged/blank
@@ -110,7 +110,19 @@ def parse_oee_file(filepath):
         label = str(sheet.cell_value(r, COL_LABEL)).strip()
 
         if label.startswith('Machine:'):
-            machine = label.replace('Machine:', '').strip()
+            name = label.replace('Machine:', '').strip()
+            # Same exclusion sfc_monthly_xlsx.py and sfc_daily_downtime_pdf.py
+            # already apply — Spare SFC Box isn't real equipment, so it must
+            # never become a machine row here either. It was previously
+            # missing from just this one parser: those two correctly skip
+            # it, this one didn't, so it silently counted as the fleet's
+            # 19th machine on the TEEP page alone.
+            #
+            # Left as machine = None rather than a separate `continue` —
+            # the Sub Totals guard below already discards any row with no
+            # current machine, so an excluded name just rides that same
+            # check instead of needing its own.
+            machine = None if name.lower() in NON_MACHINE_SHEETS else name
             continue
 
         if not date_range:
