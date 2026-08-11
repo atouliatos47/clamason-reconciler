@@ -61,10 +61,13 @@ CREATE TABLE IF NOT EXISTS monthly_runs (
     -- counts, never averaged from SFC's own weekly percentages — on
     -- June 2026 those two methods differ by 17.8 points (36.64 vs 54.41).
     --
-    -- oee_week_count matters more than it looks: SFC weeks run Sun-Sun
-    -- and never align with month ends, so a "month" is whichever 4 or 5
-    -- weekly files were uploaded. Storing the count makes a 4-week month
-    -- distinguishable from a 5-week one when comparing periods later.
+    -- oee_week_count is a leftover from the old weekly-upload workflow
+    -- (SFC weeks run Sun-Sun and never align with month ends, so a
+    -- "month" used to be however many weekly files got uploaded).
+    -- Since the move to SFC's own monthly export, this is always 1 —
+    -- kept rather than dropped so historical rows from the weekly era
+    -- still read correctly, but nothing new should treat it as
+    -- meaningful; oee_machine_count is the field that still varies.
     --
     -- oee_performance_pct is the CAPPED value used in the OEE product;
     -- oee_performance_pct_raw preserves the uncapped figure, which
@@ -118,6 +121,15 @@ CREATE TABLE IF NOT EXISTS monthly_runs (
     oee_quality_source      TEXT,
     efacs_scrap_qty         NUMERIC,
     efacs_scrap_cost        NUMERIC,
+    -- TEEP against config.SHIFT_HOURS_PER_WEEK (the intended roster)
+    -- instead of the full 24/7 calendar oee_teep_pct above uses. NULL
+    -- fleet-wide until at least one machine has a real (non-placeholder)
+    -- entry in that config table — see config.py for why it starts
+    -- empty rather than guessed.
+    oee_intended_hours               NUMERIC,
+    oee_utilization_vs_intended_pct  NUMERIC,
+    oee_teep_vs_intended_pct         NUMERIC,
+    oee_intended_configured_count    INTEGER,
 
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -177,6 +189,10 @@ ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_open        INTEGE
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_quality_source      TEXT;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS efacs_scrap_qty         NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS efacs_scrap_cost        NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_intended_hours               NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_utilization_vs_intended_pct  NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_teep_vs_intended_pct         NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_intended_configured_count    INTEGER;
 
 
 -- ---------------------------------------------------------------------------

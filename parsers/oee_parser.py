@@ -39,6 +39,8 @@ import io
 
 import xlrd
 
+from config import SHIFT_HOURS_PER_WEEK
+
 
 # Fixed column positions in the Sub Totals row. SFC emits merged/blank
 # spacer columns between the real ones, so these aren't contiguous.
@@ -159,6 +161,57 @@ def parse_oee_file(filepath):
     return records, date_range
 
 
+def _compute_vs_intended(totals, oee_pct):
+    """TEEP against the intended shift pattern (config.SHIFT_HOURS_PER_WEEK)
+    instead of the full 24/7 calendar. See config.py for why this table
+    exists and can't be derived from any SFC/Agility/EFACS report — it's
+    a roster decision, not shop-floor data.
+
+    totals needs 'machine' and 'total_avail_hrs' (used only to recover
+    the period length in days — 744h / 24 = 31 days — not as the TEEP
+    denominator itself, which is the whole point of this variant).
+    oee_pct is passed in already computed by _compute() rather than
+    recomputed here, so this can never drift from the OEE figure shown
+    right next to it.
+
+    None (not 0) for every field here when the machine has no real entry
+    in SHIFT_HOURS_PER_WEEK yet — still at its 0.0 "not configured"
+    placeholder. Same reasoning as the None-vs-0 distinction everywhere
+    else in this module: a 0% figure reads as "achieving nothing", not
+    "nobody's told this the intended answer yet", and those are very
+    different things to show someone.
+    """
+    total_avail = totals.get('total_avail_hrs')
+    hours_per_week = SHIFT_HOURS_PER_WEEK.get(totals.get('machine'), 0.0)
+
+    if not total_avail or not hours_per_week:
+        return {
+            'intended_hours': None,
+            'utilization_vs_intended_pct': None,
+            'teep_vs_intended_pct': None,
+        }
+
+    period_days = total_avail / 24
+    intended_hours = round(hours_per_week * period_days / 7, 2)
+
+    net = totals.get('net_avail_hrs', 0.0)
+    # Deliberately not capped at 100 — running MORE than the intended
+    # pattern (overtime, an extra shift added for a push) is a real and
+    # useful thing to see, not an error to hide the way OEE's own
+    # Performance factor caps a >100% figure (see _compute() above).
+    utilization_vs_intended = round(net / intended_hours * 100, 2)
+
+    teep_vs_intended = None
+    if oee_pct is not None:
+        teep_vs_intended = round(oee_pct * utilization_vs_intended / 100, 2)
+
+    return {
+        'intended_hours': intended_hours,
+        'utilization_vs_intended_pct': utilization_vs_intended,
+        'teep_vs_intended_pct': teep_vs_intended,
+    }
+
+
 def _compute(totals):
     """Availability, Performance, Quality and OEE from summed raw values.
 
@@ -264,6 +317,7 @@ def aggregate_oee(weekly_records):
         for f in _TIME_FIELDS:
             row[f] = round(row[f], 2)
         row.update(_compute(acc))
+        row.update(_compute_vs_intended(acc, row['oee_pct']))
         per_machine.append(row)
 
     fleet = {'machine_count': len(per_machine),
@@ -278,6 +332,31 @@ def aggregate_oee(weekly_records):
     for f in _TIME_FIELDS:
         fleet[f] = round(fleet[f], 2)
     fleet.update(_compute(fleet))
+
+    # Fleet intended_hours is a straight sum of whichever machines have a
+    # real (non-placeholder) entry in SHIFT_HOURS_PER_WEEK — summed from
+    # per_machine rather than recomputed from fleet totals, since fleet
+    # has no per-machine identity to look a shift pattern up against.
+    # A machine still at its 0.0 placeholder contributes nothing here,
+    # same as it contributing nothing to fleet net_avail_hrs when it
+    # never ran — the fleet figure only reflects machines that are
+    # actually configured, not silently assumes 0 intended = 0 fleet
+    # impact in some other, wrong direction.
+    configured = [m for m in per_machine if m['intended_hours'] is not None]
+    if configured:
+        fleet['intended_hours'] = round(sum(m['intended_hours'] for m in configured), 2)
+        fleet_net_configured = sum(m['net_avail_hrs'] for m in configured)
+        fleet['utilization_vs_intended_pct'] = round(
+            fleet_net_configured / fleet['intended_hours'] * 100, 2)
+        fleet['teep_vs_intended_pct'] = (
+            round(fleet['oee_pct'] * fleet['utilization_vs_intended_pct'] / 100, 2)
+            if fleet['oee_pct'] is not None else None)
+        fleet['intended_configured_count'] = len(configured)
+    else:
+        fleet['intended_hours'] = None
+        fleet['utilization_vs_intended_pct'] = None
+        fleet['teep_vs_intended_pct'] = None
+        fleet['intended_configured_count'] = 0
 
     fleet['anomaly_machines'] = [
         m['machine'] for m in per_machine if m['anomaly_weeks'] or
@@ -346,5 +425,12 @@ def apply_efacs_scrap_correction(oee_result, efacs_scrap_qty):
     # quality/scrap at all, so it's untouched — only teep_pct needs it.
     if fleet['oee_pct'] is not None and fleet.get('utilization_pct') is not None:
         fleet['teep_pct'] = round(fleet['oee_pct'] * fleet['utilization_pct'] / 100, 2)
+
+    # Same staleness risk, same fix, for the vs-intended variant — it's
+    # oee_pct * utilization_vs_intended_pct, so it goes stale right
+    # alongside teep_pct above for the identical reason.
+    if fleet['oee_pct'] is not None and fleet.get('utilization_vs_intended_pct') is not None:
+        fleet['teep_vs_intended_pct'] = round(
+            fleet['oee_pct'] * fleet['utilization_vs_intended_pct'] / 100, 2)
 
     return oee_result

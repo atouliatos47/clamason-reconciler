@@ -121,6 +121,10 @@ def save_run(result, period_label):
         # preferred when available: SFC's own scrap count is badly
         # under-populated.
         'oee_quality_source': fleet.get('quality_source'),
+        'oee_intended_hours': fleet.get('intended_hours'),
+        'oee_utilization_vs_intended_pct': fleet.get('utilization_vs_intended_pct'),
+        'oee_teep_vs_intended_pct': fleet.get('teep_vs_intended_pct'),
+        'oee_intended_configured_count': fleet.get('intended_configured_count'),
     })
 
     # EFACS Cost of Scrap — optional, same NULL-on-absence pattern as OEE/
@@ -177,7 +181,9 @@ def save_run(result, period_label):
                      mtbf_days, mtbf_assets, mtbf_asset_count, mtbf_mttr_hrs,
                      mtbf_wait_hrs, mtbf_jobs, mtbf_downtime_hrs, mtbf_scopes,
                      toolroom_wo_count, toolroom_wo_completed, toolroom_wo_cancelled,
-                     toolroom_wo_open, oee_quality_source, efacs_scrap_qty, efacs_scrap_cost)
+                     toolroom_wo_open, oee_quality_source, efacs_scrap_qty, efacs_scrap_cost,
+                     oee_intended_hours, oee_utilization_vs_intended_pct,
+                     oee_teep_vs_intended_pct, oee_intended_configured_count)
                 VALUES
                     (%(period)s, %(period_label)s, %(machine_count)s, %(total_hrs)s, %(total_events)s,
                      %(maintenance_hrs)s, %(toolroom_hrs)s, %(agility_maintenance_hrs)s,
@@ -191,7 +197,9 @@ def save_run(result, period_label):
                      %(mtbf_days)s, %(mtbf_assets)s, %(mtbf_asset_count)s, %(mtbf_mttr_hrs)s,
                      %(mtbf_wait_hrs)s, %(mtbf_jobs)s, %(mtbf_downtime_hrs)s, %(mtbf_scopes)s,
                      %(toolroom_wo_count)s, %(toolroom_wo_completed)s, %(toolroom_wo_cancelled)s,
-                     %(toolroom_wo_open)s, %(oee_quality_source)s, %(efacs_scrap_qty)s, %(efacs_scrap_cost)s)
+                     %(toolroom_wo_open)s, %(oee_quality_source)s, %(efacs_scrap_qty)s, %(efacs_scrap_cost)s,
+                     %(oee_intended_hours)s, %(oee_utilization_vs_intended_pct)s,
+                     %(oee_teep_vs_intended_pct)s, %(oee_intended_configured_count)s)
                 ON CONFLICT (period) DO UPDATE SET
                     period_label = EXCLUDED.period_label,
                     machine_count = EXCLUDED.machine_count,
@@ -224,6 +232,10 @@ def save_run(result, period_label):
                     oee_total_avail_hrs = EXCLUDED.oee_total_avail_hrs,
                     oee_utilization_pct = EXCLUDED.oee_utilization_pct,
                     oee_teep_pct = EXCLUDED.oee_teep_pct,
+                    oee_intended_hours = EXCLUDED.oee_intended_hours,
+                    oee_utilization_vs_intended_pct = EXCLUDED.oee_utilization_vs_intended_pct,
+                    oee_teep_vs_intended_pct = EXCLUDED.oee_teep_vs_intended_pct,
+                    oee_intended_configured_count = EXCLUDED.oee_intended_configured_count,
                     oee_total_parts = EXCLUDED.oee_total_parts,
                     oee_scrap_parts = EXCLUDED.oee_scrap_parts,
                     oee_per_machine = EXCLUDED.oee_per_machine,
@@ -270,6 +282,13 @@ def get_all_runs():
         'oee_net_avail_hrs', 'oee_total_avail_hrs', 'oee_utilization_pct',
         'oee_teep_pct', 'oee_total_parts', 'oee_scrap_parts',
         'mtbf_days', 'mtbf_mttr_hrs', 'mtbf_wait_hrs', 'mtbf_downtime_hrs',
+        # Same gap as above, just added later than the rest — these two
+        # existed before the pattern above was caught, so they'd been
+        # missing this conversion the whole time rather than being a new
+        # omission.
+        'efacs_scrap_qty', 'efacs_scrap_cost',
+        'oee_intended_hours', 'oee_utilization_vs_intended_pct',
+        'oee_teep_vs_intended_pct',
     ]
     result = []
     for r in rows:

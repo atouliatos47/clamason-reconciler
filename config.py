@@ -149,3 +149,59 @@ PROJECT_JOB_TYPES_DAILY = {
 def is_known_machine(asset_code):
     """True if this Agility asset code maps to an SFC-monitored press."""
     return any(asset_code in codes for codes in SFC_TO_AGILITY.values())
+
+
+# --- Intended shift pattern, for TEEP against a realistic baseline --------
+# TEEP's textbook definition measures against every calendar hour that
+# exists — see oee_parser.py — which treats every machine as if it could
+# plausibly run 24/7. Bihler was never going to hit that, and comparing
+# it to that baseline every month buries a genuinely useful number under
+# one that was never achievable to begin with.
+#
+# This is the one piece no report can give you. SFC and Agility both
+# report what WAS scheduled and what DID run, after the fact — neither
+# has any concept of what a machine is INTENDED to run. That's a roster
+# decision, not shop-floor data, so it has to be entered here rather
+# than parsed from an export.
+#
+# Seeded from July 2026's actual Net Available hours (SFC's own "what
+# got scheduled" figure), converted to an hours/week rate. That's a real
+# starting point rather than a guess, but it's still one month's data —
+# July had no unusual shutdown week, so it should be close for most
+# machines, but it's worth walking through this list and correcting
+# anything that doesn't reflect the real, ongoing intended pattern (a
+# machine deliberately kept at reduced hours, or one due to go to extra
+# shifts, wouldn't show up right from July alone).
+#
+# Heenan 1 has no entry to seed from — it didn't appear in July's OEE
+# export at all despite being a real press in SFC_TO_AGILITY. Left at
+# 0.0, which reads as "not yet configured" on the TEEP page, until a
+# real figure goes in.
+#
+# Whole fleet in hours/week rather than a shift-count-and-days model —
+# simpler to fill in for anything that doesn't cleanly fit "N shifts,
+# M days" (a machine run for part of a shift, for instance), and every
+# figure here is just "roughly how many hours a week should this
+# machine be running," which is the only thing actually needed for the
+# oee_parser.py calculation this feeds.
+SHIFT_HOURS_PER_WEEK = {
+    'Bihler':               10.0,
+    'Bruderer 1':           86.5,
+    'Bruderer 2':           98.2,
+    'Bruderer 3':           85.0,
+    'Bruderer 60T ISI73':   49.0,
+    'Chin Fong 110 ISI1':   37.2,
+    'Chin Fong 110 ISI74':  22.9,
+    'Finzer Line 17':       75.9,
+    'Finzer Line 18':       0.0,
+    'Finzer Line 19':       21.9,
+    'Finzer Line 20':       36.9,
+    'HME 20T A ISI23':      12.9,
+    'HME 20T C ISI22':      0.0,
+    'Heenan 1':             0.0,   # no July OEE data — needs your input
+    'Heenan 2':             39.5,
+    'Heenan 3':             29.4,
+    'Kaiser 50T 1':         73.0,
+    'Kaiser 50T 2':         62.6,
+    'Rockwell 1':           16.8,
+}

@@ -67,13 +67,18 @@
   .machine-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
   .canvas-wrap { position: relative; height: 320px; }
 
-  .funnel { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 4px; margin-top: 4px; }
+  .funnel { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr; align-items: center; gap: 4px; margin-top: 4px; }
   .funnel-stage { text-align: center; padding: 14px 10px; border-radius: 8px; background: #f7f8fa; }
   .funnel-stage .fv { font-size: 20px; font-weight: bold; color: #243547; }
   .funnel-stage .fl { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px; }
   .funnel-stage.dim { opacity: 0.55; }
+  .funnel-stage.intended { background: #eef4ea; }
   .funnel-arrow { color: #bbb; font-size: 18px; text-align: center; }
   .funnel-note { font-size: 11px; color: #999; margin-top: 10px; line-height: 1.5; }
+
+  .section-label { font-size: 11px; font-weight: bold; color: #95C11F; text-transform: uppercase; letter-spacing: 0.5px; margin: 4px 0 10px; }
+  .kpi-row.small { grid-template-columns: repeat(3,1fr); }
+  .config-note { font-size: 10.5px; color: #aaa; margin-top: 2px; }
 
   footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
 </style>
@@ -160,6 +165,41 @@ async function load() {
   render(withTeep);
 }
 
+// oee_intended_hours is null fleet-wide only when literally no machine
+// has a real (non-placeholder) entry in config.SHIFT_HOURS_PER_WEEK yet
+// — returning '' here rather than a section full of dashes means a
+// brand new deploy doesn't show a half-built-looking card before anyone's
+// filled anything in.
+function vsIntendedSection(latest, prev) {
+  if (latest.oee_intended_hours == null) return '';
+  const configuredNote = latest.oee_intended_configured_count != null && latest.oee_machine_count
+    ? `${latest.oee_intended_configured_count} of ${latest.oee_machine_count} machines configured`
+    : '';
+  return `
+    <div class="section-label">vs Intended Shift Pattern — not the full calendar, the actual roster</div>
+    <div class="kpi-row small">
+      <div class="kpi navy">
+        <label>Intended Hours</label>
+        <div class="val">${Number(latest.oee_intended_hours).toLocaleString(undefined, {maximumFractionDigits:0})}h</div>
+        <span class="sub config-note">${configuredNote}</span>
+      </div>
+      <div class="kpi navy">
+        <label>Utilization <span style="font-weight:normal">(vs Intended)</span></label>
+        <div class="val">${fmt(latest.oee_utilization_vs_intended_pct, 1)}%</div>
+        ${prev && prev.oee_utilization_vs_intended_pct != null
+          ? deltaBadge(latest.oee_utilization_vs_intended_pct, prev.oee_utilization_vs_intended_pct, false)
+          : '<span class="sub">Scheduled ÷ intended hours</span>'}
+      </div>
+      <div class="kpi green">
+        <label>TEEP <span style="font-weight:normal">(vs Intended)</span></label>
+        <div class="val">${fmt(latest.oee_teep_vs_intended_pct, 1)}%</div>
+        ${prev && prev.oee_teep_vs_intended_pct != null
+          ? deltaBadge(latest.oee_teep_vs_intended_pct, prev.oee_teep_vs_intended_pct, false)
+          : '<span class="sub">OEE × Utilization (vs Intended)</span>'}
+      </div>
+    </div>`;
+}
+
 function render(runs) {
   const latest = runs[runs.length - 1];
   const prev = runs.length > 1 ? runs[runs.length - 2] : null;
@@ -191,6 +231,8 @@ function render(runs) {
       </div>
     </div>
 
+    ${vsIntendedSection(latest, prev)}
+
     <div class="machine-card">
       <h3>Where the hours go — ${latest.period_label || latest.period}</h3>
       <div class="funnel">
@@ -199,6 +241,12 @@ function render(runs) {
           <div class="fl">Total Calendar</div>
         </div>
         <div class="funnel-arrow">→</div>
+        ${latest.oee_intended_hours != null ? `
+        <div class="funnel-stage intended">
+          <div class="fv">${fmt(latest.oee_intended_hours, 0)}h</div>
+          <div class="fl">Intended (roster)</div>
+        </div>
+        <div class="funnel-arrow">→</div>` : ''}
         <div class="funnel-stage">
           <div class="fv">${fmt(latest.oee_net_avail_hrs, 0)}h</div>
           <div class="fl">Scheduled (Net Avail)</div>
@@ -211,6 +259,7 @@ function render(runs) {
       </div>
       <div class="funnel-note">
         Utilization is the first drop — Total Calendar → Scheduled — and it's the one OEE never sees at all, because OEE's own math starts from the Scheduled column. TEEP is what you get by carrying that first drop through to the end: OEE% × Utilization%. On a site that isn't scheduled 24/7, that's usually the single biggest reason TEEP reads much lower than OEE — it's not a new problem, it's the same OEE result seen against a bigger denominator.
+        ${latest.oee_intended_hours != null ? `<br><br>The <strong>Intended</strong> column is config.SHIFT_HOURS_PER_WEEK — the roster each machine is actually meant to run, not a blanket 24/7 assumption. It's what the "vs Intended" figures above are measured against, and it only exists for machines someone's actually told it about (${latest.oee_intended_configured_count ?? '?'} of ${latest.oee_machine_count ?? '?'} so far).` : ''}
       </div>
     </div>
 
