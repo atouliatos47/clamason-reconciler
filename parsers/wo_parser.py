@@ -12,7 +12,7 @@ NOT happen here — that's reconciliation.py's job, same as in
 downtime_parser.py. This file only answers "is this a real Maintenance
 WO", not "does it matter for the press-fault gap report".
 """
-from config import MAINTENANCE_CRAFTS, MAINTENANCE_JOB_TYPES, TOOLROOM_CRAFTS
+from config import MAINTENANCE_CRAFTS, MAINTENANCE_JOB_TYPES, TOOLROOM_CRAFTS, PLANNED_JOB_TYPES_DAILY
 
 
 def _clean(val):
@@ -149,3 +149,48 @@ def parse_wo_file_all_types(filepath):
     Breakdown/Planned/Project-CI/Other itself, not just the monthly
     reconciler's narrower scope."""
     return _parse_all_maintenance_wos(filepath)
+
+
+def summarise_ppm_completion(records):
+    """Of the Maintenance/Electrician PPM-type jobs raised this period,
+    what fraction were actually completed — the board's "TPM Schedule
+    Completion" figure. Tracked on other board slides already; this
+    reconciler never surfaced it before now.
+
+    records must come from parse_wo_file_all_types(), not parse_wo_file()
+    — the latter is filtered to MAINTENANCE_JOB_TYPES only, which is
+    missing 'tool preventative maintenance' entirely (see the set
+    mismatch note below), so it would silently undercount.
+
+    Deliberately keys on PLANNED_JOB_TYPES_DAILY rather than
+    MAINTENANCE_JOB_TYPES (used elsewhere in this file for the gap
+    report) — the two sets disagree on two job types, not just
+    overlap imperfectly:
+      - 'corrective maintenance' is in MAINTENANCE_JOB_TYPES but the
+        Daily View's own categorisation deliberately does NOT treat it
+        as planned work.
+      - 'tool preventative maintenance' is in PLANNED_JOB_TYPES_DAILY
+        but absent from MAINTENANCE_JOB_TYPES entirely.
+    Using the wrong set here would count corrective (reactive) work as
+    if it were scheduled PPM, or silently drop real PPM jobs — either
+    way the wrong number for a board-facing completion rate.
+
+    Same status-matching as the Daily View (a substring check on
+    'complet', not an exact match) rather than reinventing a slightly
+    different rule for what "completed" means.
+    """
+    def _job_type(w):
+        return (w.get('jobType') or '').strip().lower()
+
+    def _is_completed(w):
+        return 'complet' in (w.get('status') or '').lower()
+
+    ppm_jobs = [w for w in records if _job_type(w) in PLANNED_JOB_TYPES_DAILY]
+    completed = sum(1 for w in ppm_jobs if _is_completed(w))
+    total = len(ppm_jobs)
+
+    return {
+        'total': total,
+        'completed': completed,
+        'pct': round(completed / total * 100, 1) if total else None,
+    }

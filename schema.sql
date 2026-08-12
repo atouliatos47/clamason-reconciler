@@ -118,6 +118,15 @@ CREATE TABLE IF NOT EXISTS monthly_runs (
     toolroom_wo_completed   INTEGER,
     toolroom_wo_cancelled   INTEGER,
     toolroom_wo_open        INTEGER,
+    -- TPM/PPM Schedule Completion — the board's own established KPI
+    -- (see parsers/wo_parser.py summarise_ppm_completion), never
+    -- previously surfaced by this reconciler. total/completed count
+    -- Maintenance/Electrician jobs in config.PLANNED_JOB_TYPES_DAILY
+    -- only, not every WO raised — a breakdown or a project isn't a
+    -- missed PPM, so it must never drag this figure down.
+    ppm_total                INTEGER,
+    ppm_completed            INTEGER,
+    ppm_completion_pct       NUMERIC,
     oee_quality_source      TEXT,
     efacs_scrap_qty         NUMERIC,
     efacs_scrap_cost        NUMERIC,
@@ -186,6 +195,9 @@ ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_count       INTEGE
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_completed   INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_cancelled   INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_open        INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_total                INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_completed            INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_completion_pct       NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_quality_source      TEXT;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS efacs_scrap_qty         NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS efacs_scrap_cost        NUMERIC;

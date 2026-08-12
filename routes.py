@@ -17,7 +17,10 @@ from parsers.oee_parser import parse_oee_file, aggregate_oee, apply_efacs_scrap_
 # Agility plant asset codes: numeric, zero-padded, at most 6 digits.
 PLANT_ASSET_CODE = re.compile(r'^\d{1,6}$')
 from parsers.mtbf_parser import parse_mtbf_file, summarise_mtbf
-from parsers.wo_parser import parse_wo_file, parse_wo_file_all_types, parse_toolroom_wo_file
+from parsers.wo_parser import (
+    parse_wo_file, parse_wo_file_all_types, parse_toolroom_wo_file,
+    summarise_ppm_completion,
+)
 from parsers.efacs_scrap_parser import parse_efacs_scrap_file
 from reconciliation import reconcile
 from report_pdf import build_gap_pdf
@@ -174,6 +177,7 @@ def _parse_uploads():
     wo_data = []
     wo_provided = bool(wo_file)
     toolroom_wos = None
+    ppm_completion = None
     if wo_file:
         with saved_upload(wo_file, 'agility_wo') as path:
             wo_data, asset_lookup = parse_wo_file(path)
@@ -189,6 +193,20 @@ def _parse_uploads():
             # ('Tools awaiting repair / maintenance', target <25) instead
             # of a number with no board-approved target to read against.
             toolroom_records = parse_toolroom_wo_file(path)
+
+            # Third pass, same file again, same path safely re-read from
+            # disk rather than re-uploading the FileStorage object (whose
+            # stream is already consumed by the first .save() call above).
+            # Maintenance/Electrician craft, every job type, so
+            # summarise_ppm_completion() can pick out PPM-type work
+            # itself — parse_wo_file()'s output above is already
+            # filtered to MAINTENANCE_JOB_TYPES and would be missing
+            # 'tool preventative maintenance' entirely.
+            #
+            # asset_lookup discarded here (the _) — already built from
+            # the first parse_wo_file() call above, and this third pass
+            # would just rebuild an equivalent one from the same file.
+            all_type_records, _ = parse_wo_file_all_types(path)
         toolroom_wos = {
             'total': len(toolroom_records),
             'completed': sum(1 for r in toolroom_records
@@ -215,6 +233,7 @@ def _parse_uploads():
         toolroom_wos['open'] = (
             toolroom_wos['total'] - toolroom_wos['completed'] - toolroom_wos['cancelled']
         )
+        ppm_completion = summarise_ppm_completion(all_type_records)
 
     efacs_scrap = _parse_efacs_scrap_upload()
     oee_result = _parse_oee_uploads()
@@ -226,6 +245,7 @@ def _parse_uploads():
         'efacs_scrap': efacs_scrap,
         'mtbf': _parse_mtbf_upload(),
         'toolroom_wos': toolroom_wos,
+        'ppm_completion': ppm_completion,
     }
 
     return sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided, extras

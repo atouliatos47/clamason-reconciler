@@ -165,6 +165,13 @@ def save_run(result, period_label):
         'toolroom_wo_open': tw.get('open'),
     })
 
+    ppm = result.get('ppm_completion') or {}
+    row.update({
+        'ppm_total': ppm.get('total'),
+        'ppm_completed': ppm.get('completed'),
+        'ppm_completion_pct': ppm.get('pct'),
+    })
+
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -181,7 +188,8 @@ def save_run(result, period_label):
                      mtbf_days, mtbf_assets, mtbf_asset_count, mtbf_mttr_hrs,
                      mtbf_wait_hrs, mtbf_jobs, mtbf_downtime_hrs, mtbf_scopes,
                      toolroom_wo_count, toolroom_wo_completed, toolroom_wo_cancelled,
-                     toolroom_wo_open, oee_quality_source, efacs_scrap_qty, efacs_scrap_cost,
+                     toolroom_wo_open, ppm_total, ppm_completed, ppm_completion_pct,
+                     oee_quality_source, efacs_scrap_qty, efacs_scrap_cost,
                      oee_intended_hours, oee_utilization_vs_intended_pct,
                      oee_teep_vs_intended_pct, oee_intended_configured_count)
                 VALUES
@@ -197,7 +205,8 @@ def save_run(result, period_label):
                      %(mtbf_days)s, %(mtbf_assets)s, %(mtbf_asset_count)s, %(mtbf_mttr_hrs)s,
                      %(mtbf_wait_hrs)s, %(mtbf_jobs)s, %(mtbf_downtime_hrs)s, %(mtbf_scopes)s,
                      %(toolroom_wo_count)s, %(toolroom_wo_completed)s, %(toolroom_wo_cancelled)s,
-                     %(toolroom_wo_open)s, %(oee_quality_source)s, %(efacs_scrap_qty)s, %(efacs_scrap_cost)s,
+                     %(toolroom_wo_open)s, %(ppm_total)s, %(ppm_completed)s, %(ppm_completion_pct)s,
+                     %(oee_quality_source)s, %(efacs_scrap_qty)s, %(efacs_scrap_cost)s,
                      %(oee_intended_hours)s, %(oee_utilization_vs_intended_pct)s,
                      %(oee_teep_vs_intended_pct)s, %(oee_intended_configured_count)s)
                 ON CONFLICT (period) DO UPDATE SET
@@ -251,6 +260,9 @@ def save_run(result, period_label):
                     toolroom_wo_completed = EXCLUDED.toolroom_wo_completed,
                     toolroom_wo_cancelled = EXCLUDED.toolroom_wo_cancelled,
                     toolroom_wo_open = EXCLUDED.toolroom_wo_open,
+                    ppm_total = EXCLUDED.ppm_total,
+                    ppm_completed = EXCLUDED.ppm_completed,
+                    ppm_completion_pct = EXCLUDED.ppm_completion_pct,
                     oee_quality_source = EXCLUDED.oee_quality_source,
                     efacs_scrap_qty = EXCLUDED.efacs_scrap_qty,
                     efacs_scrap_cost = EXCLUDED.efacs_scrap_cost
@@ -288,7 +300,7 @@ def get_all_runs():
         # omission.
         'efacs_scrap_qty', 'efacs_scrap_cost',
         'oee_intended_hours', 'oee_utilization_vs_intended_pct',
-        'oee_teep_vs_intended_pct',
+        'oee_teep_vs_intended_pct', 'ppm_completion_pct',
     ]
     result = []
     for r in rows:
