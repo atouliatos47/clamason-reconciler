@@ -17,6 +17,7 @@
     width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh;
     display: flex; flex-direction: column; padding: 24px 0;
     border-right: 3px solid #95C11F;
+    position: sticky; top: 0; align-self: flex-start;
   }
   .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
   .sidebar-logo { width: 100%; height: auto; display: block; }
@@ -164,7 +165,9 @@ function hasOee(runs) {
 
 function oeeSection(latest, prev) {
   if (latest.oee_pct === null || latest.oee_pct === undefined) return '';
-  const weeks = latest.oee_week_count;
+  // oee_week_count is a leftover from the old weekly-upload workflow —
+  // it's always 1 now that OEE comes from a single monthly file, so it
+  // no longer belongs in a heading meant to say something informative.
   // Quality sits at ~100% either way — but why differs by source. On SFC's
   // own scrap field (barely populated) that's mostly "nothing was logged",
   // not "nothing was scrapped". On EFACS (the real works-order figure) it's
@@ -178,7 +181,7 @@ function oeeSection(latest, prev) {
       : '';
   return `
     <div class="machine-card">
-      <h3>OEE — ${weeks} week${weeks === 1 ? '' : 's'} uploaded${latest.oee_machine_count ? ', ' + latest.oee_machine_count + ' machines' : ''}</h3>
+      <h3>OEE — ${latest.oee_machine_count || '—'} machines</h3>
       <div class="kpi-row" style="margin-bottom:0;">
         <div class="kpi navy">
           <label>Availability</label>

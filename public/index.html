@@ -16,6 +16,7 @@
     width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh;
     display: flex; flex-direction: column; padding: 24px 0;
     border-right: 3px solid #95C11F;
+    position: sticky; top: 0; align-self: flex-start;
   }
   .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
   .sidebar-logo { width: 100%; height: auto; display: block; }
@@ -434,7 +435,7 @@ function renderOee(d) {
     : '';
 
   box.innerHTML = `
-    <h3>OEE — ${f.week_count} week${f.week_count === 1 ? '' : 's'}, ${f.machine_count} machines</h3>
+    <h3>OEE — ${f.machine_count} machines</h3>
     <div class="kpi-row">
       <div class="kpi"><label>Availability</label><div class="val">${f.availability_pct}%</div><div class="sub">${f.run_time_hrs.toLocaleString()}h run / ${f.net_avail_hrs.toLocaleString()}h net</div></div>
       <div class="kpi"><label>Performance</label><div class="val">${f.performance_pct}%</div><div class="sub">${f.performance_pct_raw > 100 ? 'raw ' + f.performance_pct_raw + '%, capped' : 'parts vs ideal'}</div></div>
