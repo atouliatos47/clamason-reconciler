@@ -107,7 +107,31 @@
   .filter-tab { padding: 6px 14px; border-radius: 14px; font-size: 11px; font-weight: bold; cursor: pointer; background: #f3f4f6; color: #555; border: none; }
   .filter-tab.active { background: #243547; color: white; }
 
+  .table-card-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #95C11F; margin-bottom: 16px; padding-bottom: 8px; }
+  .table-card-header h3 { border: none; margin: 0; padding: 0; }
+  .print-btn { background: white; color: #243547; border: 1.5px solid #243547; padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; }
+  .print-btn:hover { background: #f0f2f5; }
+  .print-header { display: none; }
+
   footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+
+  @media print {
+    body { background: white; display: block; }
+    .sidebar, .upload-section, .action-row, .filter-tabs, .print-btn, footer { display: none !important; }
+    .main { width: 100%; }
+    .container { padding: 0; }
+    .page-header { padding: 0 0 12px; border-bottom: 2px solid #243547; }
+    .print-header { display: block; margin: 16px 0; font-size: 12px; color: #555; }
+    .print-header strong { color: #243547; }
+    .kpi-row { break-inside: avoid; }
+    .table-card { break-inside: avoid-page; }
+    table { border: 1px solid #ddd; }
+    th { background: #243547 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    td { border-bottom: 1px solid #eee; }
+    .pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    tr { break-inside: avoid; }
+    @page { size: landscape; margin: 14mm; }
+  }
 </style>
 </head>
 <body>
@@ -184,8 +208,13 @@
 
     <div class="mttr-note" id="mttr-note"></div>
 
+    <div class="print-header" id="print-header"></div>
+
     <div class="table-card">
-      <h3>Work Order Detail</h3>
+      <div class="table-card-header">
+        <h3>Work Order Detail</h3>
+        <button class="print-btn" onclick="window.print()">🖨️ Print</button>
+      </div>
       <div class="filter-tabs" id="filter-tabs"></div>
       <table>
         <thead>
@@ -448,6 +477,21 @@ function renderFilterTabs(d) {
   document.getElementById('filter-tabs').innerHTML = tabs.map(t =>
     `<button class="filter-tab ${activeFilter===t.key?'active':''}" onclick="setFilter('${t.key}')">${t.label}</button>`
   ).join('');
+
+  // Rebuilt every time the filter changes, not just once — printing is
+  // WYSIWYG here (same 'jobs' array the on-screen table filters from),
+  // so the print header has to track whichever tab is currently active,
+  // not always describe the unfiltered 'All' view.
+  const activeLabel = tabs.find(t => t.key === activeFilter)?.label || 'All';
+  const dateVal = document.getElementById('save-date').value;
+  const dateStr = dateVal
+    ? new Date(dateVal + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  document.getElementById('print-header').innerHTML =
+    `<strong>Clamason — Daily Maintenance Check</strong><br>` +
+    `${dateStr}<br>` +
+    `Whole site — ${d.press_machine_wos} on SFC-tracked presses, ${d.sitewide_wos} on other equipment<br>` +
+    `Showing: ${activeLabel}`;
 }
 
 function setFilter(key) {
