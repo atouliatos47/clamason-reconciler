@@ -60,7 +60,11 @@
   .card .sub { font-size: 10.5px; color: #999; margin-top: 5px; line-height: 1.4; }
 
   .table-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
-  .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; }
+  .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin: 0; }
+  .card-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; user-select: none; }
+  .collapse-arrow { color: #95C11F; font-size: 12px; transition: transform 0.15s ease; }
+  .collapse-arrow.collapsed { transform: rotate(-90deg); }
+  .card-body.collapsed { display: none; }
 
   .filter-tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
   .filter-tab { padding: 6px 14px; border-radius: 14px; font-size: 11px; font-weight: bold; cursor: pointer; background: #f3f4f6; color: #555; border: none; }
@@ -148,41 +152,56 @@
     </div>
 
     <div class="table-card">
-      <h3>Unplanned Downtime Trend</h3>
-      <div class="filter-tabs" id="granularity-tabs">
-        <button class="filter-tab active" onclick="setGranularity('daily', this)">Daily</button>
-        <button class="filter-tab" onclick="setGranularity('weekly', this)">Weekly</button>
-        <button class="filter-tab" onclick="setGranularity('monthly', this)">Monthly</button>
+      <div class="card-header" onclick="toggleCard('trend')">
+        <h3>Unplanned Downtime Trend</h3>
+        <span class="collapse-arrow" id="trend-arrow">▼</span>
       </div>
-      <p class="hint">
-        Planned Offline and No Production Planned are excluded — they're the biggest numbers in the report
-        but they aren't lost time, and including them would flatten everything else into invisibility.
-      </p>
-      <canvas id="trend-chart"></canvas>
+      <div class="card-body" id="trend-body">
+        <div class="filter-tabs" id="granularity-tabs">
+          <button class="filter-tab active" onclick="event.stopPropagation(); setGranularity('daily', this)">Daily</button>
+          <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('weekly', this)">Weekly</button>
+          <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
+        </div>
+        <p class="hint">
+          Planned Offline and No Production Planned are excluded — they're the biggest numbers in the report
+          but they aren't lost time, and including them would flatten everything else into invisibility.
+        </p>
+        <canvas id="trend-chart"></canvas>
+      </div>
     </div>
 
     <div class="table-card">
-      <h3 id="table-title">Detail</h3>
-      <p class="hint">Click any row to see that period's downtime reasons below.</p>
-      <table>
-        <thead>
-          <tr>
-            <th>Period</th><th>Days</th><th>Unplanned</th><th>Maintenance</th>
-            <th>Toolroom</th><th>Other</th><th>% of Scheduled</th><th>Events</th>
-          </tr>
-        </thead>
-        <tbody id="trend-tbody"></tbody>
-      </table>
+      <div class="card-header" onclick="toggleCard('detail')">
+        <h3 id="table-title">Detail</h3>
+        <span class="collapse-arrow" id="detail-arrow">▼</span>
+      </div>
+      <div class="card-body" id="detail-body">
+        <p class="hint">Click any row to see that period's downtime reasons below.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Period</th><th>Days</th><th>Unplanned</th><th>Maintenance</th>
+              <th>Toolroom</th><th>Other</th><th>% of Scheduled</th><th>Events</th>
+            </tr>
+          </thead>
+          <tbody id="trend-tbody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="table-card">
-      <h3 id="pareto-title">Downtime Reasons</h3>
-      <table>
-        <thead>
-          <tr><th>Reason</th><th>Category</th><th># of Events</th><th>Hours</th><th>% of Total</th></tr>
-        </thead>
-        <tbody id="pareto-tbody"></tbody>
-      </table>
+      <div class="card-header" onclick="toggleCard('pareto')">
+        <h3 id="pareto-title">Downtime Reasons</h3>
+        <span class="collapse-arrow" id="pareto-arrow">▼</span>
+      </div>
+      <div class="card-body" id="pareto-body">
+        <table>
+          <thead>
+            <tr><th>Reason</th><th>Category</th><th># of Events</th><th>Hours</th><th>% of Total</th></tr>
+          </thead>
+          <tbody id="pareto-tbody"></tbody>
+        </table>
+      </div>
     </div>
 
   </div>
@@ -380,6 +399,27 @@ function renderPareto(b) {
   });
 }
 
+// Same pattern as daily-trend.html — persisted per card (not per page),
+// since these three grow at different rates and collapsing one
+// shouldn't touch the others.
+function toggleCard(id) {
+  const body = document.getElementById(id + '-body');
+  const arrow = document.getElementById(id + '-arrow');
+  const collapsed = body.classList.toggle('collapsed');
+  arrow.classList.toggle('collapsed', collapsed);
+  localStorage.setItem('sfc-daily-trend-collapsed-' + id, collapsed ? '1' : '0');
+}
+
+function restoreCardState() {
+  for (const id of ['trend', 'detail', 'pareto']) {
+    if (localStorage.getItem('sfc-daily-trend-collapsed-' + id) === '1') {
+      document.getElementById(id + '-body').classList.add('collapsed');
+      document.getElementById(id + '-arrow').classList.add('collapsed');
+    }
+  }
+}
+
+restoreCardState();
 load();
 </script>
 
