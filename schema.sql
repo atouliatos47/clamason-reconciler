@@ -282,3 +282,35 @@ CREATE TABLE IF NOT EXISTS sfc_daily_snapshots (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sfc_daily_snapshots_date ON sfc_daily_snapshots (date);
+
+-- One day's Daily UK OEE By Machine Tabular export. Deliberately stores
+-- raw summable hours/parts, not oee_pct/availability_pct/etc directly —
+-- OEE percentages can't be averaged across days any more than they can
+-- across weeks (see oee_parser.py's own long-standing warning on this,
+-- and the 17.8-point gap it documents between the two methods on real
+-- data). A weekly or monthly OEE Trend view needs to SUM these raw
+-- fields first and only then compute a ratio, exactly like every other
+-- OEE figure in this app already does — storing the ratio instead would
+-- make that impossible to do correctly later.
+--
+-- per_machine is the one exception: a per-press breakdown is only ever
+-- shown for a single selected day, never summed across days, so there's
+-- no equivalent trap in storing it pre-computed.
+CREATE TABLE IF NOT EXISTS oee_daily_snapshots (
+    id                      SERIAL PRIMARY KEY,
+    date                    DATE NOT NULL,
+    period                  TEXT,
+    machine_count           INTEGER,
+    total_avail_hrs         NUMERIC,
+    planned_down_hrs        NUMERIC,
+    net_avail_hrs           NUMERIC,
+    unplanned_down_hrs      NUMERIC,
+    run_time_hrs            NUMERIC,
+    total_parts             NUMERIC,
+    ideal_parts             NUMERIC,
+    scrap_parts             NUMERIC,
+    per_machine             JSONB,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_oee_daily_snapshots_date ON oee_daily_snapshots (date);

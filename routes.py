@@ -30,6 +30,7 @@ from daily import compute_daily_summary
 from daily_trend import (
     weekly_rollup, monthly_rollup,
     sfc_daily_rollup, sfc_weekly_rollup, sfc_monthly_rollup,
+    oee_daily_rollup, oee_weekly_rollup, oee_monthly_rollup,
 )
 from parsers.sfc_daily_downtime_pdf import parse_daily_downtime_pdf
 import db
@@ -458,6 +459,108 @@ def save_sfc_daily():
 
         db.save_sfc_daily_snapshot(summary, date)
         return jsonify({'saved': True, 'date': date, 'maintenance_hrs': summary['maintenance_hrs']})
+    except ValueError as e:
+        return jsonify({'error': str(e)})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/daily-oee')
+def daily_oee_view():
+    return send_from_directory('public', 'daily-oee.html')
+
+
+@bp.route('/daily-oee-trend')
+def daily_oee_trend_view():
+    return send_from_directory('public', 'daily-oee-trend.html')
+
+
+@bp.route('/api/daily-oee-trend')
+def daily_oee_trend():
+    """Saved oee_daily_snapshots plus weekly/monthly rollups, for the
+    Daily OEE Trend view. Read-only — same shape as /api/sfc-daily-trend.
+
+    Optional ?start=YYYY-MM-DD&end=YYYY-MM-DD narrows the window; both
+    inclusive, either can stand alone. Left off, returns the whole saved
+    history.
+
+    'raw' carries the snapshots as saved, per_machine included — the
+    rollups deliberately don't, since a per-press breakdown can't be
+    summed across days the way fleet hours can (which machines even
+    exist on a given day isn't consistent), so the trend page looks
+    per-machine detail up here by date instead, and only offers it at
+    daily granularity."""
+    try:
+        start = request.args.get('start') or None
+        end = request.args.get('end') or None
+        snapshots = db.get_oee_daily_snapshots(start_date=start, end_date=end)
+        return jsonify({
+            'daily': oee_daily_rollup(snapshots),
+            'weekly': oee_weekly_rollup(snapshots),
+            'monthly': oee_monthly_rollup(snapshots),
+            'raw': [{'date': s['date'], 'per_machine': s.get('per_machine', [])} for s in snapshots],
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/api/daily-oee-check', methods=['POST'])
+def daily_oee_check():
+    """Daily UK OEE By Machine Tabular check — entirely separate from
+    the monthly OEE upload on Monthly Check: own upload, own page, own
+    table (oee_daily_snapshots). Never auto-saves; /api/save-daily-oee
+    below is the only route that writes.
+
+    Reuses parse_oee_file() and aggregate_oee() completely unchanged —
+    a daily export has the identical column layout the weekly/monthly
+    ones already use (same COL_* positions in oee_parser.py), just a
+    24-hour period instead of a longer one, so nothing about the parser
+    itself needed to know this is a new upload type."""
+    try:
+        oee_file = request.files.get('oee_daily')
+        if not oee_file:
+            return jsonify({'error': 'Daily UK OEE By Machine Tabular file is required'})
+
+        with saved_upload(oee_file, 'oee_daily') as path:
+            records, date_range = parse_oee_file(path)
+        if not records:
+            return jsonify({'error': f"No OEE data found in '{oee_file.filename}'"})
+
+        result = aggregate_oee([records])
+        result['fleet']['period'] = date_range
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({'error': str(e)})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/api/save-daily-oee', methods=['POST'])
+def save_daily_oee():
+    """Deliberately separate from /api/daily-oee-check, same reasoning
+    as /api/save-sfc-daily: never auto-saves, and recomputes from the
+    uploaded file rather than trusting whatever the browser already
+    has, so the saved row can never drift from a fresh check."""
+    try:
+        date = request.form.get('date', '').strip()
+        if not date:
+            return jsonify({'error': 'date is required (YYYY-MM-DD)'})
+
+        oee_file = request.files.get('oee_daily')
+        if not oee_file:
+            return jsonify({'error': 'Daily UK OEE By Machine Tabular file is required'})
+
+        with saved_upload(oee_file, 'oee_daily') as path:
+            records, date_range = parse_oee_file(path)
+        if not records:
+            return jsonify({'error': f"No OEE data found in '{oee_file.filename}'"})
+
+        result = aggregate_oee([records])
+        db.save_oee_daily_snapshot(result, date_range, date)
+        return jsonify({'saved': True, 'date': date, 'oee_pct': result['fleet']['oee_pct']})
     except ValueError as e:
         return jsonify({'error': str(e)})
     except Exception as e:
