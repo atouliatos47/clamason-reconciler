@@ -498,3 +498,100 @@ def get_sfc_daily_snapshots(start_date=None, end_date=None):
             row['created_at'] = row['created_at'].isoformat()
         result.append(row)
     return result
+
+
+def save_oee_daily_snapshot(oee_result, date_range, date):
+    """Store one day's Daily UK OEE By Machine Tabular result.
+    oee_result is the dict returned by parsers.oee_parser.aggregate_oee()
+    (has 'fleet' and 'per_machine'); date_range is the report's own
+    period string from parse_oee_file()'s second return value; date is a
+    'YYYY-MM-DD' string (or a date object) chosen at save time — same as
+    every other daily snapshot in this app, never derived from the
+    report's own period. Re-saving the same date overwrites the previous
+    row rather than creating a duplicate.
+
+    Stores fleet's raw hours/parts fields, not its percentages — see the
+    schema comment on oee_daily_snapshots for why a percentage can't be
+    the thing a weekly/monthly rollup sums."""
+    fleet = oee_result.get('fleet') or {}
+    row = {
+        'date': date,
+        'period': date_range,
+        'machine_count': fleet.get('machine_count'),
+        'total_avail_hrs': fleet.get('total_avail_hrs'),
+        'planned_down_hrs': fleet.get('planned_down_hrs'),
+        'net_avail_hrs': fleet.get('net_avail_hrs'),
+        'unplanned_down_hrs': fleet.get('unplanned_down_hrs'),
+        'run_time_hrs': fleet.get('run_time_hrs'),
+        'total_parts': fleet.get('total_parts'),
+        'ideal_parts': fleet.get('ideal_parts'),
+        'scrap_parts': fleet.get('scrap_parts'),
+        'per_machine': json.dumps(oee_result.get('per_machine', [])),
+    }
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO oee_daily_snapshots
+                    (date, period, machine_count, total_avail_hrs,
+                     planned_down_hrs, net_avail_hrs, unplanned_down_hrs,
+                     run_time_hrs, total_parts, ideal_parts, scrap_parts,
+                     per_machine)
+                VALUES
+                    (%(date)s, %(period)s, %(machine_count)s, %(total_avail_hrs)s,
+                     %(planned_down_hrs)s, %(net_avail_hrs)s, %(unplanned_down_hrs)s,
+                     %(run_time_hrs)s, %(total_parts)s, %(ideal_parts)s, %(scrap_parts)s,
+                     %(per_machine)s)
+                ON CONFLICT (date) DO UPDATE SET
+                    period = EXCLUDED.period,
+                    machine_count = EXCLUDED.machine_count,
+                    total_avail_hrs = EXCLUDED.total_avail_hrs,
+                    planned_down_hrs = EXCLUDED.planned_down_hrs,
+                    net_avail_hrs = EXCLUDED.net_avail_hrs,
+                    unplanned_down_hrs = EXCLUDED.unplanned_down_hrs,
+                    run_time_hrs = EXCLUDED.run_time_hrs,
+                    total_parts = EXCLUDED.total_parts,
+                    ideal_parts = EXCLUDED.ideal_parts,
+                    scrap_parts = EXCLUDED.scrap_parts,
+                    per_machine = EXCLUDED.per_machine
+            """, row)
+        conn.commit()
+
+
+def get_oee_daily_snapshots(start_date=None, end_date=None):
+    """Saved OEE daily snapshots, oldest first — what the Daily OEE Trend
+    view reads. Optional start_date/end_date (both inclusive, 'YYYY-MM-DD'
+    strings). per_machine comes back from psycopg2 as a plain list
+    already — JSONB is adapted automatically, no json.loads() needed."""
+    query = "SELECT * FROM oee_daily_snapshots WHERE 1=1"
+    params = {}
+    if start_date:
+        query += " AND date >= %(start_date)s"
+        params['start_date'] = start_date
+    if end_date:
+        query += " AND date <= %(end_date)s"
+        params['end_date'] = end_date
+    query += " ORDER BY date ASC"
+
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+
+    numeric_fields = [
+        'total_avail_hrs', 'planned_down_hrs', 'net_avail_hrs',
+        'unplanned_down_hrs', 'run_time_hrs', 'total_parts',
+        'ideal_parts', 'scrap_parts',
+    ]
+    result = []
+    for r in rows:
+        row = dict(r)
+        for field in numeric_fields:
+            if row.get(field) is not None:
+                row[field] = float(row[field])
+        if row.get('date') is not None:
+            row['date'] = row['date'].isoformat()
+        if row.get('created_at') is not None:
+            row['created_at'] = row['created_at'].isoformat()
+        result.append(row)
+    return result

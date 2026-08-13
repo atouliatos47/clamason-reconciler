@@ -17,6 +17,12 @@ they roll up independently and neither is required for the other to work.
 from collections import OrderedDict
 from datetime import datetime, timedelta
 
+# Reused rather than reimplemented — see this module's own docstring on
+# why summed-then-ratioed beats averaged-percentages, and _compute()'s
+# docs for exactly what it does. A second implementation of the same
+# OEE math here would be precisely the trap this file exists to avoid.
+from parsers.oee_parser import _compute as _oee_compute
+
 # --- Agility Daily View fields ---------------------------------------------
 SUM_FIELDS = [
     'total_wos', 'press_machine_wos', 'sitewide_wos',
@@ -264,3 +270,76 @@ def sfc_monthly_rollup(snapshots):
     """snapshots: output of db.get_sfc_daily_snapshots(), oldest first.
     Returns one row per calendar month, oldest first."""
     return _rollup(snapshots, _month_key, _sfc_empty_bucket, _sfc_add_row, _sfc_finalize)
+
+
+# --- OEE Daily fields --------------------------------------------------
+# Every field here is a raw hours or parts count, summable across days —
+# deliberately not oee_pct/availability_pct/etc, which can't be. See
+# this module's docstring and oee_daily_snapshots' own schema comment.
+OEE_SUM_FIELDS = [
+    'total_avail_hrs', 'planned_down_hrs', 'net_avail_hrs',
+    'unplanned_down_hrs', 'run_time_hrs', 'total_parts',
+    'ideal_parts', 'scrap_parts',
+]
+
+
+def _oee_empty_bucket(key, label):
+    bucket = {
+        'key': key, 'label': label, 'days': 0,
+        'first_date': None, 'last_date': None, 'machine_count': 0,
+    }
+    for f in OEE_SUM_FIELDS:
+        bucket[f] = 0.0
+    return bucket
+
+
+def _oee_add_row(bucket, row):
+    bucket['days'] += 1
+
+    d = row.get('date')
+    if d is not None:
+        d = d if isinstance(d, str) else d.isoformat()
+        if bucket['first_date'] is None or d < bucket['first_date']:
+            bucket['first_date'] = d
+        if bucket['last_date'] is None or d > bucket['last_date']:
+            bucket['last_date'] = d
+
+    for f in OEE_SUM_FIELDS:
+        bucket[f] += row.get(f) or 0
+
+    # Machine count, like the SFC rollup's, is the max seen rather than
+    # summed — it's "how many presses this covers," not a quantity that
+    # accumulates across days.
+    bucket['machine_count'] = max(bucket['machine_count'], row.get('machine_count') or 0)
+
+
+def _oee_finalize(bucket):
+    for f in OEE_SUM_FIELDS:
+        bucket[f] = round(bucket[f], 2)
+
+    # oee_parser._compute() reads exactly the OEE_SUM_FIELDS keys above
+    # off `bucket` and returns availability_pct/performance_pct/
+    # quality_pct/oee_pct/utilization_pct/teep_pct/quality_unavailable —
+    # merged straight in, so a week or month gets the identical
+    # percentage fields a single day already has.
+    bucket.update(_oee_compute(bucket))
+    return bucket
+
+
+def oee_daily_rollup(snapshots):
+    """snapshots: output of db.get_oee_daily_snapshots(), oldest first.
+    One bucket per day — a single day gets exactly the same derived
+    percentage fields as a week or a month, computed the same way."""
+    return _rollup(snapshots, _day_key, _oee_empty_bucket, _oee_add_row, _oee_finalize)
+
+
+def oee_weekly_rollup(snapshots):
+    """snapshots: output of db.get_oee_daily_snapshots(), oldest first.
+    Returns one row per ISO week (Mon-Sun), oldest first."""
+    return _rollup(snapshots, _week_key, _oee_empty_bucket, _oee_add_row, _oee_finalize)
+
+
+def oee_monthly_rollup(snapshots):
+    """snapshots: output of db.get_oee_daily_snapshots(), oldest first.
+    Returns one row per calendar month, oldest first."""
+    return _rollup(snapshots, _month_key, _oee_empty_bucket, _oee_add_row, _oee_finalize)
