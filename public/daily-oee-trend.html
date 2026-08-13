@@ -291,12 +291,19 @@ function renderChart(list) {
     data: {
       labels: list.map(b => b.label),
       datasets: [
-        { type: 'line', label: 'OEE %', data: list.map(b => b.oee_pct),
-          borderColor: '#243547', backgroundColor: '#243547', borderWidth: 2.5, pointRadius: 4, yAxisID: 'y1' },
-        { type: 'line', label: 'Availability %', data: list.map(b => b.availability_pct),
-          borderColor: '#95C11F', backgroundColor: '#95C11F', borderWidth: 1.5, borderDash: [4,3], pointRadius: 3, yAxisID: 'y1' },
+        // All three as bars, not a line+bar mix — with only a handful
+        // of days saved so far, a line with one or two points just
+        // draws as a near-invisible dot next to a bar that fills the
+        // whole category. Three grouped bars read as three comparable
+        // figures from day one; once there's a real run of history,
+        // Chart.js still groups them the same way, just narrower as
+        // more days join the x-axis.
+        { type: 'bar', label: 'OEE %', data: list.map(b => b.oee_pct),
+          backgroundColor: '#243547', yAxisID: 'y1' },
+        { type: 'bar', label: 'Availability %', data: list.map(b => b.availability_pct),
+          backgroundColor: '#95C11F', yAxisID: 'y1' },
         { type: 'bar', label: 'Run Time (h)', data: list.map(b => b.run_time_hrs),
-          backgroundColor: 'rgba(217,119,6,0.35)', yAxisID: 'y', order: 2 },
+          backgroundColor: '#d97706', yAxisID: 'y' },
       ]
     },
     options: {
