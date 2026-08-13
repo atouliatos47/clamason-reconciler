@@ -217,6 +217,37 @@ let granularity = 'daily';
 let selectedIndex = null;
 let chart = null;
 
+// Self-contained rather than a third-party plugin — draws each bar's
+// value directly onto the canvas using Chart.js's own documented
+// plugin hooks, no external script or registration step involved. If
+// the bars themselves are rendering (they are, Chart.js core is
+// clearly working), this has no separate dependency that could fail
+// the same way the CDN plugin just did.
+const barValueLabels = {
+  id: 'barValueLabels',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    chart.data.datasets.forEach((dataset, di) => {
+      const meta = chart.getDatasetMeta(di);
+      if (meta.hidden) return;
+      meta.data.forEach((bar, i) => {
+        const value = dataset.data[i];
+        if (value === null || value === undefined) return;
+        const label = dataset.yAxisID === 'y'
+          ? Number(value).toFixed(1) + 'h'
+          : Number(value).toFixed(1) + '%';
+        ctx.save();
+        ctx.fillStyle = dataset.labelColor || dataset.backgroundColor;
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(label, bar.x, bar.y - 6);
+        ctx.restore();
+      });
+    });
+  },
+};
+
 const fmt = (v, d=1) => (v === null || v === undefined) ? '–' : Number(v).toFixed(d);
 const h = (v) => (v === null || v === undefined) ? '–' : Number(v).toFixed(1) + 'h';
 const pct = (v) => (v === null || v === undefined) ? '–' : Number(v).toFixed(1) + '%';
@@ -301,14 +332,16 @@ function renderChart(list) {
         { type: 'bar', label: 'OEE %', data: list.map(b => b.oee_pct),
           backgroundColor: '#243547', yAxisID: 'y1' },
         { type: 'bar', label: 'Availability %', data: list.map(b => b.availability_pct),
-          backgroundColor: '#95C11F', yAxisID: 'y1' },
+          backgroundColor: '#95C11F', labelColor: '#5a7a12', yAxisID: 'y1' },
         { type: 'bar', label: 'Run Time (h)', data: list.map(b => b.run_time_hrs),
           backgroundColor: '#d97706', yAxisID: 'y' },
       ]
     },
+    plugins: [barValueLabels],
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
+      layout: { padding: { top: 20 } },
       scales: {
         x: { grid: { display: false } },
         y: { beginAtZero: true, position: 'left', title: { display: true, text: 'Run Time (hours)' } },
