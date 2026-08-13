@@ -185,6 +185,13 @@
         <input type="file" id="efacs-file" accept=".xlsx,.xls" onchange="handleFile(this,'efacs','card-efacs','efacs-status')">
         <div class="file-status" id="efacs-status"></div>
       </div>
+      <div class="upload-card optional" id="card-ppm">
+        <h3>📅 Due Date Performance</h3>
+        <p>Agility export (AG3-205, Due Date view) — powers TPM Schedule Completion</p>
+        <label class="upload-btn" for="ppm-file">Choose File</label>
+        <input type="file" id="ppm-file" accept=".xlsx,.xls" onchange="handleFile(this,'ppm','card-ppm','ppm-status')">
+        <div class="file-status" id="ppm-status"></div>
+      </div>
     </div>
     <div class="error-box" id="error-box"></div>
     <div class="error-box" id="warning-box" style="background:#fef3c7;border-color:#d97706;color:#92400e;"></div>
@@ -260,6 +267,7 @@ const FILE_UI = {
   mtbf: { cardId: 'card-mtbf', statusId: 'mtbf-status' },
   oee: { cardId: 'card-oee', statusId: 'oee-status' },
   efacs: { cardId: 'card-efacs', statusId: 'efacs-status' },
+  ppm: { cardId: 'card-ppm', statusId: 'ppm-status' },
 };
 
 // Same reasoning as the Daily Check page: persist in-progress work to
@@ -388,6 +396,7 @@ async function runCheck() {
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
     if (files.oee) fd.append('oee_monthly', files.oee);
     if (files.efacs) fd.append('efacs_scrap', files.efacs);
+    if (files.ppm) fd.append('due_date_performance', files.ppm);
 
     const res = await fetch('/api/maintenance-check', { method: 'POST', body: fd });
     const d = await res.json();
@@ -550,6 +559,7 @@ async function generateReport() {
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
     if (files.oee) fd.append('oee_monthly', files.oee);
     if (files.efacs) fd.append('efacs_scrap', files.efacs);
+    if (files.ppm) fd.append('due_date_performance', files.ppm);
 
     const res = await fetch('/api/generate-report', { method: 'POST', body: fd });
 
@@ -608,6 +618,7 @@ async function saveRun() {
     if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
     if (files.oee) fd.append('oee_monthly', files.oee);
     if (files.efacs) fd.append('efacs_scrap', files.efacs);
+    if (files.ppm) fd.append('due_date_performance', files.ppm);
     fd.append('period_label', label);
 
     const res = await fetch('/api/save-run', { method: 'POST', body: fd });
