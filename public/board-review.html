@@ -622,6 +622,69 @@ function otherContents(entries, shown) {
   return entries.slice(shown).sort((a, b) => b[1] - a[1]);
 }
 
+// The "Other" bar's tooltip can run to a title line, a value line, and
+// up to 9 breakdown lines — comfortably taller than the chart it lives
+// in. Chart.js's default tooltip draws inside the canvas itself, so
+// .chart-box's overflow:hidden (a backstop against the canvas
+// overflowing its card in other ways, not built with this in mind)
+// clips it before anyone can read the bottom half. Rendering to a real
+// DOM element appended to <body> sidesteps that entirely — nothing
+// this attaches to can clip it, because it isn't nested inside any of
+// this page's cards at all.
+function externalTooltipHandler(context) {
+  const { chart, tooltip } = context;
+  let el = document.getElementById('chartjs-tooltip');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'chartjs-tooltip';
+    el.style.cssText = `
+      position: fixed; pointer-events: none; z-index: 9999;
+      background: #243547; color: white; border-radius: 6px;
+      padding: 8px 12px; font-family: Arial, sans-serif; font-size: 11px;
+      line-height: 1.5; box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      max-width: 280px; max-height: 320px; overflow-y: auto;
+      opacity: 0; transition: opacity 0.1s ease;
+    `;
+    document.body.appendChild(el);
+  }
+
+  if (tooltip.opacity === 0) {
+    el.style.opacity = 0;
+    return;
+  }
+
+  const lines = [];
+  (tooltip.title || []).forEach(t => lines.push(`<div style="font-weight:bold;color:#95C11F;margin-bottom:2px">${t}</div>`));
+  (tooltip.body || []).forEach(b => {
+    b.lines.forEach(line => lines.push(`<div>${line}</div>`));
+    (b.after || []).forEach(line => lines.push(`<div style="color:#C7CFD6">${line}</div>`));
+  });
+  el.innerHTML = lines.join('');
+
+  // Positioned from the CANVAS's real screen location, since caretX/Y
+  // are relative to the canvas, not the page — this is the one part
+  // that's genuinely different from a normal in-canvas tooltip, not
+  // just where it's rendered.
+  const rect = chart.canvas.getBoundingClientRect();
+  let left = rect.left + tooltip.caretX + 12;
+  let top = rect.top + tooltip.caretY;
+
+  // Clamped to the viewport, not just freed from the card — a tooltip
+  // that escapes .chart-box only to run off the browser window's own
+  // right edge (this chart sits in the rightmost of three columns)
+  // would trade one clipping problem for another.
+  const elRect = el.getBoundingClientRect();
+  const tooltipWidth = elRect.width || 280;
+  const tooltipHeight = elRect.height || 100;
+  if (left + tooltipWidth > window.innerWidth - 8) left = rect.left + tooltip.caretX - tooltipWidth - 12;
+  if (top + tooltipHeight > window.innerHeight - 8) top = window.innerHeight - tooltipHeight - 8;
+  if (top < 8) top = 8;
+
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+  el.style.opacity = 1;
+}
+
 function reasonBars(id, entries, colour, total, extras) {
   // Top 4 plus an explicit "Other" — dropping the tail would make the
   // column look smaller than the department's actual downtime.
@@ -678,7 +741,14 @@ function reasonBars(id, entries, colour, total, extras) {
       // the longest bar.
       layout: { padding: { top: 4, bottom: 4, left: 2, right: 36 } },
       plugins: { legend: { display: false },
-        tooltip: { callbacks: {
+        tooltip: {
+          // enabled:false stops Chart.js drawing inside the canvas at
+          // all; external takes over rendering completely, using the
+          // exact same title/label/afterBody callbacks below to build
+          // its content — only where it renders changes, not what.
+          enabled: false,
+          external: externalTooltipHandler,
+          callbacks: {
           // Full name from the bar itself, not from an index into
           // `entries` — after sorting those no longer correspond.
           title: c => (bars[c[0].dataIndex] || {}).full || c[0].label,
