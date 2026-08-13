@@ -333,22 +333,28 @@ function render() {
     gauge('g-woT', 'Tools Awaiting Repair', toolWoNote) +
     gauge('g-tool', 'Downtime (SFC)', `${mb.reduce((s, m) => s + (m.tool_events || 0), 0)} tool-related events<br>no target set`);
 
-  // MTBF is the headline: how long plant runs between failures. MTTR and
-  // MTTF sit alongside as the two halves it decomposes into —
-  // MTBF = MTTF + MTTR — so the card carries the whole cycle rather than
-  // one slice of it.
+  // MTTF is the headline now, in hours, with a real target (400h) —
+  // matching the board's own "Number of Full TPM schedules..." row
+  // exactly, which names MTTF specifically, not MTBF. MTBF was the
+  // headline before this: MTBF = MTTF + MTTR, the whole cycle rather
+  // than just the running portion, so it's kept in the note as
+  // useful context, just no longer the number the ring itself reads
+  // against a confirmed target.
   //
-  // MTTF is shown to 2dp deliberately. Repair time is trivial next to
-  // running time, so at 1dp it renders identical to MTBF and looks like
-  // a duplicated number rather than a derived one.
+  // mttfHrs computed here rather than inside the note IIFE below, so
+  // the ring() call further down can use the exact same number — one
+  // calculation, not two copies of the same subtraction that could
+  // quietly drift apart.
+  const mtbfHrs = d.mtbf_days == null ? null : d.mtbf_days * 24;
+  const mttfHrs = (mtbfHrs == null || d.mtbf_mttr_hrs == null) ? null : mtbfHrs - d.mtbf_mttr_hrs;
+
   const mtbfNote = d.mtbf_mttr_hrs == null ? 'not uploaded' : (() => {
-    const mtbfHrs = d.mtbf_days == null ? null : d.mtbf_days * 24;
-    const mttf = mtbfHrs == null ? null : (mtbfHrs - d.mtbf_mttr_hrs) / 24;
-    return `MTTF ${mttf == null ? '–' : fmt(mttf, 2) + 'd'} · MTTR ${fmt(d.mtbf_mttr_hrs, 2)}h`
+    return `target ${TARGETS.mttf}h · tick on ring<br>`
+      + `MTBF ${d.mtbf_days == null ? '–' : fmt(d.mtbf_days, 1) + 'd'} · MTTR ${fmt(d.mtbf_mttr_hrs, 2)}h`
       + `<br>wait ${fmt(d.mtbf_wait_hrs, 1)}h · ${d.mtbf_assets} of ${d.mtbf_asset_count} assets`;
   })();
   const maintGauges =
-    gauge('g-mtbf', 'MTBF', mtbfNote) +
+    gauge('g-mtbf', 'MTTF', mtbfNote) +
     gauge('g-fault', 'Downtime (SFC)', d.gap_pct == null
       ? `Agility ${hrs(d.agility_maintenance_hrs)} · no SFC file this run<br>no target set`
       : `Agility ${hrs(d.agility_maintenance_hrs)} · ${fmt(100 - d.gap_pct, 1)}% covered<br>no target set`) +
@@ -418,7 +424,13 @@ function render() {
   ring('g-woT', null, toolOpen == null ? '–' : String(toolOpen),
     toolOpen != null && toolOpen > TOOLROOM_BACKLOG_TARGET ? '#c0392b' : '#bf7d2c');
   ring('g-tool', null, siteTool.toFixed(0) + 'h', '#c0392b');
-  ring('g-mtbf', null, d.mtbf_days == null ? '–' : fmt(d.mtbf_days, 1) + 'd', '#2e6b4f');
+  // Same "% of target" trick as Run Time's gauge — 400h isn't a natural
+  // 0-100 scale, so it's expressed as progress toward that target
+  // instead, capped at 100 for the fill (the actual hours are what's
+  // printed in the ring and the note either way, so running past
+  // target is still visible, just not as an overfull ring).
+  ring('g-mtbf', mttfHrs == null ? null : Math.min(100, mttfHrs / TARGETS.mttf * 100),
+    mttfHrs == null ? '–' : Math.round(mttfHrs).toLocaleString() + 'h', '#2e6b4f', 100);
   ring('g-fault', null, siteFault.toFixed(0) + 'h', '#c0392b');
   // Real target arc now — confirmed against the board's own established
   // "Number of Full TPM schedules completed to plan (%)" row (>90%),
@@ -788,7 +800,7 @@ function reasonBars(id, entries, colour, total, extras) {
 // Targets. OEE and Run Time have one agreed — everything else here is a
 // raw quantity (hours, work-order counts, days between failures) with no
 // number anyone has committed to yet.
-const TARGETS = { oee: 70, runTime: 2000, ppmCompletion: 90 };
+const TARGETS = { oee: 70, runTime: 2000, ppmCompletion: 90, mttf: 400 };
 
 /**
  * pct === null means "this value has no target".
