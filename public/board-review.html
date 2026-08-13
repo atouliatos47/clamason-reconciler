@@ -354,7 +354,7 @@ function render() {
       : `Agility ${hrs(d.agility_maintenance_hrs)} · ${fmt(100 - d.gap_pct, 1)}% covered<br>no target set`) +
     gauge('g-ppm', 'TPM Completion', d.ppm_completion_pct == null
       ? 'not uploaded'
-      : `${d.ppm_completed} of ${d.ppm_total} scheduled PPM jobs<br>no target set`);
+      : `target ${TARGETS.ppmCompletion}% · tick on ring<br>${d.ppm_completed} of ${d.ppm_total} scheduled PPM jobs`);
 
   document.getElementById('slide').innerHTML = `
     <div class="slide-head">
@@ -420,14 +420,13 @@ function render() {
   ring('g-tool', null, siteTool.toFixed(0) + 'h', '#c0392b');
   ring('g-mtbf', null, d.mtbf_days == null ? '–' : fmt(d.mtbf_days, 1) + 'd', '#2e6b4f');
   ring('g-fault', null, siteFault.toFixed(0) + 'h', '#c0392b');
-  // Plain frame, not a target arc — same reasoning as the toolroom
-  // backlog gauge: no confirmed board target for this one exists yet,
-  // and drawing an arc against a number nobody's approved would imply
-  // a benchmark that isn't real. Green to match MTBF's good-news
-  // framing (high completion is the desired direction, same as MTBF),
-  // not a red/green threshold judgement — there's no confirmed
-  // threshold to judge it against.
-  ring('g-ppm', null, d.ppm_completion_pct == null ? '–' : fmt(d.ppm_completion_pct, 0) + '%', '#2e6b4f');
+  // Real target arc now — confirmed against the board's own established
+  // "Number of Full TPM schedules completed to plan (%)" row (>90%),
+  // not a guess. Was a plain frame before this: no confirmed target
+  // existed yet, and drawing an arc against a number nobody'd approved
+  // would have implied a benchmark that wasn't real.
+  ring('g-ppm', d.ppm_completion_pct, d.ppm_completion_pct == null ? '–' : fmt(d.ppm_completion_pct, 0) + '%',
+    '#2e6b4f', TARGETS.ppmCompletion);
 
   // Only surface unclassified codes when they're material. The strip is a
   // safeguard for the incoming SFC code list — a new 'MA - Fault - Robot'
@@ -789,7 +788,7 @@ function reasonBars(id, entries, colour, total, extras) {
 // Targets. OEE and Run Time have one agreed — everything else here is a
 // raw quantity (hours, work-order counts, days between failures) with no
 // number anyone has committed to yet.
-const TARGETS = { oee: 70, runTime: 2000 };
+const TARGETS = { oee: 70, runTime: 2000, ppmCompletion: 90 };
 
 /**
  * pct === null means "this value has no target".
