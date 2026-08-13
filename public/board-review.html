@@ -300,7 +300,9 @@ function render() {
   const oeeGauges =
     gauge('g-oee', 'OEE', d.oee_pct == null ? 'not uploaded'
       : `target ${TARGETS.oee}% · tick on ring<br>${d.oee_machine_count || '—'} machines${qualityViaEfacs}`) +
-    gauge('g-prod', 'Downtime (SFC)', `production-owned reasons only<br>no target set`);
+    gauge('g-prod', 'Downtime (SFC)', `production-owned reasons only<br>no target set`) +
+    gauge('g-runtime', 'Run Time', d.oee_run_hrs == null ? 'not uploaded'
+      : `target ${TARGETS.runTime.toLocaleString()}h · tick on ring<br>${fmt(d.oee_run_hrs / TARGETS.runTime * 100, 0)}% of target`);
 
   // Toolmaker-craft work orders. This card used to show
   // machine_breakdown.wo_count, which is the MAINTENANCE figure — the
@@ -396,6 +398,16 @@ function render() {
   //
   // The by-owner total is still on the chart above, in its header.
   ring('g-prod', null, prodOwn.toFixed(0) + 'h', '#c0392b');
+  // Run Time has a real target (2000h) but isn't naturally a 0-100
+  // percentage the way OEE is — expressed here as % of that target
+  // instead, same trick used for the target itself: target=100 because
+  // 2000h simply *is* the top of this particular scale. Capped at 100
+  // for the fill (running past target overflows the ring otherwise) the
+  // same way Performance% is already capped elsewhere on this page —
+  // the actual hours are what's printed in the centre and in the note,
+  // so exceeding target is still visible, just not as an overfull ring.
+  ring('g-runtime', d.oee_run_hrs == null ? null : Math.min(100, d.oee_run_hrs / TARGETS.runTime * 100),
+    d.oee_run_hrs == null ? '–' : Math.round(d.oee_run_hrs).toLocaleString() + 'h', '#3d6491', 100);
   // Plain frame, not a target arc — ring()'s own doc explains why: a
   // filled arc claims a proportion, and a count against a ceiling target
   // doesn't have the same 'more fill = more good' meaning a percentage
@@ -772,10 +784,10 @@ function reasonBars(id, entries, colour, total, extras) {
   }));
 }
 
-// Targets. Only OEE has one agreed so far — everything else here is a
+// Targets. OEE and Run Time have one agreed — everything else here is a
 // raw quantity (hours, work-order counts, days between failures) with no
 // number anyone has committed to yet.
-const TARGETS = { oee: 70 };
+const TARGETS = { oee: 70, runTime: 2000 };
 
 /**
  * pct === null means "this value has no target".
