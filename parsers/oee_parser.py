@@ -325,9 +325,24 @@ def aggregate_oee(weekly_records):
 
     per_machine = []
     for acc in by_machine.values():
+        # Full precision kept here deliberately — previously this
+        # rounded net_avail_hrs/run_time_hrs/etc to 2dp before adding
+        # oee_pct below, which computes from the UNROUNDED acc. That
+        # made the returned row internally inconsistent: its own
+        # displayed hours didn't actually match what produced its own
+        # oee_pct. Invisible as long as nothing ever recomputed a ratio
+        # from a machine's stored raw fields — but the Daily OEE
+        # weekly/monthly rollup does exactly that (summing a machine's
+        # hours across several days, then computing one ratio, same
+        # principle as everywhere else in this file), and re-deriving
+        # from pre-rounded hours doesn't reproduce the original
+        # percentage. Confirmed on real data: several machines were off
+        # by 0.1-0.2 points at the 1dp precision the app displays.
+        # Every consumer already applies its own display rounding
+        # (fmt()/.toFixed() in every frontend that reads this), so nothing
+        # downstream needs 2dp-pre-rounded hours — they were never the
+        # right thing to persist in the first place.
         row = dict(acc)
-        for f in _TIME_FIELDS:
-            row[f] = round(row[f], 2)
         row.update(_compute(acc))
         row.update(_compute_vs_intended(acc, row['oee_pct']))
         per_machine.append(row)

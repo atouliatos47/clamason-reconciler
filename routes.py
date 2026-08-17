@@ -485,12 +485,14 @@ def daily_oee_trend():
     inclusive, either can stand alone. Left off, returns the whole saved
     history.
 
-    'raw' carries the snapshots as saved, per_machine included — the
-    rollups deliberately don't, since a per-press breakdown can't be
-    summed across days the way fleet hours can (which machines even
-    exist on a given day isn't consistent), so the trend page looks
-    per-machine detail up here by date instead, and only offers it at
-    daily granularity."""
+    Per-machine detail lives directly on each daily/weekly/monthly
+    bucket now (see daily_trend.py's _oee_finalize) — each machine's
+    figures summed across every day in that bucket, then computed as
+    one ratio, same principle as every other OEE number in this app.
+    No separate 'raw' field needed any more; carrying every snapshot's
+    full per-machine breakdown a second time here would only grow
+    unbounded as more days get saved, duplicating data the buckets
+    already provide more efficiently."""
     try:
         start = request.args.get('start') or None
         end = request.args.get('end') or None
@@ -499,7 +501,6 @@ def daily_oee_trend():
             'daily': oee_daily_rollup(snapshots),
             'weekly': oee_weekly_rollup(snapshots),
             'monthly': oee_monthly_rollup(snapshots),
-            'raw': [{'date': s['date'], 'per_machine': s.get('per_machine', [])} for s in snapshots],
         })
     except Exception as e:
         import traceback
