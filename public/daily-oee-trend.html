@@ -193,6 +193,7 @@
         <span class="collapse-arrow" id="machines-arrow">▼</span>
       </div>
       <div class="card-body" id="machines-body">
+        <p class="hint" style="margin-bottom:4px;">🔴 below 50%   🟡 50–69%   🟢 70%+ (target)</p>
         <p class="hint" id="machines-hint"></p>
         <table>
           <thead>
@@ -387,7 +388,7 @@ function renderTable(list) {
 
 function oeePill(p) {
   if (p == null) return '–';
-  const cls = p >= 55 ? 'pill-green' : p >= 30 ? 'pill-amber' : 'pill-red';
+  const cls = p >= 70 ? 'pill-green' : p >= 50 ? 'pill-amber' : 'pill-red';
   return `<span class="pill ${cls}">${fmt(p, 1)}%</span>`;
 }
 
