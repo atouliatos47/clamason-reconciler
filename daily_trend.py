@@ -60,7 +60,13 @@ def _day_key(date_obj):
 def _week_key(date_obj):
     iso_year, iso_week, _ = date_obj.isocalendar()
     monday = date_obj - timedelta(days=date_obj.weekday())
-    return f'{iso_year}-W{iso_week:02d}', monday.isoformat()
+    # Both the week number and the actual start date in the label —
+    # some people think in "week 33", others in "week of 10 Aug", and
+    # showing both avoids anyone needing to convert between the two in
+    # their head. Shared by all three trend pages (Agility Daily,
+    # SFC Daily, OEE Daily), so this one change reaches all of them,
+    # not just whichever page prompted it.
+    return f'{iso_year}-W{iso_week:02d}', f'Week {iso_week} ({monday.strftime("%d %b")})'
 
 
 def _month_key(date_obj):
