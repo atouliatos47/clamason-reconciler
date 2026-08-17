@@ -143,13 +143,14 @@
 
   <div class="upload-section">
     <h2>Upload Today's Daily OEE</h2>
-    <p>The "Daily UK OEE By Machine Tabular (Hours)" export from SFC — same column layout as the Monthly Check page's OEE upload, just a single day's period instead of a month.</p>
+    <p>The "Daily UK OEE By Machine Tabular (Hours)" export from SFC — same column layout as the Monthly Check page's OEE upload, just a single day's period instead of a month. <strong>One report per upload</strong> — for several days, run and save each one individually rather than selecting multiple files at once.</p>
     <div class="upload-card" id="card-oee">
       <h3>📊 Daily UK OEE By Machine</h3>
       <p>.xls export, whole site, one day</p>
       <label class="upload-btn" for="oee-file">Choose File</label>
       <input type="file" id="oee-file" accept=".xls,.xlsx" onchange="handleFile(this)">
       <div class="file-status" id="oee-status"></div>
+      <div class="restored-note" id="multi-file-note"></div>
     </div>
     <div class="error-box" id="error-box"></div>
     <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Check</button>
@@ -297,6 +298,22 @@ function handleFile(input) {
   document.getElementById('card-oee').classList.add('done');
   document.getElementById('oee-status').textContent = '✓ ' + f.name;
   document.getElementById('run-btn').disabled = false;
+
+  // input lacks the 'multiple' attribute on purpose — this page is one
+  // day, one file, by design (see runCheck/saveDailyOee, both built
+  // around a single 'date' and a single 'file'). If someone selects
+  // several anyway, the browser still only gives us one at a time here,
+  // so rather than silently process just the first with no explanation,
+  // say so plainly.
+  const noteEl = document.getElementById('multi-file-note');
+  if (input.files.length > 1) {
+    noteEl.innerHTML = `<strong>Only "${f.name}" was used</strong> — this page takes one report at a time. ` +
+      `The other ${input.files.length - 1} file${input.files.length - 1 === 1 ? '' : 's'} you selected ${input.files.length - 1 === 1 ? 'was' : 'were'} not processed. ` +
+      `For multiple days, run and save each one separately.`;
+    noteEl.style.display = 'block';
+  } else {
+    noteEl.style.display = 'none';
+  }
 }
 
 async function runCheck() {
