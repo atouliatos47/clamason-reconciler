@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Clamason — Daily OEE Trend</title>
+<title>Clamason — Daily Trend</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
@@ -48,17 +48,6 @@
   .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; display: none; }
   .empty-note { background: white; border-radius: 10px; padding: 24px; text-align: center; color: #888; font-size: 13px; margin-bottom: 24px; display: none; }
 
-  .scope-pill { display: inline-block; background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 6px 14px; border-radius: 14px; margin-bottom: 16px; }
-
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
-  .card { background: white; border-radius: 10px; padding: 16px 18px; border-top: 3px solid #95C11F; }
-  .card.run   { border-top-color: #d97706; }
-  .card.avail { border-top-color: #243547; }
-  .card.qual  { border-top-color: #dc2626; }
-  .card h4 { font-size: 10.5px; color: #667; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
-  .card .value { font-size: 25px; font-weight: bold; color: #243547; }
-  .card .sub { font-size: 10.5px; color: #999; margin-top: 5px; line-height: 1.4; }
-
   .table-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
   .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin: 0; }
   .card-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; user-select: none; }
@@ -76,16 +65,6 @@
   th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
   td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
   tr:hover td { background: #fafafa; }
-  tbody tr.selectable { cursor: pointer; }
-  tbody tr.selected td { background: #f2f7e4; font-weight: bold; }
-  .num { text-align: right; }
-
-  .pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; display: inline-block; white-space: nowrap; }
-  .pill-green { background: #eef4ea; color: #3f6b1a; }
-  .pill-amber { background: #fef3c7; color: #92400e; }
-  .pill-red { background: #fee2e2; color: #dc2626; }
-
-  .hint { font-size: 11px; color: #999; margin-bottom: 12px; }
 
   footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
 </style>
@@ -103,11 +82,11 @@
     <a class="nav-item" href="/teep">TEEP</a>
     <a class="nav-item" href="/board-review">Board Review</a>
     <a class="nav-item" href="/daily">Daily Check</a>
-    <a class="nav-item" href="/daily-trend">Daily Trend</a>
+    <a class="nav-item active" href="/daily-trend">Daily Trend</a>
     <a class="nav-item" href="/sfc-daily">SFC Daily</a>
     <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
     <a class="nav-item" href="/daily-oee">Daily OEE</a>
-    <a class="nav-item active" href="/daily-oee-trend">Daily OEE Trend</a>
+    <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
   </nav>
   <div class="sidebar-footer">Internal Tool</div>
 </div>
@@ -115,94 +94,43 @@
 <div class="main">
 
 <div class="page-header">
-  <h1>Daily OEE Trend</h1>
-  <p>Rolled up from saved Daily OEE snapshots</p>
+  <h1>Daily Trend</h1>
+  <p>Rolled up from saved Daily Check snapshots</p>
 </div>
 
 <div class="container">
 
   <div class="error-box" id="error-box"></div>
-  <div class="empty-note" id="empty-note">
-    No saved OEE snapshots yet — head to <a href="/daily-oee">Daily OEE</a>, run a check, and hit Save to start building history here.
+  <div class="empty-note" id="empty-note">No saved snapshots yet — head to <a href="/daily">Daily Check</a>, run a check, and hit Save to start building history here.</div>
+
+  <div class="table-card">
+    <div class="card-header" onclick="toggleCard('trend')">
+      <h3>Trend</h3>
+      <span class="collapse-arrow" id="trend-arrow">▼</span>
+    </div>
+    <div class="card-body" id="trend-body">
+      <div class="filter-tabs" id="granularity-tabs">
+        <button class="filter-tab active" onclick="event.stopPropagation(); setGranularity('daily', this)">Daily</button>
+        <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('weekly', this)">Weekly</button>
+        <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
+      </div>
+      <canvas id="trend-chart"></canvas>
+    </div>
   </div>
 
-  <div id="content" style="display:none;">
-
-    <div class="scope-pill" id="scope-pill"></div>
-
-    <div class="cards">
-      <div class="card">
-        <h4>Fleet OEE</h4>
-        <div class="value" id="c-oee">–</div>
-        <div class="sub" id="c-oee-sub"></div>
-      </div>
-      <div class="card run">
-        <h4>Run Time</h4>
-        <div class="value" id="c-run">–</div>
-        <div class="sub" id="c-run-sub"></div>
-      </div>
-      <div class="card avail">
-        <h4>Availability</h4>
-        <div class="value" id="c-avail">–</div>
-        <div class="sub">Run ÷ Net Avail</div>
-      </div>
-      <div class="card qual">
-        <h4>Quality</h4>
-        <div class="value" id="c-qual">–</div>
-        <div class="sub" id="c-qual-sub"></div>
-      </div>
+  <div class="table-card">
+    <div class="card-header" onclick="toggleCard('detail')">
+      <h3 id="table-title">Daily Detail</h3>
+      <span class="collapse-arrow" id="detail-arrow">▼</span>
     </div>
-
-    <div class="table-card">
-      <div class="card-header" onclick="toggleCard('trend')">
-        <h3>OEE &amp; Run Time Trend</h3>
-        <span class="collapse-arrow" id="trend-arrow">▼</span>
-      </div>
-      <div class="card-body" id="trend-body">
-        <div class="filter-tabs" id="granularity-tabs">
-          <button class="filter-tab active" onclick="event.stopPropagation(); setGranularity('daily', this)">Daily</button>
-          <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('weekly', this)">Weekly</button>
-          <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
-        </div>
-        <canvas id="trend-chart"></canvas>
-      </div>
+    <div class="card-body" id="detail-body">
+      <table>
+        <thead>
+          <tr><th>Period</th><th>Total WOs</th><th>Breakdowns</th><th>Planned Completion</th><th>MTTR</th><th>Project/CI Open</th></tr>
+        </thead>
+        <tbody id="trend-tbody"></tbody>
+      </table>
     </div>
-
-    <div class="table-card">
-      <div class="card-header" onclick="toggleCard('detail')">
-        <h3 id="table-title">Detail</h3>
-        <span class="collapse-arrow" id="detail-arrow">▼</span>
-      </div>
-      <div class="card-body" id="detail-body">
-        <p class="hint">Click any row to see that period's OEE by press below.</p>
-        <table>
-          <thead>
-            <tr>
-              <th>Period</th><th>Days</th><th class="num">OEE %</th><th class="num">Availability %</th>
-              <th class="num">Quality %</th><th class="num">Run Time</th><th class="num">Machines</th>
-            </tr>
-          </thead>
-          <tbody id="trend-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="table-card">
-      <div class="card-header" onclick="toggleCard('machines')">
-        <h3 id="machines-title">OEE by Press</h3>
-        <span class="collapse-arrow" id="machines-arrow">▼</span>
-      </div>
-      <div class="card-body" id="machines-body">
-        <p class="hint" id="machines-hint"></p>
-        <table>
-          <thead>
-            <tr><th>Machine</th><th class="num">OEE %</th><th class="num">Run Time</th><th class="num">Availability %</th><th class="num">Quality %</th></tr>
-          </thead>
-          <tbody id="machines-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-
   </div>
 
 </div>
@@ -212,226 +140,122 @@
 </div>
 
 <script>
-let DATA = { daily: [], weekly: [], monthly: [] };
+let trendData = null;
 let granularity = 'daily';
-let selectedIndex = null;
 let chart = null;
 
-// Self-contained rather than a third-party plugin — draws each bar's
-// value directly onto the canvas using Chart.js's own documented
-// plugin hooks, no external script or registration step involved. If
-// the bars themselves are rendering (they are, Chart.js core is
-// clearly working), this has no separate dependency that could fail
-// the same way the CDN plugin just did.
-const barValueLabels = {
-  id: 'barValueLabels',
-  afterDatasetsDraw(chart) {
-    const ctx = chart.ctx;
-    chart.data.datasets.forEach((dataset, di) => {
-      const meta = chart.getDatasetMeta(di);
-      if (meta.hidden) return;
-      meta.data.forEach((bar, i) => {
-        const value = dataset.data[i];
-        if (value === null || value === undefined) return;
-        const label = dataset.yAxisID === 'y'
-          ? Number(value).toFixed(1) + 'h'
-          : Number(value).toFixed(1) + '%';
-        ctx.save();
-        ctx.fillStyle = dataset.labelColor || dataset.backgroundColor;
-        ctx.font = 'bold 11px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(label, bar.x, bar.y - 6);
-        ctx.restore();
-      });
-    });
-  },
-};
-
-const fmt = (v, d=1) => (v === null || v === undefined) ? '–' : Number(v).toFixed(d);
-const h = (v) => (v === null || v === undefined) ? '–' : Number(v).toFixed(1) + 'h';
-const pct = (v) => (v === null || v === undefined) ? '–' : Number(v).toFixed(1) + '%';
-
-async function load() {
+async function loadTrend() {
   try {
-    const res = await fetch('/api/daily-oee-trend');
-    const json = await res.json();
-    if (json.error) return showError(json.error);
-
-    DATA = json;
-    if (!DATA.daily.length) {
+    const res = await fetch('/api/daily-trend');
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    trendData = d;
+    if (!d.daily.length) {
       document.getElementById('empty-note').style.display = 'block';
       return;
     }
-    document.getElementById('content').style.display = 'block';
-    render();
+    renderAll();
   } catch (e) {
-    showError(e.message);
+    const eb = document.getElementById('error-box');
+    eb.style.display = 'block';
+    eb.textContent = 'Error loading trend data: ' + e.message;
   }
-}
-
-function showError(msg) {
-  const box = document.getElementById('error-box');
-  box.textContent = msg;
-  box.style.display = 'block';
 }
 
 function setGranularity(g, btn) {
   granularity = g;
-  selectedIndex = null;
-  document.querySelectorAll('#granularity-tabs .filter-tab')
-    .forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#granularity-tabs .filter-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  render();
+  renderAll();
 }
 
-function rows() { return DATA[granularity] || []; }
+function formatUKDate(isoDate) {
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
+}
 
-function render() {
-  const list = rows();
-  if (selectedIndex === null || selectedIndex >= list.length) {
-    selectedIndex = list.length - 1;
+function rowLabel(row) {
+  if (granularity === 'monthly') return row.label; // e.g. "July 2026" — already text, not a date to reformat
+  return formatUKDate(granularity === 'daily' ? row.date : row.label);
+}
+
+function rowPlannedPct(row) {
+  if (granularity === 'daily') {
+    return row.planned_total ? Math.round(row.planned_completed / row.planned_total * 100) : null;
   }
-  renderCards(list[selectedIndex]);
-  renderChart(list);
-  renderTable(list);
-  renderMachines(list[selectedIndex]);
+  return row.planned_pct;
 }
 
-function renderCards(b) {
-  if (!b) return;
-  document.getElementById('scope-pill').textContent =
-    `${b.label} · ${b.days} day${b.days === 1 ? '' : 's'} · ${b.machine_count} machines`;
-
-  document.getElementById('c-oee').textContent = pct(b.oee_pct);
-  document.getElementById('c-oee-sub').textContent = 'Availability × Performance × Quality';
-
-  document.getElementById('c-run').textContent = h(b.run_time_hrs);
-  document.getElementById('c-run-sub').textContent = `of ${h(b.net_avail_hrs)} scheduled`;
-
-  document.getElementById('c-avail').textContent = pct(b.availability_pct);
-  document.getElementById('c-qual').textContent = b.quality_pct == null ? '–' : Number(b.quality_pct).toFixed(2) + '%';
-  document.getElementById('c-qual-sub').textContent = b.scrap_parts != null ? `${Math.round(b.scrap_parts).toLocaleString()} scrap logged` : '';
+function renderAll() {
+  if (!trendData) return;
+  const rows = trendData[granularity] || [];
+  renderChart(rows);
+  renderTable(rows);
 }
 
-function renderChart(list) {
-  const ctx = document.getElementById('trend-chart');
+function renderChart(rows) {
+  const ctx = document.getElementById('trend-chart').getContext('2d');
+  const labels = rows.map(rowLabel);
+  const totalWos = rows.map(r => r.total_wos);
+  const breakdowns = rows.map(r => r.breakdowns_total);
+  const pct = rows.map(rowPlannedPct);
+
   if (chart) chart.destroy();
-
   chart = new Chart(ctx, {
+    type: 'line',
     data: {
-      labels: list.map(b => b.label),
+      labels,
       datasets: [
-        // All three as bars, not a line+bar mix — with only a handful
-        // of days saved so far, a line with one or two points just
-        // draws as a near-invisible dot next to a bar that fills the
-        // whole category. Three grouped bars read as three comparable
-        // figures from day one; once there's a real run of history,
-        // Chart.js still groups them the same way, just narrower as
-        // more days join the x-axis.
-        { type: 'bar', label: 'OEE %', data: list.map(b => b.oee_pct),
-          backgroundColor: '#243547', yAxisID: 'y1' },
-        { type: 'bar', label: 'Availability %', data: list.map(b => b.availability_pct),
-          backgroundColor: '#95C11F', labelColor: '#5a7a12', yAxisID: 'y1' },
-        { type: 'bar', label: 'Run Time (h)', data: list.map(b => b.run_time_hrs),
-          backgroundColor: '#d97706', yAxisID: 'y' },
-      ]
+        { label: 'Total WOs', data: totalWos, borderColor: '#243547', backgroundColor: '#243547', yAxisID: 'y', tension: 0.25 },
+        { label: 'Breakdowns', data: breakdowns, borderColor: '#dc2626', backgroundColor: '#dc2626', yAxisID: 'y', tension: 0.25 },
+        { label: 'Planned Completion %', data: pct, borderColor: '#95C11F', backgroundColor: '#95C11F', yAxisID: 'y1', tension: 0.25, borderDash: [4, 3] },
+      ],
     },
-    plugins: [barValueLabels],
     options: {
-      responsive: true, maintainAspectRatio: false,
+      responsive: true,
       interaction: { mode: 'index', intersect: false },
-      layout: { padding: { top: 20 } },
       scales: {
-        x: { grid: { display: false } },
-        y: { beginAtZero: true, position: 'left', title: { display: true, text: 'Run Time (hours)' } },
-        y1: { beginAtZero: true, max: 100, position: 'right', grid: { drawOnChartArea: false },
-              title: { display: true, text: '%' }, ticks: { callback: v => v + '%' } },
+        y: { beginAtZero: true, position: 'left', title: { display: true, text: 'WOs' } },
+        y1: { beginAtZero: true, max: 100, position: 'right', title: { display: true, text: '%' }, grid: { drawOnChartArea: false } },
       },
-      plugins: {
-        legend: { labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: (c) => c.dataset.yAxisID === 'y'
-              ? `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}h`
-              : `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}%`
-          }
-        }
-      }
-    }
+    },
   });
 }
 
-function renderTable(list) {
-  const titles = { daily: 'Daily Detail', weekly: 'Weekly Detail', monthly: 'Monthly Detail' };
-  document.getElementById('table-title').textContent = titles[granularity];
+function renderTable(rows) {
+  document.getElementById('table-title').textContent =
+    granularity === 'daily' ? 'Daily Detail' : granularity === 'weekly' ? 'Weekly Detail' : 'Monthly Detail';
 
-  const tbody = document.getElementById('trend-tbody');
-  tbody.innerHTML = '';
-  list.slice().reverse().forEach((b) => {
-    const realIndex = list.indexOf(b);
-    const tr = document.createElement('tr');
-    tr.className = 'selectable' + (realIndex === selectedIndex ? ' selected' : '');
-    tr.onclick = () => { selectedIndex = realIndex; render(); };
-    tr.innerHTML = `
-      <td>${b.label}</td>
-      <td>${b.days}</td>
-      <td class="num">${pct(b.oee_pct)}</td>
-      <td class="num">${pct(b.availability_pct)}</td>
-      <td class="num">${b.quality_pct == null ? '–' : Number(b.quality_pct).toFixed(2) + '%'}</td>
-      <td class="num">${h(b.run_time_hrs)}</td>
-      <td class="num">${b.machine_count}</td>`;
-    tbody.appendChild(tr);
-  });
+  document.getElementById('trend-tbody').innerHTML = rows.length ? rows.slice().reverse().map(r => {
+    const pct = rowPlannedPct(r);
+    const projectOpen = r.project_ci_total - (r.project_ci_completed || 0);
+    return `<tr>
+      <td>${rowLabel(r)}</td>
+      <td>${r.total_wos}</td>
+      <td>${r.breakdowns_total}</td>
+      <td>${pct !== null ? pct + '%' : '—'}</td>
+      <td>${r.mttr_hrs !== null && r.mttr_hrs !== undefined ? r.mttr_hrs + 'h' : '—'}</td>
+      <td>${projectOpen}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:#888;padding:20px">No data for this view</td></tr>';
 }
 
-function oeePill(p) {
-  if (p == null) return '–';
-  const cls = p >= 55 ? 'pill-green' : p >= 30 ? 'pill-amber' : 'pill-red';
-  return `<span class="pill ${cls}">${fmt(p, 1)}%</span>`;
-}
-
-// Every bucket — daily, weekly, or monthly — now carries its own
-// correctly-aggregated 'per_machine' list directly (see
-// daily_trend.py's _oee_finalize), computed the same sum-raw-hours-
-// then-one-ratio way as every other OEE figure in this app, just
-// applied per machine name instead of to the fleet total. No more
-// special-casing daily via a separate lookup into DATA.raw — all
-// three granularities read the same way now.
-function renderMachines(b) {
-  const titleEl = document.getElementById('machines-title');
-  const hintEl = document.getElementById('machines-hint');
-  const tbody = document.getElementById('machines-tbody');
-
-  if (!b) { tbody.innerHTML = ''; return; }
-
-  const machines = b.per_machine || [];
-  titleEl.textContent = `OEE by Press — ${b.label}`;
-  hintEl.textContent = machines.length
-    ? (b.days > 1 ? `Each press's figures are summed across all ${b.days} days in this period, then computed as one ratio — the same principle behind every OEE number in this app, never an average of daily percentages.` : '')
-    : '';
-
-  const sorted = machines.slice().sort((a, c) => (c.oee_pct ?? -1) - (a.oee_pct ?? -1));
-  tbody.innerHTML = sorted.length ? sorted.map(m => `<tr>
-      <td>${m.machine}</td>
-      <td class="num">${oeePill(m.oee_pct)}</td>
-      <td class="num">${h(m.run_time_hrs)}</td>
-      <td class="num">${pct(m.availability_pct)}</td>
-      <td class="num">${pct(m.quality_pct)}</td>
-    </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px">No machine data for this day</td></tr>';
-}
-
+// Persisted per-card, not per-page — collapsing Daily Detail shouldn't
+// also collapse Trend, and the choice should survive a reload rather
+// than reset every time (this table's whole reason for existing here
+// is that it grows every day, so "collapsed" is a real standing
+// preference, not a one-off click).
 function toggleCard(id) {
   const body = document.getElementById(id + '-body');
   const arrow = document.getElementById(id + '-arrow');
   const collapsed = body.classList.toggle('collapsed');
   arrow.classList.toggle('collapsed', collapsed);
-  localStorage.setItem('daily-oee-trend-collapsed-' + id, collapsed ? '1' : '0');
+  localStorage.setItem('daily-trend-collapsed-' + id, collapsed ? '1' : '0');
 }
 
 function restoreCardState() {
-  for (const id of ['trend', 'detail', 'machines']) {
-    if (localStorage.getItem('daily-oee-trend-collapsed-' + id) === '1') {
+  for (const id of ['trend', 'detail']) {
+    if (localStorage.getItem('daily-trend-collapsed-' + id) === '1') {
       document.getElementById(id + '-body').classList.add('collapsed');
       document.getElementById(id + '-arrow').classList.add('collapsed');
     }
@@ -439,8 +263,7 @@ function restoreCardState() {
 }
 
 restoreCardState();
-load();
+loadTrend();
 </script>
-
 </body>
 </html>

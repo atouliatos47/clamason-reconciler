@@ -212,7 +212,7 @@
 </div>
 
 <script>
-let DATA = { daily: [], weekly: [], monthly: [], raw: [] };
+let DATA = { daily: [], weekly: [], monthly: [] };
 let granularity = 'daily';
 let selectedIndex = null;
 let chart = null;
@@ -391,12 +391,13 @@ function oeePill(p) {
   return `<span class="pill ${cls}">${fmt(p, 1)}%</span>`;
 }
 
-// Per-machine detail only exists for a single real day, not a summed
-// week or month (which machines even ran on a given day isn't
-// consistent across a period, so there's no honest way to "add up"
-// per-press rows the way fleet hours add up) — so this looks the
-// selected bucket's date up in DATA.raw rather than trying to derive
-// it from the rollup bucket itself.
+// Every bucket — daily, weekly, or monthly — now carries its own
+// correctly-aggregated 'per_machine' list directly (see
+// daily_trend.py's _oee_finalize), computed the same sum-raw-hours-
+// then-one-ratio way as every other OEE figure in this app, just
+// applied per machine name instead of to the fleet total. No more
+// special-casing daily via a separate lookup into DATA.raw — all
+// three granularities read the same way now.
 function renderMachines(b) {
   const titleEl = document.getElementById('machines-title');
   const hintEl = document.getElementById('machines-hint');
@@ -404,17 +405,11 @@ function renderMachines(b) {
 
   if (!b) { tbody.innerHTML = ''; return; }
 
-  if (granularity !== 'daily') {
-    titleEl.textContent = 'OEE by Press';
-    hintEl.textContent = `Only available at daily granularity — switch to the Daily tab and pick a day to see individual presses. Showing weekly/monthly here would mean silently averaging or adding up different machines across different days, which isn't a real number.`;
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px">Switch to Daily to see individual presses</td></tr>';
-    return;
-  }
-
-  const raw = DATA.raw.find(r => r.date === b.first_date);
-  const machines = (raw && raw.per_machine) || [];
+  const machines = b.per_machine || [];
   titleEl.textContent = `OEE by Press — ${b.label}`;
-  hintEl.textContent = '';
+  hintEl.textContent = machines.length
+    ? (b.days > 1 ? `Each press's figures are summed across all ${b.days} days in this period, then computed as one ratio — the same principle behind every OEE number in this app, never an average of daily percentages.` : '')
+    : '';
 
   const sorted = machines.slice().sort((a, c) => (c.oee_pct ?? -1) - (a.oee_pct ?? -1));
   tbody.innerHTML = sorted.length ? sorted.map(m => `<tr>
