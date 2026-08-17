@@ -165,6 +165,7 @@
       <div class="date-field">
         <label for="save-date">Date:</label>
         <input type="date" id="save-date">
+        <span id="date-autofill-hint" style="font-size:11px;"></span>
         <button class="save-btn" id="save-btn" onclick="saveDailyOee()">💾 Save</button>
         <button class="clear-btn" id="clear-btn" onclick="clearCheck()">↺ Clear / New Check</button>
         <span class="save-status" id="save-status"></span>
@@ -347,10 +348,41 @@ async function runCheck() {
 
 function fmt(n, d=1) { return (n === null || n === undefined) ? '—' : Number(n).toFixed(d); }
 
+// The period string looks like "8/13/2026 6:30:00 AM to 2026-08-14" —
+// the end date (after "to ") is already ISO format, and matches the
+// convention already in use for these reports: a shift running from
+// 13 Aug 6:30am into the next day gets called "the 14th", not "the
+// 13th". Returns null (not a guess) if the period doesn't match this
+// shape, so the caller can fall back cleanly rather than silently set
+// a wrong date from malformed input.
+function extractDateFromPeriod(period) {
+  if (!period) return null;
+  const match = period.match(/to\s+(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
+}
+
 function render(d) {
   const f = d.fleet;
   document.getElementById('scope-badge').textContent =
     `Whole site — ${f.machine_count ?? '—'} machines · ${f.period || 'period not detected'}`;
+
+  // Auto-filled from the report itself rather than left on whatever
+  // the date field defaulted to (today, on first page load) — that
+  // mismatch, an older report's data quietly saving under today's
+  // date because nobody noticed the field hadn't been changed, is
+  // exactly the mistake this replaces. Still fully editable — this is
+  // a smart default, not a lock.
+  const dateField = document.getElementById('save-date');
+  const dateHint = document.getElementById('date-autofill-hint');
+  const detected = extractDateFromPeriod(f.period);
+  if (detected) {
+    dateField.value = detected;
+    dateHint.textContent = '✓ auto-filled from report';
+    dateHint.style.color = '#16a34a';
+  } else {
+    dateHint.textContent = '⚠ could not detect date — check this manually';
+    dateHint.style.color = '#d97706';
+  }
 
   document.getElementById('kpi-oee').textContent = fmt(f.oee_pct, 1) + '%';
   document.getElementById('kpi-oee-sub').textContent = 'Availability × Performance × Quality';
