@@ -69,6 +69,8 @@
   /* Reason charts are horizontal now, so height is set by how many bars
      there are, not by how much room angled labels need. */
   .chart-wrap.short { height: 165px; }
+  .chart-wrap.other { height: 150px; margin-top: 6px; }
+  .other-chart-label { font-size: 10px; color: #243547; font-weight: bold; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 12px; }
 
   .gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
   .gauge-label { font-size: 10px; color: #243547; font-weight: bold; margin-bottom: 5px; letter-spacing: 0.4px; text-transform: uppercase; }
@@ -374,7 +376,13 @@ function render() {
         </div>
         <div class="reason-breakdown-section">
           <h3>Production Reason Codes — Notes</h3>
-          <div class="reason-breakdown-body" id="production-note"></div>
+          <div class="reason-breakdown-body">
+            <div id="production-note"></div>
+            <div id="other-chart-wrap" style="display:none;">
+              <div class="other-chart-label">Other — by code</div>
+              <div class="chart-wrap other"><canvas id="other-chart"></canvas></div>
+            </div>
+          </div>
           <div class="unclassified" id="unclassified" style="margin-top:12px;"></div>
         </div>
       </div>
@@ -433,15 +441,12 @@ function render() {
   const other = lastOtherContents['r-production'] || [];
   const noteEl = document.getElementById('production-note');
   if (noteEl) {
-    const named = other.slice(0, 3).map(e => `${e[0]} ${e[1].toFixed(0)}h`).join(', ');
     const exclList = excluded.map(e => `${e[0]} ${e[1].toFixed(0)}h`).join(', ');
     noteEl.innerHTML =
       `Excludes ${siteExcluded.toFixed(0)}h of non-productive time (${exclList}), ` +
-      `plus planned offline and no-production-planned.` +
-      (other.length
-        ? `<br><strong>Other</strong> = ${other.length} smaller codes, largest being ${named}.`
-        : '');
+      `plus planned offline and no-production-planned.`;
   }
+  renderOtherChart(other);
 
   const unk = unclassifiedCodes(mb).filter(([, h]) => h >= UNCLASSIFIED_THRESHOLD_HRS);
   const ubox = document.getElementById('unclassified');
@@ -511,6 +516,52 @@ const lastOtherContents = {};
 // against "Changeover"; there's nothing to write against "everything
 // too small to name individually", so it's excluded here even though
 // it's shown (correctly) on the reason-codes chart itself.
+// The "Other" bucket's individual codes as their own small chart —
+// same navy, same horizontal-bar style, same barValues plugin as the
+// main reason-codes chart above, so it reads as part of the same
+// family rather than a different kind of component. Replaces what
+// used to be a text sentence naming just the top 3 — the full list
+// (up to 8; a "+ N more" note covers anything past that, matching the
+// same limit the hover tooltip on the main chart already uses) was
+// always available in the data, just not shown.
+let otherChart = null;
+function renderOtherChart(other) {
+  const wrap = document.getElementById('other-chart-wrap');
+  if (otherChart) { otherChart.destroy(); otherChart = null; }
+  if (!other.length) { wrap.style.display = 'none'; return; }
+
+  const SHOWN = 8;
+  const shown = other.slice(0, SHOWN);
+  const remainder = other.slice(SHOWN);
+  const remainderHrs = remainder.reduce((s, e) => s + e[1], 0);
+
+  const labels = uniqueShortLabels(shown.map(e => e[0]), MAX_TICK_H);
+  const data = shown.map(e => e[1]);
+
+  otherChart = new Chart(document.getElementById('other-chart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: '#8fa5c2', borderRadius: 2, maxBarThickness: 14 }] },
+    plugins: [barValues],
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 4, bottom: 4, left: 2, right: 36 } },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { display: false },
+        y: { grid: { display: false }, ticks: { font: { size: 9.5 } } },
+      },
+    },
+  });
+
+  const labelEl = document.querySelector('.other-chart-label');
+  labelEl.textContent = remainder.length
+    ? `Other — by code (+ ${remainder.length} more, ${remainderHrs.toFixed(0)}h)`
+    : 'Other — by code';
+
+  wrap.style.display = 'block';
+}
+
 function renderTopReason(mb, totalUnplanned) {
   const totals = reasonTotals(mb, 'production', true);
   const actionable = totals.filter(([reason]) => reason.trim().toLowerCase() !== 'other');
