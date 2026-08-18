@@ -89,13 +89,10 @@
   .top-reason-card .reason-name { font-size: 17px; font-weight: bold; color: #243547; }
   .top-reason-card .reason-hrs { font-size: 12px; color: #666; margin-top: 4px; }
   .top-reason-card .reason-empty { font-size: 12px; color: #888; font-style: italic; }
-  .reason-machines { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
-  .reason-machine-row { display: flex; justify-content: space-between; font-size: 12px; color: #444; padding: 3px 0; }
-  .reason-machine-row span:last-child { font-weight: bold; color: #243547; }
   .reason-breakdown-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid #e2e5ea; }
-  .reason-breakdown-body { background: white; border-radius: 6px; padding: 12px 16px; }
-  .reason-breakdown-body .reason-machine-row { padding: 5px 0; border-bottom: 1px solid #f5f5f5; }
-  .reason-breakdown-body .reason-machine-row:last-child { border-bottom: none; }
+  /* Unscoped so the same empty-state look works outside .top-reason-card
+     too — the By Press chart's "no data" fallback reuses it below. */
+  .reason-empty { font-size: 12px; color: #888; font-style: italic; }
   .notes-area textarea {
     width: 100%; min-height: 220px; padding: 12px; border: 1px solid #ddd; border-radius: 6px;
     font-family: Arial, sans-serif; font-size: 12.5px; line-height: 1.5; resize: vertical;
@@ -219,23 +216,50 @@ function categorise(reason) {
 }
 
 async function load() {
-  try {
-    const res = await fetch('/api/trend');
-    const json = await res.json();
-    if (json.error) return showError(json.error);
-    RUNS = json.runs || json || [];
-    if (!RUNS.length) {
-      document.getElementById('empty-note').style.display = 'block';
-      return;
-    }
-    const sel = document.getElementById('period-select');
-    // Newest first — that's the month you came here to present.
-    sel.innerHTML = RUNS.slice().reverse()
-      .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
-    selectPeriod(RUNS.length - 1);
-  } catch (e) {
-    showError(e.message);
-  }
+  // PREVIEW MODE — everything below this point (render, renderTopReason,
+  // renderReasonBreakdown, renderOtherChart, reasonBars, etc.) is the
+  // exact same code as the real maintenance.html. Only this bootstrap
+  // is swapped out, standing in for /api/trend so the page can be
+  // opened standalone to check the By Press chart before pushing.
+  //
+  // Fault - Press hours below are your own screenshot's numbers,
+  // unchanged. A few small amounts of the other three fault codes are
+  // added on top purely so the main reason-codes chart and Other-by-code
+  // panel have more than one bar to show — everything else (MTTF, TPM,
+  // gap%) is placeholder data, clearly not live figures.
+  const FIXTURE_MACHINES = [
+    ['Finzer Line 20',        43.5, 8.5, 0,   0  ],
+    ['Finzer Line 17',        22.3, 0,   2.0, 0  ],
+    ['Finzer Line 19',        16.6, 0,   0,   0  ],
+    ['Bruderer 3',            13.0, 0,   0,   6.0],
+    ['Bruderer 60T ISI73',    11.8, 0,   0,   0  ],
+    ['Bruderer 1',            10.7, 4.5, 0,   0  ],
+    ['Kaiser 50T 1',           4.1, 0,   0,   0  ],
+    ['Chin Fong 110 ISI1',     3.5, 0,   0,   0  ],
+    ['Heenan 2',               2.4, 0,   0,   2.0],
+    ['Chin Fong 110 ISI74',    2.3, 0,   0,   0  ],
+    ['Bruderer 2',             0.7, 0,   0,   0  ],
+    ['Kaiser 50T 2',           0.2, 0,   0,   0  ],
+  ];
+  const mb = FIXTURE_MACHINES.map(([machine, press, feeder, straightener, shaker]) => {
+    const reasons = {};
+    if (press)        reasons['FAULT - PRESS'] = press;
+    if (feeder)        reasons['FAULT-FEEDER/DECOILER/STR'] = feeder;
+    if (straightener)  reasons['FAULT-FEEDER/DECOILER/STRAIGHTENER'] = straightener;
+    if (shaker)        reasons['FAULT-SHAKER/CONVEYOR'] = shaker;
+    return { machine, fault_hrs: press + feeder + straightener + shaker, reasons };
+  });
+
+  current = {
+    period_label: 'PREVIEW — fixture data, not live figures',
+    machine_breakdown: mb,
+    mtbf_days: 16.7, mtbf_mttr_hrs: 2.1, mtbf_wait_hrs: 1.4,
+    mtbf_assets: 18, mtbf_asset_count: 19,
+    gap_pct: 35.0, agility_maintenance_hrs: 12.3,
+    ppm_completion_pct: 92.0, ppm_completed: 46, ppm_total: 50,
+  };
+  document.getElementById('period-select').innerHTML = '<option>Preview — fixture data</option>';
+  render();
 }
 
 function showError(msg) {
@@ -369,7 +393,8 @@ function render() {
         </div>
         <div class="reason-breakdown-section" id="reason-breakdown-section" style="display:none;">
           <h3 id="reason-breakdown-title">By Press</h3>
-          <div class="reason-breakdown-body" id="reason-breakdown-body"></div>
+          <div class="chart-wrap other" id="by-press-chart-wrap"><canvas id="by-press-chart"></canvas></div>
+          <div class="reason-empty" id="by-press-empty" style="display:none;">No per-press detail for this reason.</div>
         </div>
         <div class="reason-breakdown-section" id="other-chart-wrap" style="display:none;">
           <h3 id="other-chart-title">Other — by code</h3>
@@ -475,6 +500,7 @@ const lastOtherContents = {};
 // bucket would even form, so an empty result here isn't a bug, it's
 // this specific data genuinely not having one yet.
 let otherChart = null;
+let byPressChart = null;
 function renderOtherChart(other) {
   const wrap = document.getElementById('other-chart-wrap');
   if (otherChart) { otherChart.destroy(); otherChart = null; }
@@ -537,7 +563,9 @@ function renderTopReason(mb, totalHrs) {
 // just re-sliced by reason instead of by machine.
 function renderReasonBreakdown(mb, reason) {
   const section = document.getElementById('reason-breakdown-section');
-  const body = document.getElementById('reason-breakdown-body');
+  const chartWrap = document.getElementById('by-press-chart-wrap');
+  const empty = document.getElementById('by-press-empty');
+  if (byPressChart) { byPressChart.destroy(); byPressChart = null; }
   if (!reason) { section.style.display = 'none'; return; }
 
   const byMachine = mb
@@ -545,17 +573,47 @@ function renderReasonBreakdown(mb, reason) {
     .filter(x => x.hrs > 0)
     .sort((a, b) => b.hrs - a.hrs);
 
-  document.getElementById('reason-breakdown-title').textContent = `${reason} — by Press`;
+  section.style.display = 'block';
 
   if (!byMachine.length) {
-    body.innerHTML = '<div class="reason-empty">No per-press detail for this reason.</div>';
-  } else {
-    body.innerHTML = byMachine.map(x => `
-      <div class="reason-machine-row">
-        <span>${x.machine}</span><span>${x.hrs.toFixed(1)}h</span>
-      </div>`).join('');
+    document.getElementById('reason-breakdown-title').textContent = `${reason} — by Press`;
+    chartWrap.style.display = 'none';
+    empty.style.display = 'block';
+    return;
   }
-  section.style.display = 'block';
+  chartWrap.style.display = 'block';
+  empty.style.display = 'none';
+
+  // Same cap-plus-remainder pattern as Other-by-code: top 8 presses as
+  // bars, anything past that folded into the header count rather than
+  // squeezing the chart to fit every press on a busy fault code.
+  const SHOWN = 8;
+  const shown = byMachine.slice(0, SHOWN);
+  const remainder = byMachine.slice(SHOWN);
+  const remainderHrs = remainder.reduce((s, x) => s + x.hrs, 0);
+
+  const labels = uniqueShortLabels(shown.map(x => x.machine), MAX_TICK_H);
+  const data = shown.map(x => x.hrs);
+
+  byPressChart = new Chart(document.getElementById('by-press-chart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: '#2e6b4f', borderRadius: 2, maxBarThickness: 14 }] },
+    plugins: [barValues],
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 4, bottom: 4, left: 2, right: 36 } },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { display: false },
+        y: { grid: { display: false }, ticks: { font: { size: 9.5 } } },
+      },
+    },
+  });
+
+  document.getElementById('reason-breakdown-title').textContent = remainder.length
+    ? `${reason} — by Press (+ ${remainder.length} more, ${remainderHrs.toFixed(0)}h)`
+    : `${reason} — by Press`;
 }
 
 const DEPARTMENT = 'maintenance';
