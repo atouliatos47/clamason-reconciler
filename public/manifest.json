@@ -1,7 +1,7 @@
 {
-  "name": "Clamason Maintenance Reconciler",
-  "short_name": "C/R Reconciler",
-  "description": "SFC vs Agility maintenance downtime reconciliation and trend dashboard",
+  "name": "Clamason Performance Hub",
+  "short_name": "Perf Hub",
+  "description": "Production, Toolroom, and Maintenance performance reporting — OEE trending, board review, and SFC/Agility/EFACS downtime reconciliation",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
