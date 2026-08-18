@@ -189,7 +189,7 @@
           <thead>
             <tr>
               <th>Period</th><th>Days</th><th class="num">OEE %</th><th class="num">Availability %</th>
-              <th class="num">Quality %</th><th class="num">Run Time</th><th class="num">Machines</th>
+              <th class="num">Quality %</th><th class="num">Run Time</th><th class="num">Machines</th><th class="num">Parts</th>
             </tr>
           </thead>
           <tbody id="trend-tbody"></tbody>
@@ -407,7 +407,8 @@ function renderTable(list) {
       <td class="num">${pct(b.availability_pct)}</td>
       <td class="num">${b.quality_pct == null ? '–' : Number(b.quality_pct).toFixed(2) + '%'}</td>
       <td class="num">${h(b.run_time_hrs)}</td>
-      <td class="num">${b.machine_count}</td>`;
+      <td class="num">${b.machine_count}</td>
+      <td class="num">${b.total_parts != null ? Math.round(b.total_parts).toLocaleString() : '–'}</td>`;
     tbody.appendChild(tr);
   });
 }
