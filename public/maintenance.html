@@ -66,6 +66,7 @@
      inside the canvas, so the height must cover the bars AND the angled
      text beneath them. */
   .chart-wrap { position: relative; height: 182px; }
+  .chart-wrap.other { height: 150px; margin-top: 6px; }
   /* Reason charts are horizontal now, so height is set by how many bars
      there are, not by how much room angled labels need. */
   .chart-wrap.short { height: 165px; }
@@ -370,6 +371,10 @@ function render() {
           <h3 id="reason-breakdown-title">By Press</h3>
           <div class="reason-breakdown-body" id="reason-breakdown-body"></div>
         </div>
+        <div class="reason-breakdown-section" id="other-chart-wrap" style="display:none;">
+          <h3 id="other-chart-title">Other — by code</h3>
+          <div class="chart-wrap other"><canvas id="other-chart"></canvas></div>
+        </div>
       </div>
     </div>
     <div class="unclassified" id="unclassified"></div>
@@ -401,6 +406,7 @@ function render() {
 
   renderTopReason(mb, siteFault);
   loadNotes();
+  renderOtherChart(lastOtherContents['r-maintenance'] || []);
 }
 
 const MUTED = '#999', RED = '#c0392b';
@@ -458,6 +464,53 @@ const lastOtherContents = {};
 // smaller codes bundled together, not one fixable cause. Someone can
 // write an action plan against a named reason; there's nothing to write
 // against "everything too small to name individually".
+// The "Other" bucket's individual codes as their own small chart — same
+// green as Maintenance's main reason-codes chart, same barValues plugin,
+// so it reads as part of the same family. Same 8-item limit as the
+// hover tooltip already uses on the main chart, with anything past that
+// summarised in the title rather than drawn as a 9th bar. Ported from
+// Production's identical version — worth knowing this may show nothing
+// most months: Maintenance's own reason chart only had 3 distinct fault
+// codes last time it was checked, well under the point where an "Other"
+// bucket would even form, so an empty result here isn't a bug, it's
+// this specific data genuinely not having one yet.
+let otherChart = null;
+function renderOtherChart(other) {
+  const wrap = document.getElementById('other-chart-wrap');
+  if (otherChart) { otherChart.destroy(); otherChart = null; }
+  if (!other.length) { wrap.style.display = 'none'; return; }
+
+  const SHOWN = 8;
+  const shown = other.slice(0, SHOWN);
+  const remainder = other.slice(SHOWN);
+  const remainderHrs = remainder.reduce((s, e) => s + e[1], 0);
+
+  const labels = uniqueShortLabels(shown.map(e => e[0]), MAX_TICK_H);
+  const data = shown.map(e => e[1]);
+
+  otherChart = new Chart(document.getElementById('other-chart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: '#7fa88f', borderRadius: 2, maxBarThickness: 14 }] },
+    plugins: [barValues],
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 4, bottom: 4, left: 2, right: 36 } },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { display: false },
+        y: { grid: { display: false }, ticks: { font: { size: 9.5 } } },
+      },
+    },
+  });
+
+  document.getElementById('other-chart-title').textContent = remainder.length
+    ? `Other — by code (+ ${remainder.length} more, ${remainderHrs.toFixed(0)}h)`
+    : 'Other — by code';
+
+  wrap.style.display = 'block';
+}
+
 function renderTopReason(mb, totalHrs) {
   const totals = reasonTotals(mb, 'fault');
   const actionable = totals.filter(([reason]) => reason.trim().toLowerCase() !== 'other');
