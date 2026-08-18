@@ -88,6 +88,13 @@
   .top-reason-card .reason-name { font-size: 17px; font-weight: bold; color: #243547; }
   .top-reason-card .reason-hrs { font-size: 12px; color: #666; margin-top: 4px; }
   .top-reason-card .reason-empty { font-size: 12px; color: #888; font-style: italic; }
+  .reason-machines { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+  .reason-machine-row { display: flex; justify-content: space-between; font-size: 12px; color: #444; padding: 3px 0; }
+  .reason-machine-row span:last-child { font-weight: bold; color: #243547; }
+  .reason-breakdown-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid #e2e5ea; }
+  .reason-breakdown-body { background: white; border-radius: 6px; padding: 12px 16px; }
+  .reason-breakdown-body .reason-machine-row { padding: 5px 0; border-bottom: 1px solid #f5f5f5; }
+  .reason-breakdown-body .reason-machine-row:last-child { border-bottom: none; }
   .notes-area textarea {
     width: 100%; min-height: 220px; padding: 12px; border: 1px solid #ddd; border-radius: 6px;
     font-family: Arial, sans-serif; font-size: 12.5px; line-height: 1.5; resize: vertical;
@@ -359,6 +366,10 @@ function render() {
           </div>
           <div class="notes-status" id="notes-status"></div>
         </div>
+        <div class="reason-breakdown-section" id="reason-breakdown-section" style="display:none;">
+          <h3 id="reason-breakdown-title">By Press</h3>
+          <div class="reason-breakdown-body" id="reason-breakdown-body"></div>
+        </div>
       </div>
     </div>
     <div class="unclassified" id="unclassified"></div>
@@ -453,6 +464,7 @@ function renderTopReason(mb, totalHrs) {
   const card = document.getElementById('top-reason-card');
   if (!actionable.length) {
     card.innerHTML = '<div class="reason-empty">No reason-coded downtime this period.</div>';
+    renderReasonBreakdown([], null);
     return;
   }
   const [reason, hrs] = actionable[0];
@@ -460,6 +472,37 @@ function renderTopReason(mb, totalHrs) {
   card.innerHTML = `
     <div class="reason-name">${reason}</div>
     <div class="reason-hrs">${hrs.toFixed(1)}h${pct !== null ? ` · ${pct}% of downtime` : ''}</div>`;
+
+  renderReasonBreakdown(mb, reason);
+}
+
+// Which specific presses the top reason's hours actually came from —
+// already sitting in mb (each machine carries its own reasons dict, see
+// reconciliation.py's compute_machine_breakdown), just not shown
+// anywhere on this page before now. No separate report needed for
+// "which presses" — it's the same data already behind the chart above,
+// just re-sliced by reason instead of by machine.
+function renderReasonBreakdown(mb, reason) {
+  const section = document.getElementById('reason-breakdown-section');
+  const body = document.getElementById('reason-breakdown-body');
+  if (!reason) { section.style.display = 'none'; return; }
+
+  const byMachine = mb
+    .map(m => ({ machine: m.machine, hrs: (m.reasons || {})[reason] || 0 }))
+    .filter(x => x.hrs > 0)
+    .sort((a, b) => b.hrs - a.hrs);
+
+  document.getElementById('reason-breakdown-title').textContent = `${reason} — by Press`;
+
+  if (!byMachine.length) {
+    body.innerHTML = '<div class="reason-empty">No per-press detail for this reason.</div>';
+  } else {
+    body.innerHTML = byMachine.map(x => `
+      <div class="reason-machine-row">
+        <span>${x.machine}</span><span>${x.hrs.toFixed(1)}h</span>
+      </div>`).join('');
+  }
+  section.style.display = 'block';
 }
 
 const DEPARTMENT = 'maintenance';
