@@ -314,3 +314,25 @@ CREATE TABLE IF NOT EXISTS oee_daily_snapshots (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_oee_daily_snapshots_date ON oee_daily_snapshots (date);
+
+-- One free-text notes area per department (Production/Toolroom/
+-- Maintenance), living on that department's own page next to whichever
+-- downtime reason currently has the most hours. Deliberately a single
+-- shared text blob rather than a structured, multi-field action-plan
+-- table — the exact shape of what belongs here (root cause, owner,
+-- target date, whatever) isn't settled yet and depends on what each
+-- department manager actually wants once they see the page, so this
+-- starts as the simplest thing that can hold real content rather than
+-- guessing at structure that might not fit. updated_by is free text,
+-- not a real user system — there's no login on this app, so it's
+-- whatever name someone types in, purely for "who last touched this"
+-- context, not access control.
+CREATE TABLE IF NOT EXISTS department_notes (
+    id                      SERIAL PRIMARY KEY,
+    department              TEXT NOT NULL,
+    notes                   TEXT,
+    updated_by              TEXT,
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_department_notes_dept ON department_notes (department);

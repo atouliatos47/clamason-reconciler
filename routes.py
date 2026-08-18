@@ -574,6 +574,55 @@ def board_review_view():
     return send_from_directory('public', 'board-review.html')
 
 
+@bp.route('/production')
+def production_view():
+    return send_from_directory('public', 'production.html')
+
+
+@bp.route('/toolroom')
+def toolroom_view():
+    return send_from_directory('public', 'toolroom.html')
+
+
+@bp.route('/maintenance')
+def maintenance_view():
+    return send_from_directory('public', 'maintenance.html')
+
+
+# Allowlist rather than accepting any string — keeps department_notes
+# clean (no typo'd department names quietly creating their own row)
+# and stops the API being used to write notes against something that
+# isn't actually one of the three pages that read them back.
+_VALID_DEPARTMENTS = {'production', 'toolroom', 'maintenance'}
+
+
+@bp.route('/api/department-notes/<department>', methods=['GET'])
+def get_department_notes_route(department):
+    if department not in _VALID_DEPARTMENTS:
+        return jsonify({'error': f"Unknown department '{department}'"}), 404
+    try:
+        result = db.get_department_notes(department)
+        return jsonify(result or {'notes': '', 'updated_by': None, 'updated_at': None})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/api/department-notes/<department>', methods=['POST'])
+def save_department_notes_route(department):
+    if department not in _VALID_DEPARTMENTS:
+        return jsonify({'error': f"Unknown department '{department}'"}), 404
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        notes = data.get('notes', '')
+        updated_by = (data.get('updated_by') or '').strip() or None
+        db.save_department_notes(department, notes, updated_by)
+        return jsonify({'saved': True})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
 @bp.route('/api/trend')
 def trend():
     """All saved monthly runs, for the trend dashboard. Read-only —

@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Production</title>
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar { width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh; display: flex; flex-direction: column; padding: 24px 0; border-right: 3px solid #95C11F; position: sticky; top: 0; align-self: flex-start; }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-item { color: #C7CFD6; font-size: 13px; text-decoration: none; padding: 11px 24px; border-left: 3px solid transparent; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.14); color: #95C11F; border-left-color: #95C11F; font-weight: bold; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; min-width: 0; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; display: flex; justify-content: space-between; align-items: center; }
+  .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
+  .page-header p { color: #555; font-size: 11.5px; margin-top: 3px; }
+  select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 12.5px; }
+  .print-btn { padding: 8px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; margin-left: 8px; }
+  .print-btn:hover { background: #95C11F; color: #243547; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  .empty-note, .error-box { background: white; border-radius: 10px; padding: 24px; text-align: center; color: #888; font-size: 13px; display: none; }
+  .error-box { background: #fee2e2; border: 1px solid #dc2626; color: #dc2626; text-align: left; }
+
+  .slide { background: white; border-radius: 10px; padding: 22px 26px; }
+  .slide-head { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 12px; border-bottom: 3px solid #243547; margin-bottom: 18px; }
+  .slide-head h2 { font-size: 21px; color: #243547; }
+  .slide-head .period { font-size: 12px; color: #3a3a3a; }
+  .slide-head .period strong { color: #243547; }
+
+  .cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 24px; align-items: start; }
+  .col { padding: 0; }
+  .col + .col { border-left: none; }
+  .dept { color: #fff; padding: 9px 12px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
+  .dept span.name { font-size: 13px; font-weight: bold; letter-spacing: 0.7px; }
+  .dept span.num { font-size: 9.5px; opacity: 0.75; font-family: monospace; }
+  .dept.production { background: #3d6491; }
+  .dept.toolroom { background: #bf7d2c; }
+  .dept.maintenance { background: #2e6b4f; }
+
+  .chart-label { display: flex; justify-content: space-between; font-size: 10px; color: #243547; font-weight: bold; margin: 14px 0 5px; letter-spacing: 0.4px; text-transform: uppercase; }
+  .chart-label .meta { color: #4a4a4a; font-weight: normal; }
+  .chart-label .hrs { color: #243547; font-weight: bold; }
+  /* overflow:hidden is a backstop, not the fix — the heights above are.
+     But a chart whose labels spill into the section beneath it is worse
+     than one that clips them, so this guarantees the box holds. */
+  .chart-box { border: 1px solid #e8eaee; border-radius: 5px; padding: 8px; overflow: hidden; }
+  /* Sits below the gauges, not above them. Between the chart and the
+     gauges it pushed the Production column's gauges out of line with
+     Toolroom and Maintenance, which reads as a layout fault on a slide
+     whose whole point is three comparable columns. */
+  .chart-note { font-size: 10px; color: #333; margin-top: 10px; line-height: 1.6; }
+  .chart-note strong { color: #243547; }
+  /* Taller than the plot alone needs: rotated tick labels are drawn
+     inside the canvas, so the height must cover the bars AND the angled
+     text beneath them. */
+  .chart-wrap { position: relative; height: 182px; }
+  /* Reason charts are horizontal now, so height is set by how many bars
+     there are, not by how much room angled labels need. */
+  .chart-wrap.short { height: 165px; }
+
+  .gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .gauge-label { font-size: 10px; color: #243547; font-weight: bold; margin-bottom: 5px; letter-spacing: 0.4px; text-transform: uppercase; }
+  .gauge-box { border: 1px solid #e8eaee; border-radius: 5px; padding: 12px 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  /* Stacked rather than side-by-side: the ring no longer competes with
+     the text for width, so it can be larger and the note gets the full
+     column instead of wrapping after two or three words. */
+  .gauge-ring { position: relative; width: 76px; height: 76px; flex-shrink: 0; }
+  .gauge-note { font-size: 10px; color: #333; line-height: 1.6; text-align: center; }
+
+  .unclassified { margin-top: 18px; padding: 11px 14px; background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 11.5px; color: #92400e; line-height: 1.5; display: none; }
+  .slide-foot { display: flex; justify-content: space-between; margin-top: 18px; padding-top: 11px; border-top: 1px solid #e8eaee; font-size: 10px; color: #4a4a4a; }
+
+  .panel { background: #f7f8fa; border-radius: 8px; padding: 18px; }
+  .panel h3 { font-size: 12px; color: #243547; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+  .top-reason-card { background: white; border-radius: 6px; padding: 16px; border-left: 4px solid #3d6491; margin-bottom: 18px; }
+  .top-reason-card .reason-name { font-size: 17px; font-weight: bold; color: #243547; }
+  .top-reason-card .reason-hrs { font-size: 12px; color: #666; margin-top: 4px; }
+  .top-reason-card .reason-empty { font-size: 12px; color: #888; font-style: italic; }
+  .notes-area textarea {
+    width: 100%; min-height: 220px; padding: 12px; border: 1px solid #ddd; border-radius: 6px;
+    font-family: Arial, sans-serif; font-size: 12.5px; line-height: 1.5; resize: vertical;
+  }
+  .notes-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 10px; }
+  .notes-meta input[type=text] { flex: 1; padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; }
+  .notes-save-btn { padding: 8px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+  .notes-save-btn:hover { background: #95C11F; color: #243547; }
+  .notes-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .notes-status { font-size: 11px; color: #999; margin-top: 8px; min-height: 14px; }
+  .notes-status.ok { color: #16a34a; }
+
+  @media print {
+    .sidebar, .page-header, .print-btn { display: none; }
+    body { background: white; }
+    .container { max-width: none; padding: 0; }
+    .slide { border-radius: 0; padding: 12px; }
+    @page { size: A4 landscape; margin: 8mm; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Maintenance Reconciler</p>
+  </div>
+  <nav class="sidebar-nav">
+    <a class="nav-item" href="/">Monthly Check</a>
+    <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+    <a class="nav-item" href="/teep">TEEP</a>
+    <a class="nav-item" href="/board-review">Board Review</a>
+    <a class="nav-item" href="/daily">Daily Check</a>
+    <a class="nav-item" href="/daily-trend">Daily Trend</a>
+    <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+    <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+    <a class="nav-item" href="/daily-oee">Daily OEE</a>
+    <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
+    <div style="padding:16px 24px 6px; color:#55647a; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">Departments</div>
+    <a class="nav-item active" href="/production">Production</a>
+    <a class="nav-item" href="/toolroom">Toolroom</a>
+    <a class="nav-item" href="/maintenance">Maintenance</a>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<div class="main">
+
+<div class="page-header">
+  <div>
+    <h1>Production</h1>
+    <p>Department detail, built from the same saved Monthly Check as Board Review</p>
+  </div>
+  <div>
+    <select id="period-select" onchange="selectPeriod(this.value)"></select>
+    <button class="print-btn" onclick="window.print()">Print / PDF</button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="error-box" id="error-box"></div>
+  <div class="empty-note" id="empty-note">
+    No saved months yet — run a <a href="/">Monthly Check</a> and press Save to Trend Dashboard.
+  </div>
+  <div class="slide" id="slide" style="display:none;"></div>
+</div>
+
+</div>
+
+<script>
+let RUNS = [];
+let current = null;
+const charts = [];
+
+// Global default for every axis label, legend, and tick this page draws
+// with Chart.js — otherwise it falls back to the library's own default
+// gray, which is light enough to read fine on a bright monitor but
+// washes out once the page is pasted into a presentation and viewed on
+// a projector or a different screen. Set once here rather than per
+// chart, so nothing gets missed.
+Chart.defaults.color = '#333';
+
+const fmt = (v, d = 1) => (v === null || v === undefined) ? '–' : Number(v).toFixed(d);
+const hrs = (v, d = 1) => (v === null || v === undefined) ? '–' : Number(v).toFixed(d) + 'h';
+
+// Kept in step with config.py. Display-only: it decides which reason
+// rows appear in which department's chart. Every hours total on this
+// page is categorised server-side, so a code missing from these lists
+// shows up in the unclassified strip rather than being miscounted.
+const FAULT_CODES = ['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR',
+                     'FAULT-FEEDER/DECOILER/STRAIGHTENER', 'FAULT-SHAKER/CONVEYOR'];
+const TOOLROOM_CODES = ['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP',
+                        'TOOL UNAVAILABLE', 'WASTE IN THE TOOL'];
+const PLANNED_CODES = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED'];
+
+// Codes stripped out of the Production chart because they aren't lost
+// performance — they're time the line was never going to be producing.
+//
+//   LUNCH / BREAK / MEETING  contractual break time
+//   IDLE                     machine available, nothing scheduled on it
+//
+// Leaving them in put break time second on the column and buried Idle
+// inside Other, both inviting questions that have nothing to do with the
+// point the slide is making.
+//
+// PLANNED OFFLINE and NO PRODUCTION PLANNED don't need to be here —
+// they're in PLANNED_CODES and never reach this chart in the first place.
+//
+// Excluded, not hidden: the total is stated under the chart, and these
+// stay in the server-side production_hrs figure, so no stored number and
+// no other page moves because of this.
+const EXCLUDED_FROM_PRODUCTION = ['LUNCH / BREAK / MEETING', 'IDLE'];
+
+function categorise(reason) {
+  const r = (reason || '').toUpperCase().trim();
+  if (FAULT_CODES.includes(r)) return 'fault';
+  if (TOOLROOM_CODES.includes(r)) return 'tool';
+  if (PLANNED_CODES.includes(r)) return 'planned';
+  return 'production';
+}
+
+async function load() {
+  try {
+    const res = await fetch('/api/trend');
+    const json = await res.json();
+    if (json.error) return showError(json.error);
+    RUNS = json.runs || json || [];
+    if (!RUNS.length) {
+      document.getElementById('empty-note').style.display = 'block';
+      return;
+    }
+    const sel = document.getElementById('period-select');
+    // Newest first — that's the month you came here to present.
+    sel.innerHTML = RUNS.slice().reverse()
+      .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
+    selectPeriod(RUNS.length - 1);
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function showError(msg) {
+  const b = document.getElementById('error-box');
+  b.textContent = msg;
+  b.style.display = 'block';
+}
+
+function selectPeriod(i) {
+  current = RUNS[Number(i)];
+  render();
+}
+
+// Aggregate each department's reason codes across every machine. The
+// per-machine reasons dicts are stored precisely so this can be rebuilt
+// from a saved run without re-uploading the source workbook.
+function reasonTotals(mb, cat, excludeBreaks) {
+  const totals = {};
+  mb.forEach(m => {
+    Object.entries(m.reasons || {}).forEach(([reason, h]) => {
+      if (excludeBreaks && EXCLUDED_FROM_PRODUCTION.includes(reason.toUpperCase().trim())) return;
+      if (categorise(reason) === cat) totals[reason] = (totals[reason] || 0) + h;
+    });
+  });
+  return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+}
+
+// Hours removed, broken down by code, so the note can name them rather
+// than just quoting a total nobody can reconcile.
+function excludedHours(mb) {
+  const out = {};
+  mb.forEach(m => Object.entries(m.reasons || {}).forEach(([reason, h]) => {
+    const key = reason.toUpperCase().trim();
+    if (EXCLUDED_FROM_PRODUCTION.includes(key)) out[reason] = (out[reason] || 0) + h;
+  }));
+  return Object.entries(out).sort((a, b) => b[1] - a[1]);
+}
+
+function unclassifiedCodes(mb) {
+  // Nothing here is "unclassified" today — production is the residual
+  // bucket. This exists for the incoming SFC code list: when a new code
+  // appears it lands in production silently, so any production-bucket
+  // code that isn't one we've seen before gets surfaced for assignment
+  // rather than quietly diluting the numbers.
+  const known = new Set([...FAULT_CODES, ...TOOLROOM_CODES, ...PLANNED_CODES,
+    'CHANGEOVER', 'COIL CHANGEOVER', 'LUNCH / BREAK / MEETING', 'ADJUSTMENTS',
+    'LABOUR UNAVAILABLE', 'MATERIAL UNAVAILABLE', 'MATERIAL PROBLEM',
+    'WAITING QUALITY PASS OFF', 'QUALITY FAIL - VISUAL', 'QUALITY FAIL - DIMENSION',
+    'PLANNED SERVICE', 'PARTS PRESET REACHED', 'IDLE', 'WASTE BIN REMOVAL',
+    'MORNING SHIFT START UP', 'LUBRICATION/OIL REFILL', 'TOOL TRIAL',
+    'WAITING FOR PACKAGING', 'SHIFT CHANGE', 'BIN CHANGEOVER']);
+  const found = {};
+  mb.forEach(m => Object.entries(m.reasons || {}).forEach(([reason, h]) => {
+    if (!known.has(reason.toUpperCase().trim())) found[reason] = (found[reason] || 0) + h;
+  }));
+  return Object.entries(found).sort((a, b) => b[1] - a[1]);
+}
+
+// Placeholder — replaced with the real text once the charts have run and
+// the contents of the Other bar are known.
+const PRODUCTION_NOTE = '&nbsp;';
+
+function render() {
+  const d = current;
+  const mb = d.machine_breakdown || [];
+  charts.forEach(c => c.destroy());
+  charts.length = 0;
+
+  const siteFault = mb.reduce((s, m) => s + (m.fault_hrs || 0), 0);
+  const siteTool = mb.reduce((s, m) => s + (m.tool_hrs || 0), 0);
+  const siteProd = mb.reduce((s, m) => s + (m.production_hrs || 0), 0);
+  const excluded = excludedHours(mb);
+  const siteExcluded = excluded.reduce((sum, e) => sum + e[1], 0);
+  // Production's own losses, with non-productive time taken out.
+  const prodOwn = siteProd - siteExcluded;
+  // What the Production column now totals: every unplanned hour, whoever
+  // owns it. The three bars-groups on that chart sum to exactly this.
+  const totalUnplanned = prodOwn + siteFault + siteTool;
+
+  const top5 = (cat) => mb.slice().sort((a, b) => (b[cat] || 0) - (a[cat] || 0)).slice(0, 5);
+
+  const col = (cls, name, num, cat, siteHrs, reasonLabel, gauges, note) => `
+    <div class="col">
+      <div class="dept ${cls}"><span class="name">${name}</span><span class="num">DEPT / ${num}</span></div>
+      <div class="chart-label"><span>Downtime Pareto</span><span class="meta">Top 5 presses</span></div>
+      <div class="chart-box"><div class="chart-wrap"><canvas id="p-${cls}"></canvas></div></div>
+      <div class="chart-label"><span>${reasonLabel}</span><span class="hrs">${siteHrs.toFixed(1)}h</span></div>
+      <div class="chart-box"><div class="chart-wrap short"><canvas id="r-${cls}"></canvas></div></div>
+      <div class="gauges">${gauges}</div>
+      ${note ? `<div class="chart-note" id="${cls}-note">${note}</div>` : ''}
+    </div>`;
+
+  const gauge = (id, label, note) => `
+    <div><div class="gauge-label">${label}</div>
+      <div class="gauge-box"><div class="gauge-ring"><canvas id="${id}"></canvas></div>
+      <div class="gauge-note">${note}</div></div></div>`;
+
+  // Quality via EFACS only shows up here when it actually changed the
+  // source — d.oee_quality_source is 'sfc' on any run saved before this
+  // correction existed, and that's not worth a note; only 'efacs' is.
+  const qualityViaEfacs = d.oee_quality_source === 'efacs' ? '<br>quality via EFACS scrap' : '';
+  const oeeGauges =
+    gauge('g-oee', 'OEE', d.oee_pct == null ? 'not uploaded'
+      : `target ${TARGETS.oee}% · tick on ring<br>${d.oee_machine_count || '—'} machines${qualityViaEfacs}`) +
+    gauge('g-prod', 'Downtime (SFC)', `production-owned reasons only<br>no target set`) +
+    gauge('g-runtime', 'Run Time', d.oee_run_hrs == null ? 'not uploaded'
+      : `target ${TARGETS.runTime.toLocaleString()}h · tick on ring<br>${fmt(d.oee_run_hrs / TARGETS.runTime * 100, 0)}% of target`);
+
+  // Toolmaker-craft work orders. This card used to show
+  // machine_breakdown.wo_count, which is the MAINTENANCE figure — the
+  // only WO count the reconciler produced — so the Toolroom column was
+  // reporting maintenance activity under a toolroom label.
+  //
+  // Second correction, same card: moved from a raw 'WOs raised this
+  // month' count to the 'open' backlog figure, to match the board's own
+  // Toolroom slide ('Tools awaiting repair / maintenance', target <25)
+  // instead of a number with no board-approved target to read against.
+  //
+  // Toolroom's and Maintenance's own gauge sets aren't built here —
+  // this page only shows Production. See toolroom.html and
+  // maintenance.html for those departments' own version of this same
+  // computation.
+
+  document.getElementById('slide').innerHTML = `
+    <div class="slide-head">
+      <h2>Monthly Performance Review</h2>
+      <div class="period">Period: <strong>${d.period_label || d.period}</strong> · ${mb.length} presses</div>
+    </div>
+    <div class="cols">
+      ${col('production', 'PRODUCTION', '01', 'production_hrs', totalUnplanned,
+             'Unplanned downtime by owner', oeeGauges, PRODUCTION_NOTE)}
+      <div class="panel">
+        <h3>Top Downtime Reason</h3>
+        <div class="top-reason-card" id="top-reason-card"></div>
+        <h3>Notes &amp; Action Plan</h3>
+        <div class="notes-area">
+          <textarea id="dept-notes" placeholder="What's being done about this? Add notes, owners, target dates — whatever's useful here."></textarea>
+          <div class="notes-meta">
+            <input type="text" id="notes-author" placeholder="Your name (optional)">
+            <button class="notes-save-btn" id="notes-save-btn" onclick="saveNotes()">Save</button>
+          </div>
+          <div class="notes-status" id="notes-status"></div>
+        </div>
+      </div>
+    </div>
+    <div class="unclassified" id="unclassified"></div>
+    <div class="slide-foot">
+      <span>Clamason — internal use only</span>
+      <span>Source: ShopFloorConnect · Agility CMMS${d.oee_pct != null ? ' · SFC OEE' : ''}</span>
+    </div>`;
+  document.getElementById('slide').style.display = 'block';
+
+  pareto('p-production', top5('production_hrs'), 'production_hrs', '#3d6491');
+
+  // Production gets Maintenance and Toolroom appended as their own bars,
+  // so the column reads as total unplanned downtime by owner.
+  reasonBars('r-production', reasonTotals(mb, 'production', true), '#3d6491', totalUnplanned, [
+    { label: 'Maintenance', hrs: siteFault, colour: '#2e6b4f' },
+    { label: 'Toolroom', hrs: siteTool, colour: '#bf7d2c' },
+  ]);
+
+  // Only these two have a real proportion behind them: OEE against its
+  // 70% target, and WO coverage against the 100% every fault event
+  // should have. The rest pass null and render as plain frames.
+  ring('g-oee', d.oee_pct, d.oee_pct == null ? '–' : fmt(d.oee_pct, 0) + '%', '#3d6491', TARGETS.oee);
+  // Production's OWN losses, not the site total. The three second gauges
+  // read across as a comparison, so they have to be peers — showing the
+  // 1565h all-departments figure here put maintenance and toolroom
+  // inside the number sitting next to them, and 1565 / 259 / 127 reads
+  // as "production had six times the downtime of toolroom" when 259 and
+  // 127 are components of the 1565.
+  //
+  // The by-owner total is still on the chart above, in its header.
+  ring('g-prod', null, prodOwn.toFixed(0) + 'h', '#c0392b');
+  // Run Time has a real target (2000h) but isn't naturally a 0-100
+  // percentage the way OEE is — expressed here as % of that target
+  // instead, same trick used for the target itself: target=100 because
+  // 2000h simply *is* the top of this particular scale. Capped at 100
+  // for the fill (running past target overflows the ring otherwise) the
+  // same way Performance% is already capped elsewhere on this page —
+  // the actual hours are what's printed in the centre and in the note,
+  // so exceeding target is still visible, just not as an overfull ring.
+  ring('g-runtime', d.oee_run_hrs == null ? null : Math.min(100, d.oee_run_hrs / TARGETS.runTime * 100),
+    d.oee_run_hrs == null ? '–' : Math.round(d.oee_run_hrs).toLocaleString() + 'h', '#3d6491', 100);
+
+  renderTopReason(mb, totalUnplanned);
+  loadNotes();
+
+  // Only surface unclassified codes when they're material. The strip is a
+  // safeguard for the incoming SFC code list — a new 'MA - Fault - Robot'
+  // landing silently in production is what it exists to catch. A stray
+  // 0.3h code is not that, and a permanent amber banner on a board slide
+  // trains everyone to ignore it, which defeats the point.
+  const UNCLASSIFIED_THRESHOLD_HRS = 1;
+  // Named now that reasonBars has recorded what fell into Other. Listing
+  // the top three by name means the biggest hidden item is always on the
+  // slide — on June data that's 115h of Waiting Quality Pass Off, which
+  // is a bigger single line than the Maintenance bar next to it.
+  const other = lastOtherContents['r-production'] || [];
+  const noteEl = document.getElementById('production-note');
+  if (noteEl) {
+    const named = other.slice(0, 3).map(e => `${e[0]} ${e[1].toFixed(0)}h`).join(', ');
+    const exclList = excluded.map(e => `${e[0]} ${e[1].toFixed(0)}h`).join(', ');
+    noteEl.innerHTML =
+      `Excludes ${siteExcluded.toFixed(0)}h of non-productive time (${exclList}), ` +
+      `plus planned offline and no-production-planned. ` +
+      `Maintenance and Toolroom shown in their own colours.` +
+      (other.length
+        ? `<br><strong>Other</strong> = ${other.length} smaller codes, largest being ${named}. Hover the bar for the full list.`
+        : '');
+  }
+
+  const unk = unclassifiedCodes(mb).filter(([, h]) => h >= UNCLASSIFIED_THRESHOLD_HRS);
+  const ubox = document.getElementById('unclassified');
+  if (unk.length) {
+    ubox.innerHTML = `<strong>Uncategorised reason codes — currently counted under Production:</strong> ` +
+      unk.map(([r, h]) => `${r} (${h.toFixed(1)}h)`).join(', ') +
+      `. May belong to Maintenance or Toolroom instead.`;
+    ubox.style.display = 'block';
+  } else {
+    ubox.style.display = 'none';
+  }
+}
+
+const MUTED = '#999', RED = '#c0392b';
+
+/**
+ * Prints each bar's value on the bar, the way the original board slide
+ * did. Reading a height off a gridline is guesswork at this size, and
+ * the point of the slide is that someone can quote a number from it
+ * without hovering anything.
+ *
+ * Handles both orientations: above the bar on the vertical Paretos, to
+ * the right of it on the horizontal reason charts. The Pareto's
+ * cumulative line is skipped — those values are percentages already
+ * plotted against the right-hand axis, and labelling every point would
+ * run a second row of numbers through the middle of the chart.
+ */
+const barValues = {
+  id: 'barValues',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    const horizontal = chart.options.indexAxis === 'y';
+    chart.data.datasets.forEach((ds, di) => {
+      const meta = chart.getDatasetMeta(di);
+      if (ds.type === 'line' || meta.type === 'line') return;
+      meta.data.forEach((el, i) => {
+        const v = ds.data[i];
+        if (v === null || v === undefined) return;
+        // Whole hours once past 100 — '386.6h' beside a bar is more
+        // digits than the number deserves at this size.
+        const text = (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + 'h';
+        ctx.save();
+        ctx.fillStyle = '#243547';
+        ctx.font = '600 8.5px Arial';
+        if (horizontal) {
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, el.x + 5, el.y);
+        } else {
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(text, el.x, el.y - 3);
+        }
+        ctx.restore();
+      });
+    });
+  },
+};
+// Axis ticks were the same washed-out grey as the section headings.
+// Darker so they survive a projector and a printed page.
+const TICK = '#555';
+const lastOtherContents = {};
+
+// Picks the largest genuinely-named reason, not just the biggest bar on
+// the chart above — "Other" is a catch-all of many small codes bundled
+// together, not one fixable cause. Someone can write an action plan
+// against "Changeover"; there's nothing to write against "everything
+// too small to name individually", so it's excluded here even though
+// it's shown (correctly) on the reason-codes chart itself.
+function renderTopReason(mb, totalUnplanned) {
+  const totals = reasonTotals(mb, 'production', true);
+  const actionable = totals.filter(([reason]) => reason.trim().toLowerCase() !== 'other');
+  const card = document.getElementById('top-reason-card');
+  if (!actionable.length) {
+    card.innerHTML = '<div class="reason-empty">No reason-coded downtime this period.</div>';
+    return;
+  }
+  const [reason, hrs] = actionable[0];
+  const pct = totalUnplanned ? (hrs / totalUnplanned * 100).toFixed(0) : null;
+  card.innerHTML = `
+    <div class="reason-name">${reason}</div>
+    <div class="reason-hrs">${hrs.toFixed(1)}h${pct !== null ? ` · ${pct}% of unplanned downtime` : ''}</div>`;
+}
+
+const DEPARTMENT = 'production';
+
+async function loadNotes() {
+  const statusEl = document.getElementById('notes-status');
+  try {
+    const res = await fetch(`/api/department-notes/${DEPARTMENT}`);
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    document.getElementById('dept-notes').value = d.notes || '';
+    document.getElementById('notes-author').value = d.updated_by || '';
+    if (d.updated_at) {
+      const when = new Date(d.updated_at).toLocaleString('en-GB', {
+        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+      });
+      statusEl.textContent = `Last updated ${when}${d.updated_by ? ' by ' + d.updated_by : ''}`;
+      statusEl.className = 'notes-status';
+    } else {
+      statusEl.textContent = '';
+    }
+  } catch (e) {
+    statusEl.textContent = 'Could not load saved notes: ' + e.message;
+    statusEl.className = 'notes-status';
+  }
+}
+
+async function saveNotes() {
+  const btn = document.getElementById('notes-save-btn');
+  const statusEl = document.getElementById('notes-status');
+  const notes = document.getElementById('dept-notes').value;
+  const updated_by = document.getElementById('notes-author').value.trim();
+
+  btn.disabled = true;
+  statusEl.textContent = 'Saving…';
+  statusEl.className = 'notes-status';
+
+  try {
+    const res = await fetch(`/api/department-notes/${DEPARTMENT}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, updated_by }),
+    });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    const when = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    statusEl.textContent = `✓ Saved ${when}${updated_by ? ' by ' + updated_by : ''}`;
+    statusEl.className = 'notes-status ok';
+  } catch (e) {
+    statusEl.textContent = 'Error saving: ' + e.message;
+    statusEl.className = 'notes-status';
+  }
+
+  btn.disabled = false;
+}
+
+function pareto(id, rows, key, colour) {
+  const data = rows.map(r => r[key] || 0);
+  const total = data.reduce((a, b) => a + b, 0);
+  let run = 0;
+  const cum = data.map(v => { run += v; return total ? Math.round(run / total * 1000) / 10 : 0; });
+  charts.push(new Chart(document.getElementById(id), {
+    data: {
+      // Machine name only. The cumulative percentage used to be prefixed
+      // here, but it costs 4-5 characters of a 15-character budget and
+      // the percentage is already on the line and the right-hand axis —
+      // so it was being paid for twice, and the cost was 'Finzer Line
+      // 20' and 'Finzer Line 17' both truncating to 'Finzer Line'.
+      labels: uniqueShortLabels(rows.map(r => r.machine)),
+      datasets: [
+        { type: 'bar', data, backgroundColor: colour, borderRadius: 2, maxBarThickness: 34, order: 2 },
+        { type: 'line', data: cum, borderColor: RED, borderWidth: 1.4, pointRadius: 2,
+          pointBackgroundColor: RED, yAxisID: 'y1', order: 1 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      // Headroom so the value above the tallest bar is not clipped.
+      layout: { padding: { top: 14, bottom: 6, left: 2, right: 2 } },
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: c => c.dataset.type === 'line'
+          ? 'cumulative ' + c.parsed.y.toFixed(1) + '%' : c.parsed.y.toFixed(1) + 'h' } } },
+      scales: {
+        // Same 38-degree tick style as the reason charts below. The
+        // Pareto used flat two-line labels, which meant the two charts
+        // in a column disagreed about how to write a machine name.
+        x: { ticks: { color: TICK, font: { size: 8 }, maxRotation: 40, minRotation: 40, autoSkip: false },
+             grid: { display: false } },
+        // grace keeps the tallest bar off the ceiling so its printed
+        // value has somewhere to sit.
+        y: { ticks: { color: TICK, font: { size: 8 }, callback: v => v + 'h', maxTicksLimit: 6 },
+             grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true, grace: '12%' },
+        y1: { position: 'right', min: 0, max: 100, grid: { display: false },
+              ticks: { color: TICK, font: { size: 8 }, stepSize: 50, callback: v => v + '%' } },
+      },
+    },
+    plugins: [barValues],
+  }));
+}
+
+// Tick labels are drawn at an angle inside a narrow column, so a long
+// name either overruns the chart box or collides with its neighbour.
+// 15 characters is what fits at 8px across a third of an A4 landscape
+// page; the full name is always in the tooltip.
+// Angled ticks under the Pareto bars — tight budget.
+const MAX_TICK = 13;
+// Horizontal ticks beside the reason bars — a whole column of width, so
+// almost every real reason code fits whole.
+const MAX_TICK_H = 24;
+
+function shortLabel(text, max) {
+  const limit = max || MAX_TICK;
+  const t = String(text);
+  return t.length > limit ? t.slice(0, limit - 1) + '…' : t;
+}
+
+/**
+ * Shorten a set of labels WITHOUT making any two of them identical.
+ *
+ * Plain head-truncation collapses names that share a prefix. Both
+ * 'Finzer Line 20' and 'Finzer Line 17' become 'Finzer Line…', and both
+ * 'TOOL FAILURE - PRODUCTION' and 'TOOL FAILURE - SET UP' become
+ * 'TOOL FAILURE…' — two bars, same label, no way to tell them apart.
+ *
+ * So where names collide, what's shown is what's DIFFERENT about them:
+ * the text after their common prefix.
+ *
+ *   short distinguisher ('20', '17')  ->  keep the head too, put the
+ *                                         ellipsis in the middle:
+ *                                         'Finzer Lin…20'
+ *   long distinguisher ('PRODUCTION') ->  the head is mostly the shared
+ *                                         prefix and worth nothing, so
+ *                                         lead with the ellipsis:
+ *                                         '…PRODUCTION'
+ *
+ * Head-only truncation is deliberately never used for a collision, since
+ * that's the case that produced the duplicate in the first place.
+ */
+function commonPrefixLength(names) {
+  if (names.length < 2) return 0;
+  let i = 0;
+  while (i < names[0].length && names.every(n => n[i] === names[0][i])) i += 1;
+  return i;
+}
+
+function uniqueShortLabels(names, max) {
+  const limit = max || MAX_TICK;
+  const full = names.map(String);
+  const short = full.map(n => shortLabel(n, limit));
+  const counts = {};
+  short.forEach(l => { counts[l] = (counts[l] || 0) + 1; });
+
+  return short.map((l, i) => {
+    if (counts[l] === 1) return l;
+
+    // Only the names this one actually collides with define the prefix —
+    // an unrelated third bar shouldn't drag the common prefix to zero.
+    const clashing = full.filter((_, j) => short[j] === l);
+    const cut = commonPrefixLength(clashing);
+    const tail = full[i].slice(cut) || full[i];
+
+    if (tail.length <= 4) {
+      const head = limit - 1 - tail.length;
+      return head > 0 ? full[i].slice(0, head) + '…' + tail : '…' + tail;
+    }
+    return tail.length > limit - 1 ? '…' + tail.slice(-(limit - 1)) : '…' + tail;
+  });
+}
+
+// The codes rolled into the "Other" bar, biggest first. Returned so the
+// bar can name its own contents — a board slide shouldn't have a bar
+// nobody in the room can account for, and on June data Other is the
+// second-largest bar on the Production chart.
+function otherContents(entries, shown) {
+  return entries.slice(shown).sort((a, b) => b[1] - a[1]);
+}
+
+// The "Other" bar's tooltip can run to a title line, a value line, and
+// up to 9 breakdown lines — comfortably taller than the chart it lives
+// in. Chart.js's default tooltip draws inside the canvas itself, so
+// .chart-box's overflow:hidden (a backstop against the canvas
+// overflowing its card in other ways, not built with this in mind)
+// clips it before anyone can read the bottom half. Rendering to a real
+// DOM element appended to <body> sidesteps that entirely — nothing
+// this attaches to can clip it, because it isn't nested inside any of
+// this page's cards at all.
+function externalTooltipHandler(context) {
+  const { chart, tooltip } = context;
+  let el = document.getElementById('chartjs-tooltip');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'chartjs-tooltip';
+    el.style.cssText = `
+      position: fixed; pointer-events: none; z-index: 9999;
+      background: #243547; color: white; border-radius: 6px;
+      padding: 8px 12px; font-family: Arial, sans-serif; font-size: 11px;
+      line-height: 1.5; box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      max-width: 280px; max-height: 320px; overflow-y: auto;
+      opacity: 0; transition: opacity 0.1s ease;
+    `;
+    document.body.appendChild(el);
+  }
+
+  if (tooltip.opacity === 0) {
+    el.style.opacity = 0;
+    return;
+  }
+
+  const lines = [];
+  (tooltip.title || []).forEach(t => lines.push(`<div style="font-weight:bold;color:#95C11F;margin-bottom:2px">${t}</div>`));
+  (tooltip.body || []).forEach(b => {
+    b.lines.forEach(line => lines.push(`<div>${line}</div>`));
+    (b.after || []).forEach(line => lines.push(`<div style="color:#C7CFD6">${line}</div>`));
+  });
+  el.innerHTML = lines.join('');
+
+  // Positioned from the CANVAS's real screen location, since caretX/Y
+  // are relative to the canvas, not the page — this is the one part
+  // that's genuinely different from a normal in-canvas tooltip, not
+  // just where it's rendered.
+  const rect = chart.canvas.getBoundingClientRect();
+  let left = rect.left + tooltip.caretX + 12;
+  let top = rect.top + tooltip.caretY;
+
+  // Clamped to the viewport, not just freed from the card — a tooltip
+  // that escapes .chart-box only to run off the browser window's own
+  // right edge (this chart sits in the rightmost of three columns)
+  // would trade one clipping problem for another.
+  const elRect = el.getBoundingClientRect();
+  const tooltipWidth = elRect.width || 280;
+  const tooltipHeight = elRect.height || 100;
+  if (left + tooltipWidth > window.innerWidth - 8) left = rect.left + tooltip.caretX - tooltipWidth - 12;
+  if (top + tooltipHeight > window.innerHeight - 8) top = window.innerHeight - tooltipHeight - 8;
+  if (top < 8) top = 8;
+
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+  el.style.opacity = 1;
+}
+
+function reasonBars(id, entries, colour, total, extras) {
+  // Top 4 plus an explicit "Other" — dropping the tail would make the
+  // column look smaller than the department's actual downtime.
+  const SHOWN = 4;
+  const top = entries.slice(0, SHOWN);
+  const inOther = otherContents(entries, SHOWN);
+  const rest = inOther.reduce((s, e) => s + e[1], 0);
+
+  // One array of bar objects rather than three parallel arrays, so a
+  // bar's label, colour and full name can't drift apart when the order
+  // changes below.
+  const bars = top.map(e => ({ label: null, full: e[0], value: e[1], colour }));
+  if (rest > 0.05) bars.push({ label: null, full: 'Other', value: rest, colour });
+
+  // `extras` appends other departments' totals to this chart, in their
+  // own colours. On the Production column that turns "here are our
+  // reason codes" into "here is every hour of unplanned downtime the
+  // line lost, and who owns each part" — which is the question a board
+  // actually asks.
+  (extras || []).forEach(e => bars.push({ label: null, full: e.label, value: e.hrs, colour: e.colour }));
+
+  // Labels shortened once, across the whole set, so duplicates can be
+  // spotted and disambiguated together. Horizontal ticks afford far more
+  // room than angled ones, so the cap is much more generous here.
+  uniqueShortLabels(bars.map(b => b.full), MAX_TICK_H).forEach((l, i) => { bars[i].label = l; });
+
+  // Sorted descending, same as the Pareto charts above. Appending the
+  // department bars in fixed positions left Other and Toolroom out of
+  // sequence, which makes the eye work to find the biggest loss — the
+  // one thing a downtime chart exists to show.
+  bars.sort((a, b) => b.value - a.value);
+
+  const labels = bars.map(b => b.label);
+  const data = bars.map(b => b.value);
+  const colours = bars.map(b => b.colour);
+
+  lastOtherContents[id] = inOther;
+  charts.push(new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: colours, borderRadius: 2, maxBarThickness: 18 }] },
+    options: {
+      // Horizontal. Reason codes run to 25 characters ('TOOL FAILURE -
+      // PRODUCTION', 'FAULT-FEEDER/DECOILER/STR') and there is no angle
+      // at which those fit beneath a bar in a third-of-a-page column —
+      // every attempt either clipped them at the box edge or truncated
+      // them into uselessness. Turned on their side the labels get a
+      // whole column of width, sit level, and need almost no shortening.
+      //
+      // The Pareto charts above stay vertical: machine names are short,
+      // and a Pareto's cumulative line is read left-to-right.
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      // Right padding leaves room for the value printed at the end of
+      // the longest bar.
+      layout: { padding: { top: 4, bottom: 4, left: 2, right: 36 } },
+      plugins: { legend: { display: false },
+        tooltip: {
+          // enabled:false stops Chart.js drawing inside the canvas at
+          // all; external takes over rendering completely, using the
+          // exact same title/label/afterBody callbacks below to build
+          // its content — only where it renders changes, not what.
+          enabled: false,
+          external: externalTooltipHandler,
+          callbacks: {
+          // Full name from the bar itself, not from an index into
+          // `entries` — after sorting those no longer correspond.
+          title: c => (bars[c[0].dataIndex] || {}).full || c[0].label,
+          // Value is on x now that the bars are horizontal.
+          label: c => c.parsed.x.toFixed(1) + 'h' + (total ? ` (${(c.parsed.x / total * 100).toFixed(0)}%)` : ''),
+          // Hovering Other lists what's inside it, so the question
+          // "what's in that bar?" is answerable on the spot.
+          afterBody: c => (bars[c[0].dataIndex] || {}).full !== 'Other' ? [] :
+            inOther.slice(0, 8).map(e => `  ${e[0]} — ${e[1].toFixed(1)}h`)
+              .concat(inOther.length > 8 ? [`  + ${inOther.length - 8} more`] : []),
+        } } },
+      scales: {
+        // Hours along the bottom, categories down the side.
+        x: { ticks: { color: TICK, font: { size: 8 }, callback: v => v + 'h', maxTicksLimit: 5 },
+             grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true },
+        y: { ticks: { color: TICK, font: { size: 8.5 }, autoSkip: false },
+             grid: { display: false } },
+      },
+    },
+    plugins: [barValues],
+  }));
+}
+
+// Targets. OEE and Run Time have one agreed — everything else here is a
+// raw quantity (hours, work-order counts, days between failures) with no
+// number anyone has committed to yet.
+const TARGETS = { oee: 70, runTime: 2000, ppmCompletion: 90, mttf: 400 };
+
+/**
+ * pct === null means "this value has no target".
+ *
+ * A doughnut filled to 100% is a claim: it says the value reached the top
+ * of some scale. On a card showing 259 hours of tool downtime that claim
+ * is meaningless, and worse, it sits next to OEE — which IS a real
+ * percentage — so the eye reads them as comparable. They aren't.
+ *
+ * So a target-less card gets a thin flat ring: it frames the number
+ * without implying a proportion. A card with a target gets a thick arc
+ * plus a tick at the target, which is the only place a filled ring
+ * actually means anything.
+ */
+function ring(id, pct, text, colour, target) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const hasTarget = pct !== null && pct !== undefined;
+  const value = hasTarget ? Math.max(0, Math.min(100, pct)) : 100;
+
+  const centre = {
+    id: 'c' + id,
+    afterDraw(c) {
+      const x = c.ctx, a = c.chartArea;
+      const cx = (a.left + a.right) / 2, cy = (a.top + a.bottom) / 2;
+      x.save();
+      x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillStyle = '#243547';
+      x.font = '500 15px Arial';
+      x.fillText(text, cx, cy);
+
+      // Target tick — a notch through the ring at the target position,
+      // so "are we there yet" is answerable without reading the note.
+      if (hasTarget && target) {
+        const meta = c.getDatasetMeta(0).data[0];
+        const outer = meta.outerRadius, inner = meta.innerRadius;
+        const angle = -Math.PI / 2 + (target / 100) * Math.PI * 2;
+        x.strokeStyle = '#243547';
+        x.lineWidth = 2;
+        x.beginPath();
+        x.moveTo(cx + Math.cos(angle) * (inner - 1), cy + Math.sin(angle) * (inner - 1));
+        x.lineTo(cx + Math.cos(angle) * (outer + 1), cy + Math.sin(angle) * (outer + 1));
+        x.stroke();
+      }
+      x.restore();
+    },
+  };
+
+  charts.push(new Chart(el, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [value, 100 - value],
+        backgroundColor: hasTarget ? [colour, '#e8eaee'] : [colour, colour],
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      // Thin for a plain frame, thick for a real progress arc.
+      cutout: hasTarget ? '74%' : '86%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    },
+    plugins: [centre],
+  }));
+}
+
+load();
+</script>
+
+</body>
+</html>

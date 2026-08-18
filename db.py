@@ -595,3 +595,38 @@ def get_oee_daily_snapshots(start_date=None, end_date=None):
             row['created_at'] = row['created_at'].isoformat()
         result.append(row)
     return result
+
+
+def get_department_notes(department):
+    """Returns {'notes': str, 'updated_by': str, 'updated_at': iso string}
+    or None if nothing's been saved for this department yet."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT notes, updated_by, updated_at FROM department_notes WHERE department = %(department)s",
+                {'department': department}
+            )
+            row = cur.fetchone()
+    if not row:
+        return None
+    result = dict(row)
+    if result.get('updated_at') is not None:
+        result['updated_at'] = result['updated_at'].isoformat()
+    return result
+
+
+def save_department_notes(department, notes, updated_by):
+    """Upserts on department — one row per department, always. updated_by
+    is whatever name was typed in the box, not a real user account (this
+    app has no login), so it's context, not an audit trail."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO department_notes (department, notes, updated_by)
+                VALUES (%(department)s, %(notes)s, %(updated_by)s)
+                ON CONFLICT (department) DO UPDATE SET
+                    notes = EXCLUDED.notes,
+                    updated_by = EXCLUDED.updated_by,
+                    updated_at = now()
+            """, {'department': department, 'notes': notes, 'updated_by': updated_by})
+        conn.commit()
