@@ -50,7 +50,7 @@
 
   .scope-pill { display: inline-block; background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 6px 14px; border-radius: 14px; margin-bottom: 16px; }
 
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 24px; }
   .card { background: white; border-radius: 10px; padding: 16px 18px; border-top: 3px solid #95C11F; }
   .card.run   { border-top-color: #d97706; }
   .card.avail { border-top-color: #243547; }
@@ -275,10 +275,26 @@ async function load() {
       return;
     }
     document.getElementById('content').style.display = 'block';
+    renderAllTimeParts();
     render();
   } catch (e) {
     showError(e.message);
   }
+}
+
+// Deliberately NOT part of renderCards()/render() — this card is a
+// running total across every saved day, the same figure whichever
+// tab or row you're looking at, so it has to be set once from the
+// full DATA.daily set rather than re-derived from whichever period
+// happens to be selected. Summing DATA.daily specifically (not
+// weekly/monthly) because it's the one list guaranteed to be exactly
+// one row per saved day — no risk of a day being counted twice.
+function renderAllTimeParts() {
+  const totalParts = DATA.daily.reduce((s, d) => s + (d.total_parts || 0), 0);
+  const scrapParts = DATA.daily.reduce((s, d) => s + (d.scrap_parts || 0), 0);
+  document.getElementById('c-parts').textContent = Math.round(totalParts).toLocaleString();
+  document.getElementById('c-parts-sub').textContent =
+    `${Math.round(totalParts - scrapParts).toLocaleString()} good · ${Math.round(scrapParts).toLocaleString()} scrap · all-time`;
 }
 
 function showError(msg) {
@@ -323,11 +339,6 @@ function renderCards(b) {
   document.getElementById('c-avail').textContent = pct(b.availability_pct);
   document.getElementById('c-qual').textContent = b.quality_pct == null ? '–' : Number(b.quality_pct).toFixed(2) + '%';
   document.getElementById('c-qual-sub').textContent = b.scrap_parts != null ? `${Math.round(b.scrap_parts).toLocaleString()} scrap logged` : '';
-
-  document.getElementById('c-parts').textContent = b.total_parts != null ? Math.round(b.total_parts).toLocaleString() : '–';
-  document.getElementById('c-parts-sub').textContent = (b.total_parts != null && b.scrap_parts != null)
-    ? `${Math.round(b.total_parts - b.scrap_parts).toLocaleString()} good · ${Math.round(b.scrap_parts).toLocaleString()} scrap`
-    : '';
 }
 
 function renderChart(list) {
