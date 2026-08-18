@@ -201,7 +201,7 @@
         <p class="hint" id="machines-hint"></p>
         <table>
           <thead>
-            <tr><th>Machine</th><th class="num">OEE %</th><th class="num">Run Time</th><th class="num">Availability %</th><th class="num">Quality %</th></tr>
+            <tr><th>Machine</th><th class="num">OEE %</th><th class="num">Run Time</th><th class="num">Availability %</th><th class="num">Quality %</th><th class="num">Parts</th></tr>
           </thead>
           <tbody id="machines-tbody"></tbody>
         </table>
@@ -423,7 +423,8 @@ function renderMachines(b) {
       <td class="num">${h(m.run_time_hrs)}</td>
       <td class="num">${pct(m.availability_pct)}</td>
       <td class="num">${pct(m.quality_pct)}</td>
-    </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px">No machine data for this day</td></tr>';
+      <td class="num">${m.total_parts != null ? Math.round(m.total_parts).toLocaleString() : '–'}</td>
+    </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:#888;padding:20px">No machine data for this day</td></tr>';
 }
 
 function toggleCard(id) {
