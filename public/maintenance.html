@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Clamason — Board Review</title>
+<title>Clamason — Maintenance</title>
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -39,9 +39,9 @@
   .slide-head .period { font-size: 12px; color: #3a3a3a; }
   .slide-head .period strong { color: #243547; }
 
-  .cols { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 0; }
-  .col { padding: 0 14px; }
-  .col + .col { border-left: 1px solid #e8eaee; }
+  .cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 24px; align-items: start; }
+  .col { padding: 0; }
+  .col + .col { border-left: none; }
   .dept { color: #fff; padding: 9px 12px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
   .dept span.name { font-size: 13px; font-weight: bold; letter-spacing: 0.7px; }
   .dept span.num { font-size: 9.5px; opacity: 0.75; font-family: monospace; }
@@ -82,6 +82,24 @@
   .unclassified { margin-top: 18px; padding: 11px 14px; background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 11.5px; color: #92400e; line-height: 1.5; display: none; }
   .slide-foot { display: flex; justify-content: space-between; margin-top: 18px; padding-top: 11px; border-top: 1px solid #e8eaee; font-size: 10px; color: #4a4a4a; }
 
+  .panel { background: #f7f8fa; border-radius: 8px; padding: 18px; }
+  .panel h3 { font-size: 12px; color: #243547; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+  .top-reason-card { background: white; border-radius: 6px; padding: 16px; border-left: 4px solid #2e6b4f; margin-bottom: 18px; }
+  .top-reason-card .reason-name { font-size: 17px; font-weight: bold; color: #243547; }
+  .top-reason-card .reason-hrs { font-size: 12px; color: #666; margin-top: 4px; }
+  .top-reason-card .reason-empty { font-size: 12px; color: #888; font-style: italic; }
+  .notes-area textarea {
+    width: 100%; min-height: 220px; padding: 12px; border: 1px solid #ddd; border-radius: 6px;
+    font-family: Arial, sans-serif; font-size: 12.5px; line-height: 1.5; resize: vertical;
+  }
+  .notes-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 10px; }
+  .notes-meta input[type=text] { flex: 1; padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; }
+  .notes-save-btn { padding: 8px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+  .notes-save-btn:hover { background: #95C11F; color: #243547; }
+  .notes-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .notes-status { font-size: 11px; color: #999; margin-top: 8px; min-height: 14px; }
+  .notes-status.ok { color: #16a34a; }
+
   @media print {
     .sidebar, .page-header, .print-btn { display: none; }
     body { background: white; }
@@ -102,7 +120,7 @@
     <a class="nav-item" href="/">Monthly Check</a>
     <a class="nav-item" href="/dashboard">Trend Dashboard</a>
     <a class="nav-item" href="/teep">TEEP</a>
-    <a class="nav-item active" href="/board-review">Board Review</a>
+    <a class="nav-item" href="/board-review">Board Review</a>
     <a class="nav-item" href="/daily">Daily Check</a>
     <a class="nav-item" href="/daily-trend">Daily Trend</a>
     <a class="nav-item" href="/sfc-daily">SFC Daily</a>
@@ -112,7 +130,7 @@
     <div style="padding:16px 24px 6px; color:#55647a; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">Departments</div>
     <a class="nav-item" href="/production">Production</a>
     <a class="nav-item" href="/toolroom">Toolroom</a>
-    <a class="nav-item" href="/maintenance">Maintenance</a>
+    <a class="nav-item active" href="/maintenance">Maintenance</a>
   </nav>
   <div class="sidebar-footer">Internal Tool</div>
 </div>
@@ -121,8 +139,8 @@
 
 <div class="page-header">
   <div>
-    <h1>Board Review</h1>
-    <p>Monthly performance slide, built from a saved Monthly Check</p>
+    <h1>Maintenance</h1>
+    <p>Department detail, built from the same saved Monthly Check as Board Review</p>
   </div>
   <div>
     <select id="period-select" onchange="selectPeriod(this.value)"></select>
@@ -268,10 +286,6 @@ function unclassifiedCodes(mb) {
   return Object.entries(found).sort((a, b) => b[1] - a[1]);
 }
 
-// Placeholder — replaced with the real text once the charts have run and
-// the contents of the Other bar are known.
-const PRODUCTION_NOTE = '&nbsp;';
-
 function render() {
   const d = current;
   const mb = d.machine_breakdown || [];
@@ -279,15 +293,6 @@ function render() {
   charts.length = 0;
 
   const siteFault = mb.reduce((s, m) => s + (m.fault_hrs || 0), 0);
-  const siteTool = mb.reduce((s, m) => s + (m.tool_hrs || 0), 0);
-  const siteProd = mb.reduce((s, m) => s + (m.production_hrs || 0), 0);
-  const excluded = excludedHours(mb);
-  const siteExcluded = excluded.reduce((sum, e) => sum + e[1], 0);
-  // Production's own losses, with non-productive time taken out.
-  const prodOwn = siteProd - siteExcluded;
-  // What the Production column now totals: every unplanned hour, whoever
-  // owns it. The three bars-groups on that chart sum to exactly this.
-  const totalUnplanned = prodOwn + siteFault + siteTool;
 
   const top5 = (cat) => mb.slice().sort((a, b) => (b[cat] || 0) - (a[cat] || 0)).slice(0, 5);
 
@@ -307,51 +312,12 @@ function render() {
       <div class="gauge-box"><div class="gauge-ring"><canvas id="${id}"></canvas></div>
       <div class="gauge-note">${note}</div></div></div>`;
 
-  // Quality via EFACS only shows up here when it actually changed the
-  // source — d.oee_quality_source is 'sfc' on any run saved before this
-  // correction existed, and that's not worth a note; only 'efacs' is.
-  const qualityViaEfacs = d.oee_quality_source === 'efacs' ? '<br>quality via EFACS scrap' : '';
-  const oeeGauges =
-    gauge('g-oee', 'OEE', d.oee_pct == null ? 'not uploaded'
-      : `target ${TARGETS.oee}% · tick on ring<br>${d.oee_machine_count || '—'} machines${qualityViaEfacs}`) +
-    gauge('g-prod', 'Downtime (SFC)', `production-owned reasons only<br>no target set`) +
-    gauge('g-runtime', 'Run Time', d.oee_run_hrs == null ? 'not uploaded'
-      : `target ${TARGETS.runTime.toLocaleString()}h · tick on ring<br>${fmt(d.oee_run_hrs / TARGETS.runTime * 100, 0)}% of target`);
-
-  // Toolmaker-craft work orders. This card used to show
-  // machine_breakdown.wo_count, which is the MAINTENANCE figure — the
-  // only WO count the reconciler produced — so the Toolroom column was
-  // reporting maintenance activity under a toolroom label.
-  //
-  // Second correction, same card: moved from a raw 'WOs raised this
-  // month' count to the 'open' backlog figure, to match the board's own
-  // Toolroom slide ('Tools awaiting repair / maintenance', target <25)
-  // instead of a number with no board-approved target to read against.
-  const toolOpen = d.toolroom_wo_open;
-  // toolroom_wo_count existing but toolroom_wo_open missing means this
-  // run was saved before the backlog column existed, not that no WO file
-  // was uploaded — those two need different messages, or a genuinely old
-  // run looks like a data-entry gap it isn't.
-  const toolWoUploaded = d.toolroom_wo_count != null;
-  const TOOLROOM_BACKLOG_TARGET = 25;
-  const toolWoNote = !toolWoUploaded
-    ? 'no WO file uploaded'
-    : toolOpen == null
-      ? 're-save this run to populate backlog'
-      : `target &lt;${TOOLROOM_BACKLOG_TARGET}`
-        + `<br>${d.toolroom_wo_completed} completed, ${d.toolroom_wo_cancelled} cancelled this period`;
-
-  const toolGauges =
-    gauge('g-woT', 'Tools Awaiting Repair', toolWoNote) +
-    gauge('g-tool', 'Downtime (SFC)', `${mb.reduce((s, m) => s + (m.tool_events || 0), 0)} tool-related events<br>no target set`);
-
-  // MTTF is the headline now, in hours, with a real target (400h) —
-  // matching the board's own "Number of Full TPM schedules..." row
-  // exactly, which names MTTF specifically, not MTBF. MTBF was the
-  // headline before this: MTBF = MTTF + MTTR, the whole cycle rather
-  // than just the running portion, so it's kept in the note as
-  // useful context, just no longer the number the ring itself reads
-  // against a confirmed target.
+  // MTTF is the headline, in hours, with a real target (400h) — matching
+  // the board's own "Number of Full TPM schedules..." row exactly, which
+  // names MTTF specifically, not MTBF. MTBF = MTTF + MTTR, the whole
+  // cycle rather than just the running portion, so it's kept in the note
+  // as useful context, just not the number the ring itself reads against
+  // a confirmed target.
   //
   // mttfHrs computed here rather than inside the note IIFE below, so
   // the ring() call further down can use the exact same number — one
@@ -380,10 +346,20 @@ function render() {
       <div class="period">Period: <strong>${d.period_label || d.period}</strong> · ${mb.length} presses</div>
     </div>
     <div class="cols">
-      ${col('production', 'PRODUCTION', '01', 'production_hrs', totalUnplanned,
-             'Unplanned downtime by owner', oeeGauges, PRODUCTION_NOTE)}
-      ${col('toolroom', 'TOOLROOM', '02', 'tool_hrs', siteTool, 'Tool downtime — reason codes', toolGauges)}
       ${col('maintenance', 'MAINTENANCE', '03', 'fault_hrs', siteFault, 'Fault downtime — reason codes', maintGauges)}
+      <div class="panel">
+        <h3>Top Downtime Reason</h3>
+        <div class="top-reason-card" id="top-reason-card"></div>
+        <h3>Notes &amp; Action Plan</h3>
+        <div class="notes-area">
+          <textarea id="dept-notes" placeholder="What's being done about this? Add notes, owners, target dates — whatever's useful here."></textarea>
+          <div class="notes-meta">
+            <input type="text" id="notes-author" placeholder="Your name (optional)">
+            <button class="notes-save-btn" id="notes-save-btn" onclick="saveNotes()">Save</button>
+          </div>
+          <div class="notes-status" id="notes-status"></div>
+        </div>
+      </div>
     </div>
     <div class="unclassified" id="unclassified"></div>
     <div class="slide-foot">
@@ -392,50 +368,10 @@ function render() {
     </div>`;
   document.getElementById('slide').style.display = 'block';
 
-  pareto('p-production', top5('production_hrs'), 'production_hrs', '#3d6491');
-  pareto('p-toolroom', top5('tool_hrs'), 'tool_hrs', '#bf7d2c');
   pareto('p-maintenance', top5('fault_hrs'), 'fault_hrs', '#2e6b4f');
 
-  // Production gets Maintenance and Toolroom appended as their own bars,
-  // so the column reads as total unplanned downtime by owner.
-  reasonBars('r-production', reasonTotals(mb, 'production', true), '#3d6491', totalUnplanned, [
-    { label: 'Maintenance', hrs: siteFault, colour: '#2e6b4f' },
-    { label: 'Toolroom', hrs: siteTool, colour: '#bf7d2c' },
-  ]);
-  reasonBars('r-toolroom', reasonTotals(mb, 'tool'), '#bf7d2c', siteTool);
   reasonBars('r-maintenance', reasonTotals(mb, 'fault'), '#2e6b4f', siteFault);
 
-  // Only these two have a real proportion behind them: OEE against its
-  // 70% target, and WO coverage against the 100% every fault event
-  // should have. The rest pass null and render as plain frames.
-  ring('g-oee', d.oee_pct, d.oee_pct == null ? '–' : fmt(d.oee_pct, 0) + '%', '#3d6491', TARGETS.oee);
-  // Production's OWN losses, not the site total. The three second gauges
-  // read across as a comparison, so they have to be peers — showing the
-  // 1565h all-departments figure here put maintenance and toolroom
-  // inside the number sitting next to them, and 1565 / 259 / 127 reads
-  // as "production had six times the downtime of toolroom" when 259 and
-  // 127 are components of the 1565.
-  //
-  // The by-owner total is still on the chart above, in its header.
-  ring('g-prod', null, prodOwn.toFixed(0) + 'h', '#c0392b');
-  // Run Time has a real target (2000h) but isn't naturally a 0-100
-  // percentage the way OEE is — expressed here as % of that target
-  // instead, same trick used for the target itself: target=100 because
-  // 2000h simply *is* the top of this particular scale. Capped at 100
-  // for the fill (running past target overflows the ring otherwise) the
-  // same way Performance% is already capped elsewhere on this page —
-  // the actual hours are what's printed in the centre and in the note,
-  // so exceeding target is still visible, just not as an overfull ring.
-  ring('g-runtime', d.oee_run_hrs == null ? null : Math.min(100, d.oee_run_hrs / TARGETS.runTime * 100),
-    d.oee_run_hrs == null ? '–' : Math.round(d.oee_run_hrs).toLocaleString() + 'h', '#3d6491', 100);
-  // Plain frame, not a target arc — ring()'s own doc explains why: a
-  // filled arc claims a proportion, and a count against a ceiling target
-  // doesn't have the same 'more fill = more good' meaning a percentage
-  // does. Colour carries the target instead: red once backlog exceeds it,
-  // same red already used for the downtime figures on this page.
-  ring('g-woT', null, toolOpen == null ? '–' : String(toolOpen),
-    toolOpen != null && toolOpen > TOOLROOM_BACKLOG_TARGET ? '#c0392b' : '#bf7d2c');
-  ring('g-tool', null, siteTool.toFixed(0) + 'h', '#c0392b');
   // Same "% of target" trick as Run Time's gauge — 400h isn't a natural
   // 0-100 scale, so it's expressed as progress toward that target
   // instead, capped at 100 for the fill (the actual hours are what's
@@ -452,40 +388,8 @@ function render() {
   ring('g-ppm', d.ppm_completion_pct, d.ppm_completion_pct == null ? '–' : fmt(d.ppm_completion_pct, 0) + '%',
     '#2e6b4f', TARGETS.ppmCompletion);
 
-  // Only surface unclassified codes when they're material. The strip is a
-  // safeguard for the incoming SFC code list — a new 'MA - Fault - Robot'
-  // landing silently in production is what it exists to catch. A stray
-  // 0.3h code is not that, and a permanent amber banner on a board slide
-  // trains everyone to ignore it, which defeats the point.
-  const UNCLASSIFIED_THRESHOLD_HRS = 1;
-  // Named now that reasonBars has recorded what fell into Other. Listing
-  // the top three by name means the biggest hidden item is always on the
-  // slide — on June data that's 115h of Waiting Quality Pass Off, which
-  // is a bigger single line than the Maintenance bar next to it.
-  const other = lastOtherContents['r-production'] || [];
-  const noteEl = document.getElementById('production-note');
-  if (noteEl) {
-    const named = other.slice(0, 3).map(e => `${e[0]} ${e[1].toFixed(0)}h`).join(', ');
-    const exclList = excluded.map(e => `${e[0]} ${e[1].toFixed(0)}h`).join(', ');
-    noteEl.innerHTML =
-      `Excludes ${siteExcluded.toFixed(0)}h of non-productive time (${exclList}), ` +
-      `plus planned offline and no-production-planned. ` +
-      `Maintenance and Toolroom shown in their own colours.` +
-      (other.length
-        ? `<br><strong>Other</strong> = ${other.length} smaller codes, largest being ${named}. Hover the bar for the full list.`
-        : '');
-  }
-
-  const unk = unclassifiedCodes(mb).filter(([, h]) => h >= UNCLASSIFIED_THRESHOLD_HRS);
-  const ubox = document.getElementById('unclassified');
-  if (unk.length) {
-    ubox.innerHTML = `<strong>Uncategorised reason codes — currently counted under Production:</strong> ` +
-      unk.map(([r, h]) => `${r} (${h.toFixed(1)}h)`).join(', ') +
-      `. May belong to Maintenance or Toolroom instead.`;
-    ubox.style.display = 'block';
-  } else {
-    ubox.style.display = 'none';
-  }
+  renderTopReason(mb, siteFault);
+  loadNotes();
 }
 
 const MUTED = '#999', RED = '#c0392b';
@@ -537,6 +441,80 @@ const barValues = {
 // Darker so they survive a projector and a printed page.
 const TICK = '#555';
 const lastOtherContents = {};
+
+// Picks the largest genuinely-named reason, not just the biggest bar on
+// the chart above — "Other" (if present in the data) is a catch-all of
+// smaller codes bundled together, not one fixable cause. Someone can
+// write an action plan against a named reason; there's nothing to write
+// against "everything too small to name individually".
+function renderTopReason(mb, totalHrs) {
+  const totals = reasonTotals(mb, 'fault');
+  const actionable = totals.filter(([reason]) => reason.trim().toLowerCase() !== 'other');
+  const card = document.getElementById('top-reason-card');
+  if (!actionable.length) {
+    card.innerHTML = '<div class="reason-empty">No reason-coded downtime this period.</div>';
+    return;
+  }
+  const [reason, hrs] = actionable[0];
+  const pct = totalHrs ? (hrs / totalHrs * 100).toFixed(0) : null;
+  card.innerHTML = `
+    <div class="reason-name">${reason}</div>
+    <div class="reason-hrs">${hrs.toFixed(1)}h${pct !== null ? ` · ${pct}% of downtime` : ''}</div>`;
+}
+
+const DEPARTMENT = 'maintenance';
+
+async function loadNotes() {
+  const statusEl = document.getElementById('notes-status');
+  try {
+    const res = await fetch(`/api/department-notes/${DEPARTMENT}`);
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    document.getElementById('dept-notes').value = d.notes || '';
+    document.getElementById('notes-author').value = d.updated_by || '';
+    if (d.updated_at) {
+      const when = new Date(d.updated_at).toLocaleString('en-GB', {
+        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+      });
+      statusEl.textContent = `Last updated ${when}${d.updated_by ? ' by ' + d.updated_by : ''}`;
+      statusEl.className = 'notes-status';
+    } else {
+      statusEl.textContent = '';
+    }
+  } catch (e) {
+    statusEl.textContent = 'Could not load saved notes: ' + e.message;
+    statusEl.className = 'notes-status';
+  }
+}
+
+async function saveNotes() {
+  const btn = document.getElementById('notes-save-btn');
+  const statusEl = document.getElementById('notes-status');
+  const notes = document.getElementById('dept-notes').value;
+  const updated_by = document.getElementById('notes-author').value.trim();
+
+  btn.disabled = true;
+  statusEl.textContent = 'Saving…';
+  statusEl.className = 'notes-status';
+
+  try {
+    const res = await fetch(`/api/department-notes/${DEPARTMENT}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, updated_by }),
+    });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    const when = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    statusEl.textContent = `✓ Saved ${when}${updated_by ? ' by ' + updated_by : ''}`;
+    statusEl.className = 'notes-status ok';
+  } catch (e) {
+    statusEl.textContent = 'Error saving: ' + e.message;
+    statusEl.className = 'notes-status';
+  }
+
+  btn.disabled = false;
+}
 
 function pareto(id, rows, key, colour) {
   const data = rows.map(r => r[key] || 0);
