@@ -88,6 +88,9 @@
   .top-reason-card .reason-name { font-size: 17px; font-weight: bold; color: #243547; }
   .top-reason-card .reason-hrs { font-size: 12px; color: #666; margin-top: 4px; }
   .top-reason-card .reason-empty { font-size: 12px; color: #888; font-style: italic; }
+  .reason-breakdown-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid #e2e5ea; }
+  .reason-breakdown-body { background: white; border-radius: 6px; padding: 12px 16px; font-size: 11.5px; color: #333; line-height: 1.6; }
+  .reason-breakdown-body strong { color: #243547; }
   .notes-area textarea {
     width: 100%; min-height: 220px; padding: 12px; border: 1px solid #ddd; border-radius: 6px;
     font-family: Arial, sans-serif; font-size: 12.5px; line-height: 1.5; resize: vertical;
@@ -356,7 +359,7 @@ function render() {
     </div>
     <div class="cols">
       ${col('production', 'PRODUCTION', '01', 'production_hrs', prodOwn,
-             'Production reason codes', oeeGauges, PRODUCTION_NOTE)}
+             'Production reason codes', oeeGauges)}
       <div class="panel">
         <h3>Top Downtime Reason</h3>
         <div class="top-reason-card" id="top-reason-card"></div>
@@ -369,9 +372,13 @@ function render() {
           </div>
           <div class="notes-status" id="notes-status"></div>
         </div>
+        <div class="reason-breakdown-section">
+          <h3>Production Reason Codes — Notes</h3>
+          <div class="reason-breakdown-body" id="production-note"></div>
+          <div class="unclassified" id="unclassified" style="margin-top:12px;"></div>
+        </div>
       </div>
     </div>
-    <div class="unclassified" id="unclassified"></div>
     <div class="slide-foot">
       <span>Clamason — internal use only</span>
       <span>Source: ShopFloorConnect · Agility CMMS${d.oee_pct != null ? ' · SFC OEE' : ''}</span>
