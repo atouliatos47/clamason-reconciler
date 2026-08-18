@@ -296,16 +296,14 @@ function render() {
   charts.forEach(c => c.destroy());
   charts.length = 0;
 
-  const siteFault = mb.reduce((s, m) => s + (m.fault_hrs || 0), 0);
-  const siteTool = mb.reduce((s, m) => s + (m.tool_hrs || 0), 0);
   const siteProd = mb.reduce((s, m) => s + (m.production_hrs || 0), 0);
   const excluded = excludedHours(mb);
   const siteExcluded = excluded.reduce((sum, e) => sum + e[1], 0);
-  // Production's own losses, with non-productive time taken out.
+  // Production's own losses, with non-productive time taken out — the
+  // total this whole page now reads against, since Maintenance and
+  // Toolroom's hours no longer appear here at Production's own request.
+
   const prodOwn = siteProd - siteExcluded;
-  // What the Production column now totals: every unplanned hour, whoever
-  // owns it. The three bars-groups on that chart sum to exactly this.
-  const totalUnplanned = prodOwn + siteFault + siteTool;
 
   const top5 = (cat) => mb.slice().sort((a, b) => (b[cat] || 0) - (a[cat] || 0)).slice(0, 5);
 
@@ -357,8 +355,8 @@ function render() {
       <div class="period">Period: <strong>${d.period_label || d.period}</strong> · ${mb.length} presses</div>
     </div>
     <div class="cols">
-      ${col('production', 'PRODUCTION', '01', 'production_hrs', totalUnplanned,
-             'Unplanned downtime by owner', oeeGauges, PRODUCTION_NOTE)}
+      ${col('production', 'PRODUCTION', '01', 'production_hrs', prodOwn,
+             'Production reason codes', oeeGauges, PRODUCTION_NOTE)}
       <div class="panel">
         <h3>Top Downtime Reason</h3>
         <div class="top-reason-card" id="top-reason-card"></div>
@@ -382,12 +380,11 @@ function render() {
 
   pareto('p-production', top5('production_hrs'), 'production_hrs', '#3d6491');
 
-  // Production gets Maintenance and Toolroom appended as their own bars,
-  // so the column reads as total unplanned downtime by owner.
-  reasonBars('r-production', reasonTotals(mb, 'production', true), '#3d6491', totalUnplanned, [
-    { label: 'Maintenance', hrs: siteFault, colour: '#2e6b4f' },
-    { label: 'Toolroom', hrs: siteTool, colour: '#bf7d2c' },
-  ]);
+  // Production-only now, at Production's own request — Maintenance and
+  // Toolroom's hours no longer get appended as extra bars here. They're
+  // still fully visible on their own pages (each department has its own
+  // reason-codes chart), just not layered onto Production's any more.
+  reasonBars('r-production', reasonTotals(mb, 'production', true), '#3d6491', prodOwn);
 
   // Only these two have a real proportion behind them: OEE against its
   // 70% target, and WO coverage against the 100% every fault event
@@ -413,7 +410,7 @@ function render() {
   ring('g-runtime', d.oee_run_hrs == null ? null : Math.min(100, d.oee_run_hrs / TARGETS.runTime * 100),
     d.oee_run_hrs == null ? '–' : Math.round(d.oee_run_hrs).toLocaleString() + 'h', '#3d6491', 100);
 
-  renderTopReason(mb, totalUnplanned);
+  renderTopReason(mb, prodOwn);
   loadNotes();
 
   // Only surface unclassified codes when they're material. The strip is a
@@ -433,8 +430,7 @@ function render() {
     const exclList = excluded.map(e => `${e[0]} ${e[1].toFixed(0)}h`).join(', ');
     noteEl.innerHTML =
       `Excludes ${siteExcluded.toFixed(0)}h of non-productive time (${exclList}), ` +
-      `plus planned offline and no-production-planned. ` +
-      `Maintenance and Toolroom shown in their own colours.` +
+      `plus planned offline and no-production-planned.` +
       (other.length
         ? `<br><strong>Other</strong> = ${other.length} smaller codes, largest being ${named}.`
         : '');
