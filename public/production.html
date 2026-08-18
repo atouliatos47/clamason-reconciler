@@ -436,7 +436,7 @@ function render() {
       `plus planned offline and no-production-planned. ` +
       `Maintenance and Toolroom shown in their own colours.` +
       (other.length
-        ? `<br><strong>Other</strong> = ${other.length} smaller codes, largest being ${named}. Hover the bar for the full list.`
+        ? `<br><strong>Other</strong> = ${other.length} smaller codes, largest being ${named}.`
         : '');
   }
 
@@ -773,7 +773,14 @@ function reasonBars(id, entries, colour, total, extras) {
   // bar's label, colour and full name can't drift apart when the order
   // changes below.
   const bars = top.map(e => ({ label: null, full: e[0], value: e[1], colour }));
-  if (rest > 0.05) bars.push({ label: null, full: 'Other', value: rest, colour });
+  // "Other" deliberately isn't added as its own bar here — see the note
+  // below the chart, which already names what's in it (top codes by
+  // name, total count). A bar for "everything too small to name
+  // individually" doesn't add anything a bar chart is good at showing;
+  // it just takes up space next to bars that ARE specific, nameable
+  // problems. inOther is still tracked below (lastOtherContents),
+  // since the footnote text still needs it even without a bar to
+  // attach a hover tooltip to.
 
   // `extras` appends other departments' totals to this chart, in their
   // own colours. On the Production column that turns "here are our
