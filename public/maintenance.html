@@ -105,12 +105,36 @@
   .notes-status { font-size: 11px; color: #999; margin-top: 8px; min-height: 14px; }
   .notes-status.ok { color: #16a34a; }
 
+  .print-brand-line, .print-brand-footer { display: none; }
   @media print {
     .sidebar, .page-header, .print-btn { display: none; }
     body { background: white; }
     .container { max-width: none; padding: 0; }
     .slide { border-radius: 0; padding: 12px; }
     @page { size: A4 landscape; margin: 8mm; }
+
+    /* Matches slide 3 of Clamason_Rebrand_slideDeck_Template_JAN2026:
+       thin accent rule, logo bottom-left, tagline bottom-right. Same
+       colours and proportions as the template, adapted from its 16:9
+       canvas onto A4 landscape's slightly squarer page. */
+    .print-brand-line {
+      display: block;
+      border-top: 1.5pt solid #97C21E;
+      margin-bottom: 5mm;
+    }
+    .print-brand-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 6mm;
+    }
+    .print-brand-footer img { height: 7mm; }
+    .print-brand-footer span {
+      font-size: 8pt;
+      letter-spacing: 0.5pt;
+      text-transform: uppercase;
+      color: #B4B3BB;
+    }
   }
 </style>
 </head>
@@ -158,7 +182,12 @@
   <div class="empty-note" id="empty-note">
     No saved months yet — run a <a href="/">Monthly Check</a> and press Save to Trend Dashboard.
   </div>
+  <div class="print-brand-line"></div>
   <div class="slide" id="slide" style="display:none;"></div>
+  <div class="print-brand-footer">
+    <img src="/clamason-logo-print.png" alt="Clamason">
+    <span>Precision Metal Stamping &amp; Presswork Specialists</span>
+  </div>
 </div>
 
 </div>
