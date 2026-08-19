@@ -80,7 +80,7 @@
   .gauge-ring { position: relative; width: 96px; height: 48px; flex-shrink: 0; }
   .gauge-note { font-size: 10px; color: #333; line-height: 1.6; text-align: center; }
 
-  .slide-foot { display: flex; justify-content: space-between; margin-top: 18px; padding-top: 11px; border-top: 1px solid #e8eaee; font-size: 10px; color: #4a4a4a; }
+  .slide-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 11px; border-top: 1px solid #e8eaee; font-size: 10px; color: #4a4a4a; }
 
   .panel { background: #f7f8fa; border-radius: 8px; padding: 18px; }
   .panel h3 { font-size: 12px; color: #243547; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
@@ -435,7 +435,7 @@ function render() {
       </div>
     </div>
     <div class="slide-foot">
-      <span>Clamason — internal use only</span>
+      <img src="/clamason-logo-print.png" alt="Clamason" style="height:14px;">
       <span>Source: ShopFloorConnect · Agility CMMS${d.oee_pct != null ? ' · SFC OEE' : ''}</span>
     </div>`;
   document.getElementById('slide').style.display = 'block';
