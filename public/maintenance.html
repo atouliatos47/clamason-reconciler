@@ -599,15 +599,12 @@ async function loadNotes() {
     if (d.error) throw new Error(d.error);
     document.getElementById('dept-notes').value = d.notes || '';
     document.getElementById('notes-author').value = d.updated_by || '';
-    if (d.updated_at) {
-      const when = new Date(d.updated_at).toLocaleString('en-GB', {
-        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-      });
-      statusEl.textContent = `Last updated ${when}${d.updated_by ? ' by ' + d.updated_by : ''}`;
-      statusEl.className = 'notes-status';
-    } else {
-      statusEl.textContent = '';
-    }
+    // Deliberately not shown — a persistent "Last updated by X" line
+    // reads as internal editing chrome, not something that belongs on
+    // a board slide when this panel gets copied straight into the
+    // monthly review. updated_at/updated_by are still fetched above
+    // and still saved with every edit, just not displayed here.
+    statusEl.textContent = '';
   } catch (e) {
     statusEl.textContent = 'Could not load saved notes: ' + e.message;
     statusEl.className = 'notes-status';
