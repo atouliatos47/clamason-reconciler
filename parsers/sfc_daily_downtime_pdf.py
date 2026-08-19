@@ -40,19 +40,28 @@ def _extract_pages(filepath):
 def _parse_period(page1_text):
     """Same 'start to end' + computed period_hrs shape as the monthly
     parser's _find_report_period, just read from PDF text instead of
-    an xlsx cell."""
+    an xlsx cell.
+
+    Also derives the calendar date this report represents, as an ISO
+    'YYYY-MM-DD' string: the START of the period. A report spanning
+    6:30am-to-6:30am is the production day that STARTED at 6:30am —
+    it's generated and closes out the following morning, but it isn't
+    that following day's data. Getting this backwards is exactly what
+    was defaulting the daily check's date picker to the wrong day."""
     m = PERIOD_RE.search(page1_text)
     if not m:
-        return '', None
+        return '', None, None
     start_s, end_s = m.groups()
     period = f"{start_s} to {end_s}"
+    detected_date = None
     try:
         start = datetime.strptime(start_s, '%m/%d/%Y %I:%M:%S %p')
         end = datetime.strptime(end_s, '%m/%d/%Y %I:%M:%S %p')
         period_hrs = round((end - start).total_seconds() / 3600, 2)
+        detected_date = start.date().isoformat()
     except ValueError:
         period_hrs = None
-    return period, period_hrs
+    return period, period_hrs, detected_date
 
 
 def _parse_reason_rows(page1_text):
@@ -123,7 +132,7 @@ def parse_daily_downtime_pdf(filepath):
     page1 = pages[0] if pages else ''
     all_text = '\n'.join(pages)
 
-    period, period_hrs = _parse_period(page1)
+    period, period_hrs, detected_date = _parse_period(page1)
     reasons, reason_events, grand_total_hrs, grand_total_events = _parse_reason_rows(page1)
     machine_count = _parse_machine_count(all_text)
 
@@ -140,6 +149,7 @@ def parse_daily_downtime_pdf(filepath):
 
     return {
         'period': period,
+        'detected_date': detected_date,
         'reasons': reasons,
         'reason_events': reason_events,
         'by_machine': {},  # no per-machine breakdown in this report — see module docstring

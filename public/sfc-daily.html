@@ -350,6 +350,13 @@ async function runCheck() {
     if (d.error) throw new Error(d.error);
     lastResult = d;
     checkedAt = new Date().toISOString();
+    // The file itself says what date it covers — that's authoritative
+    // over whatever was left in the field from a previous check, a
+    // restored session, or today's default. Still editable by hand
+    // afterwards if there's ever a reason to override it.
+    if (d.detected_date) {
+      document.getElementById('save-date').value = d.detected_date;
+    }
     render(d);
     document.getElementById('results').style.display = 'block';
     // A fresh check supersedes anything restored, and clears any stale
