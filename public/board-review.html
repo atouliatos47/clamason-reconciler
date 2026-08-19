@@ -76,7 +76,7 @@
   /* Stacked rather than side-by-side: the ring no longer competes with
      the text for width, so it can be larger and the note gets the full
      column instead of wrapping after two or three words. */
-  .gauge-ring { position: relative; width: 76px; height: 76px; flex-shrink: 0; }
+  .gauge-ring { position: relative; width: 96px; height: 48px; flex-shrink: 0; }
   .gauge-note { font-size: 10px; color: #333; line-height: 1.6; text-align: center; }
 
   .unclassified { margin-top: 18px; padding: 11px 14px; background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 11.5px; color: #92400e; line-height: 1.5; display: none; }
@@ -126,7 +126,7 @@
        running into the footer instead of moving to a fresh page
        whole. Standard, well-supported print-CSS behaviour; scoped to
        print only since it's a no-op outside a paginated context. */
-    .gauges > div, .chart-box, .top-reason-card, .notes-area, .reason-breakdown-section {
+    .chart-box, .top-reason-card, .notes-area, .reason-breakdown-section {
       break-inside: avoid;
       page-break-inside: avoid;
     }
@@ -134,6 +134,12 @@
       break-after: avoid;
       page-break-after: avoid;
     }
+    /* Trimmed specifically for print, alongside the half-gauge switch
+       above — together these are what get the whole page onto one
+       printed sheet instead of two. Screen view is untouched: this
+       only takes effect inside @media print. */
+    .chart-wrap { height: 150px; }
+    .chart-wrap.short { height: 140px; }
   }
 </style>
 </head>
@@ -888,19 +894,24 @@ function ring(id, pct, text, colour, target) {
     id: 'c' + id,
     afterDraw(c) {
       const x = c.ctx, a = c.chartArea;
-      const cx = (a.left + a.right) / 2, cy = (a.top + a.bottom) / 2;
+      // Half-gauge: text sits under the arc, in the flat space the
+      // full-circle version didn't have — bottom-anchored, not the
+      // vertical middle a full ring would use.
+      const cx = (a.left + a.right) / 2, cy = a.bottom;
       x.save();
-      x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.textAlign = 'center'; x.textBaseline = 'bottom';
       x.fillStyle = '#243547';
       x.font = '500 15px Arial';
       x.fillText(text, cx, cy);
 
       // Target tick — a notch through the ring at the target position,
       // so "are we there yet" is answerable without reading the note.
+      // Angle sweeps left (0%) through top (50%) to right (100%),
+      // matching the half-gauge's own left-to-right sweep below.
       if (hasTarget && target) {
         const meta = c.getDatasetMeta(0).data[0];
         const outer = meta.outerRadius, inner = meta.innerRadius;
-        const angle = -Math.PI / 2 + (target / 100) * Math.PI * 2;
+        const angle = Math.PI + (target / 100) * Math.PI;
         x.strokeStyle = '#243547';
         x.lineWidth = 2;
         x.beginPath();
@@ -923,6 +934,10 @@ function ring(id, pct, text, colour, target) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      // Half-gauge, sweeping left-to-right through the top — same
+      // technique shown in the earlier preview, verified there before
+      // landing in the real app.
+      circumference: 180, rotation: 270,
       // Thin for a plain frame, thick for a real progress arc.
       cutout: hasTarget ? '74%' : '86%',
       plugins: { legend: { display: false }, tooltip: { enabled: false } },
