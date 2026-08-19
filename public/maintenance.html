@@ -143,6 +143,20 @@
       text-transform: uppercase;
       color: #B4B3BB;
     }
+    /* Prevents a browser from cutting a single widget in half at a
+       page boundary — e.g. a gauge's label landing on one printed
+       page and its ring on the next, or a tall reason-codes chart
+       running into the footer instead of moving to a fresh page
+       whole. Standard, well-supported print-CSS behaviour; scoped to
+       print only since it's a no-op outside a paginated context. */
+    .gauges > div, .chart-box, .top-reason-card, .notes-area, .reason-breakdown-section {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .chart-label {
+      break-after: avoid;
+      page-break-after: avoid;
+    }
   }
 </style>
 </head>
