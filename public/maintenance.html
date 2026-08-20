@@ -614,16 +614,13 @@ function renderReasonBreakdown(mb, reason) {
   chartWrap.style.display = 'block';
   empty.style.display = 'none';
 
-  // Same cap-plus-remainder pattern as Other-by-code: top 8 presses as
-  // bars, anything past that folded into the header count rather than
-  // squeezing the chart to fit every press on a busy fault code.
-  const SHOWN = 8;
-  const shown = byMachine.slice(0, SHOWN);
-  const remainder = byMachine.slice(SHOWN);
-  const remainderHrs = remainder.reduce((s, x) => s + x.hrs, 0);
+  // Every press gets a bar now — no cap, no "+N more" note. Height
+  // grows with the list instead of squeezing it, same pattern as the
+  // Production reason-codes chart.
+  chartWrap.style.height = Math.max(150, byMachine.length * 20 + 16) + 'px';
 
-  const labels = uniqueShortLabels(shown.map(x => x.machine), MAX_TICK_H);
-  const data = shown.map(x => x.hrs);
+  const labels = uniqueShortLabels(byMachine.map(x => x.machine), MAX_TICK_H);
+  const data = byMachine.map(x => x.hrs);
 
   byPressChart = new Chart(document.getElementById('by-press-chart'), {
     type: 'bar',
@@ -641,9 +638,7 @@ function renderReasonBreakdown(mb, reason) {
     },
   });
 
-  document.getElementById('reason-breakdown-title').textContent = remainder.length
-    ? `${reason} — by Press (+ ${remainder.length} more, ${remainderHrs.toFixed(0)}h)`
-    : `${reason} — by Press`;
+  document.getElementById('reason-breakdown-title').textContent = `${reason} — by Press`;
 }
 
 const DEPARTMENT = 'maintenance';
