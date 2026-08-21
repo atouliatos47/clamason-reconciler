@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Production Plan</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh;
+    display: flex; flex-direction: column; padding: 24px 0;
+    border-right: 3px solid #95C11F;
+    position: sticky; top: 0; align-self: flex-start;
+  }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-item { color: #C7CFD6; font-size: 13px; text-decoration: none; padding: 11px 24px; border-left: 3px solid transparent; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.14); color: #95C11F; border-left-color: #95C11F; font-weight: bold; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; min-width: 0; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; }
+  .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
+  .page-header p { color: #888; font-size: 11.5px; margin-top: 3px; }
+
+  @media (max-width: 768px) {
+    body { flex-direction: column; }
+    .sidebar { width: 100%; min-height: auto; flex-direction: row; align-items: center; padding: 12px 16px; overflow-x: auto; border-right: none; border-bottom: 3px solid #95C11F; }
+    .sidebar-brand { border-bottom: none; padding: 0 16px 0 0; margin-bottom: 0; white-space: nowrap; width: 140px; }
+    .sidebar-nav { flex-direction: row; }
+    .nav-item { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-item.active { border-left: none; border-bottom-color: #95C11F; }
+    .sidebar-footer { display: none; }
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+
+  .upload-section { background: white; border-radius: 10px; padding: 28px; margin-bottom: 24px; }
+  .upload-section h2 { font-size: 15px; color: #243547; margin-bottom:4px; }
+  .upload-section p { font-size: 12px; color: #888; margin-bottom: 20px; }
+  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; max-width: 420px; transition: all 0.2s; }
+  .upload-card.done { border-color: #95C11F; border-style: solid; background: #f9fdf0; }
+  .upload-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
+  .upload-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
+  .upload-card input[type=file] { display: none; }
+  .upload-btn { display: inline-block; padding: 8px 18px; background: #243547; color: white; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
+  .upload-btn:hover { background: #95C11F; color: #243547; }
+  .file-status { font-size: 11px; margin-top: 8px; color: #95C11F; font-weight: bold; min-height: 16px; }
+
+  .run-btn { padding: 14px 28px; background: #95C11F; color: #243547; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; margin-top: 20px; transition: opacity 0.2s; }
+  .run-btn:hover { opacity: 0.9; }
+  .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .action-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .date-field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .date-field label { font-size: 12px; color: #555; }
+  .date-field input[type=date] { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; color: #243547; }
+  .save-btn { padding: 9px 18px; background: #243547; color: white; font-size: 12px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+  .save-btn:hover { background: #1a2735; }
+  .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .clear-btn { padding: 9px 18px; background: white; color: #243547; font-size: 12px; font-weight: bold; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+  .clear-btn:hover { border-color: #243547; }
+  .save-status { font-size: 12px; font-weight: bold; }
+  .save-status.ok { color: #16a34a; }
+  .save-status.err { color: #dc2626; }
+
+  .refile-note {
+    display: none; background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b;
+    border-radius: 6px; padding: 11px 14px; margin-bottom: 16px; font-size: 12px; color: #92400e; line-height: 1.5;
+  }
+  .refile-note strong { color: #78350f; }
+
+  .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; display: none; }
+
+  .results { display: none; }
+
+  .scope-badge { background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi { background: white; border-radius: 8px; padding: 18px 20px; border-top: 4px solid #ddd; }
+  .kpi.green { border-top-color: #95C11F; }
+  .kpi.navy { border-top-color: #243547; }
+  .kpi label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi .val { font-size: 26px; font-weight: bold; color: #243547; margin: 4px 0; }
+  .kpi .sub { font-size: 11px; color: #aaa; }
+
+  .table-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
+  .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
+  tr:hover td { background: #fafafa; }
+
+  footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Performance Hub</p>
+  </div>
+  <nav class="sidebar-nav">
+    <a class="nav-item" href="/">Monthly Check</a>
+    <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+    <a class="nav-item" href="/teep">TEEP</a>
+    <a class="nav-item" href="/board-review">Board Review</a>
+    <a class="nav-item" href="/daily">Daily Check</a>
+    <a class="nav-item" href="/daily-trend">Daily Trend</a>
+    <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+    <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+    <a class="nav-item" href="/daily-oee">Daily OEE</a>
+    <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
+    <a class="nav-item active" href="/production-plan">Production Plan</a>
+    <div style="padding:16px 24px 6px; color:#55647a; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">Departments</div>
+    <a class="nav-item" href="/production">Production</a>
+    <a class="nav-item" href="/toolroom">Toolroom</a>
+    <a class="nav-item" href="/maintenance">Maintenance</a>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<div class="main">
+
+<div class="page-header">
+  <h1>Production Plan</h1>
+  <p>Weekly Plan Quantity and Plan Hours from Matt's Production Plan workbook (WK30-style)</p>
+</div>
+
+<div class="container">
+
+  <div class="upload-section">
+    <h2>Upload This Week's Production Plan</h2>
+    <p>The weekly Production Plan workbook — auto-detects the right sheet by its Machinery / Planned / Available Run Hrs headers, whatever the sheet is named this week.</p>
+    <div class="upload-card" id="card-xlsx">
+      <h3>📊 Production Plan Workbook</h3>
+      <p>.xlsx export, e.g. WK_30D_2026.xlsx</p>
+      <label class="upload-btn" for="xlsx-file">Choose File</label>
+      <input type="file" id="xlsx-file" accept=".xlsx" onchange="handleFile(this)">
+      <div class="file-status" id="xlsx-status"></div>
+    </div>
+    <div class="error-box" id="error-box"></div>
+    <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Check</button>
+  </div>
+
+  <div class="results" id="results">
+
+    <div class="refile-note" id="refile-note">
+      <strong>File needed to save.</strong> This page never trusts numbers already shown on screen — saving always re-parses the uploaded workbook. Re-select the file above before saving if you've just restored this check or changed the week.
+    </div>
+
+    <div class="action-row">
+      <div class="scope-badge" id="scope-badge"></div>
+      <div class="date-field">
+        <label for="save-week">Week (any day in it):</label>
+        <input type="date" id="save-week">
+        <button class="save-btn" id="save-btn" onclick="savePlan()">💾 Save</button>
+        <button class="clear-btn" id="clear-btn" onclick="clearCheck()">↺ Clear / New Check</button>
+        <span class="save-status" id="save-status"></span>
+      </div>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi green"><label>Plan Quantity</label><div class="val" id="kpi-qty">—</div><div class="sub">Sum of Planned column</div></div>
+      <div class="kpi navy"><label>Plan Hours</label><div class="val" id="kpi-hours">—</div><div class="sub">Sum of Available Run Hrs</div></div>
+    </div>
+
+    <div class="table-card">
+      <h3>Check Detail</h3>
+      <table>
+        <tbody id="detail-tbody"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+</div>
+
+<footer>Clamason Maintenance — Internal Tool</footer>
+
+</div>
+
+<script>
+let file = null;
+let lastResult = null;
+let fileName = null;
+let checkedAt = null;
+let fileReselected = true; // true right after a fresh upload+check; false after a restore
+
+const STORAGE_KEY = 'clamason.productionPlan.lastCheck.v1';
+
+function persist() {
+  if (!lastResult) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      v: 1,
+      result: lastResult,
+      fileName: fileName,
+      checkedAt: checkedAt,
+      saveWeek: document.getElementById('save-week').value || '',
+      saveStatus: {
+        text: document.getElementById('save-status').textContent || '',
+        cls: document.getElementById('save-status').className || 'save-status',
+      },
+    }));
+  } catch (e) {
+    console.warn('Could not persist Production Plan check:', e);
+  }
+}
+
+function clearStored() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* nothing to do */ }
+}
+
+function restore() {
+  let saved;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    saved = JSON.parse(raw);
+  } catch (e) { return; }
+  if (!saved || !saved.result) return;
+
+  lastResult = saved.result;
+  fileName = saved.fileName;
+  checkedAt = saved.checkedAt;
+  fileReselected = false;
+
+  renderResult(lastResult, fileName, checkedAt);
+
+  if (saved.saveWeek) document.getElementById('save-week').value = saved.saveWeek;
+  if (saved.saveStatus && saved.saveStatus.text) {
+    const s = document.getElementById('save-status');
+    s.textContent = saved.saveStatus.text;
+    s.className = saved.saveStatus.cls;
+  }
+
+  document.getElementById('refile-note').style.display = 'block';
+}
+
+function handleFile(input) {
+  file = input.files[0] || null;
+  fileReselected = true;
+  document.getElementById('refile-note').style.display = 'none';
+  const status = document.getElementById('xlsx-status');
+  const card = document.getElementById('card-xlsx');
+  if (file) {
+    status.textContent = '✓ ' + file.name;
+    card.classList.add('done');
+  } else {
+    status.textContent = '';
+    card.classList.remove('done');
+  }
+  document.getElementById('run-btn').disabled = !file;
+}
+
+async function runCheck() {
+  if (!file) return;
+  const runBtn = document.getElementById('run-btn');
+  const errorBox = document.getElementById('error-box');
+  errorBox.style.display = 'none';
+  runBtn.disabled = true;
+  runBtn.textContent = 'Running…';
+
+  try {
+    const fd = new FormData();
+    fd.append('production_plan', file);
+    const res = await fetch('/api/production-plan-check', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if (data.error) {
+      errorBox.textContent = data.error;
+      errorBox.style.display = 'block';
+      document.getElementById('results').style.display = 'none';
+      return;
+    }
+
+    lastResult = data;
+    fileName = data.filename || file.name;
+    checkedAt = new Date().toISOString();
+
+    renderResult(lastResult, fileName, checkedAt);
+
+    // Default the week picker to today so Save works with zero extra clicks
+    // for the common case of checking the current week's plan.
+    const weekInput = document.getElementById('save-week');
+    if (!weekInput.value) weekInput.value = new Date().toISOString().slice(0, 10);
+
+    document.getElementById('save-status').textContent = '';
+    document.getElementById('save-status').className = 'save-status';
+    persist();
+  } catch (e) {
+    errorBox.textContent = 'Request failed: ' + e.message;
+    errorBox.style.display = 'block';
+  } finally {
+    runBtn.disabled = false;
+    runBtn.textContent = '🔍 Run Check';
+  }
+}
+
+function renderResult(data, fname, checkedAtIso) {
+  document.getElementById('kpi-qty').textContent = Number(data.plan_quantity).toLocaleString();
+  document.getElementById('kpi-hours').textContent = Number(data.plan_hours).toLocaleString();
+
+  document.getElementById('scope-badge').textContent = 'Sheet: ' + (data.sheet_name || '—');
+
+  const tbody = document.getElementById('detail-tbody');
+  const rows = [
+    ['Source file', fname || '—'],
+    ['Sheet found', data.sheet_name || '—'],
+    ['Data rows', data.row_count != null ? Number(data.row_count).toLocaleString() : '—'],
+    ['Checked at', checkedAtIso ? new Date(checkedAtIso).toLocaleString('en-GB') : '—'],
+  ];
+  tbody.innerHTML = rows.map(r => `<tr><td style="color:#888;">${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+
+  document.getElementById('results').style.display = 'block';
+}
+
+async function savePlan() {
+  const weekInput = document.getElementById('save-week');
+  const status = document.getElementById('save-status');
+  const saveBtn = document.getElementById('save-btn');
+
+  if (!weekInput.value) {
+    status.textContent = 'Pick a date first';
+    status.className = 'save-status err';
+    return;
+  }
+  if (!file || !fileReselected) {
+    status.textContent = 'Re-select the file above before saving';
+    status.className = 'save-status err';
+    document.getElementById('refile-note').style.display = 'block';
+    return;
+  }
+
+  saveBtn.disabled = true;
+  status.textContent = 'Saving…';
+  status.className = 'save-status';
+
+  try {
+    const fd = new FormData();
+    fd.append('production_plan', file);
+    fd.append('week_start', weekInput.value);
+    const res = await fetch('/api/save-production-plan', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if (data.error) {
+      status.textContent = data.error;
+      status.className = 'save-status err';
+      return;
+    }
+
+    status.textContent = '✓ Saved for week of ' + data.week_start;
+    status.className = 'save-status ok';
+    persist();
+  } catch (e) {
+    status.textContent = 'Save failed: ' + e.message;
+    status.className = 'save-status err';
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+function clearCheck() {
+  file = null;
+  lastResult = null;
+  fileName = null;
+  checkedAt = null;
+  fileReselected = true;
+  clearStored();
+
+  document.getElementById('xlsx-file').value = '';
+  document.getElementById('xlsx-status').textContent = '';
+  document.getElementById('card-xlsx').classList.remove('done');
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('refile-note').style.display = 'none';
+  document.getElementById('save-week').value = '';
+  document.getElementById('save-status').textContent = '';
+  document.getElementById('save-status').className = 'save-status';
+}
+
+restore();
+</script>
+
+</body>
+</html>
