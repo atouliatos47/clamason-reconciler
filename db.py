@@ -597,6 +597,74 @@ def get_oee_daily_snapshots(start_date=None, end_date=None):
     return result
 
 
+def save_production_plan_week(plan_result, week_start, source_filename):
+    """Store one week's Production Plan import. plan_result is the dict
+    returned by parsers.production_plan_xlsx.parse_production_plan();
+    week_start is a Monday date ('YYYY-MM-DD' or date object) chosen at
+    save time — same convention as every other snapshot in this app,
+    never derived from the workbook's own sheet name (that's exactly
+    what broke the "which week is this" question for the sheet itself
+    on multiple occasions). Re-saving the same week overwrites rather
+    than duplicating."""
+    row = {
+        'week_start': week_start,
+        'source_filename': source_filename,
+        'sheet_name': plan_result.get('sheet_name'),
+        'plan_quantity': plan_result.get('plan_quantity'),
+        'plan_hours': plan_result.get('plan_hours'),
+        'row_count': plan_result.get('row_count'),
+    }
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO production_plan_weekly
+                    (week_start, source_filename, sheet_name, plan_quantity, plan_hours, row_count)
+                VALUES
+                    (%(week_start)s, %(source_filename)s, %(sheet_name)s, %(plan_quantity)s,
+                     %(plan_hours)s, %(row_count)s)
+                ON CONFLICT (week_start) DO UPDATE SET
+                    source_filename = EXCLUDED.source_filename,
+                    sheet_name = EXCLUDED.sheet_name,
+                    plan_quantity = EXCLUDED.plan_quantity,
+                    plan_hours = EXCLUDED.plan_hours,
+                    row_count = EXCLUDED.row_count
+            """, row)
+        conn.commit()
+
+
+def get_production_plan_weeks(start_date=None, end_date=None):
+    """Saved weekly production plans, oldest first. Optional
+    start_date/end_date filter on week_start (both inclusive,
+    'YYYY-MM-DD' strings)."""
+    query = "SELECT * FROM production_plan_weekly WHERE 1=1"
+    params = {}
+    if start_date:
+        query += " AND week_start >= %(start_date)s"
+        params['start_date'] = start_date
+    if end_date:
+        query += " AND week_start <= %(end_date)s"
+        params['end_date'] = end_date
+    query += " ORDER BY week_start ASC"
+
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+
+    result = []
+    for r in rows:
+        row = dict(r)
+        for field in ('plan_quantity', 'plan_hours'):
+            if row.get(field) is not None:
+                row[field] = float(row[field])
+        if row.get('week_start') is not None:
+            row['week_start'] = row['week_start'].isoformat()
+        if row.get('created_at') is not None:
+            row['created_at'] = row['created_at'].isoformat()
+        result.append(row)
+    return result
+
+
 def get_department_notes(department):
     """Returns {'notes': str, 'updated_by': str, 'updated_at': iso string}
     or None if nothing's been saved for this department yet."""

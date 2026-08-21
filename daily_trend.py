@@ -396,3 +396,28 @@ def oee_monthly_rollup(snapshots):
     """snapshots: output of db.get_oee_daily_snapshots(), oldest first.
     Returns one row per calendar month, oldest first."""
     return _rollup(snapshots, _month_key, _oee_empty_bucket, _oee_add_row, _oee_finalize)
+
+
+def attach_production_plan(weekly_buckets, plan_weeks):
+    """Merges saved Production Plan weeks onto matching weekly OEE
+    buckets, in place. plan_weeks is db.get_production_plan_weeks()'s
+    output — each row's week_start is a Monday date; weekly_buckets'
+    own 'key' is the ISO 'YYYY-Www' format _week_key() builds every
+    other weekly bucket from. Converting the stored Monday into that
+    same key is what makes the two line up, rather than trying to
+    match on the Monday date directly (the bucket doesn't carry one).
+
+    Every bucket gets plan_quantity/plan_hours added — None on weeks
+    with no saved plan, not 0, so the trend page can show a dash
+    rather than implying nothing was planned."""
+    by_week_key = {}
+    for p in plan_weeks:
+        d = _parse_date(p['week_start'])
+        iso_year, iso_week, _ = d.isocalendar()
+        by_week_key[f'{iso_year}-W{iso_week:02d}'] = p
+
+    for bucket in weekly_buckets:
+        plan = by_week_key.get(bucket.get('key'))
+        bucket['plan_quantity'] = plan['plan_quantity'] if plan else None
+        bucket['plan_hours'] = plan['plan_hours'] if plan else None
+    return weekly_buckets

@@ -315,6 +315,26 @@ CREATE TABLE IF NOT EXISTS oee_daily_snapshots (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_oee_daily_snapshots_date ON oee_daily_snapshots (date);
 
+-- Matt's WK30-style production plan workbook, imported once a week.
+-- One row per week, not per day — the source is already a weekly
+-- figure, so there's no daily granularity to roll up the way OEE
+-- snapshots are. plan_quantity/plan_hours are straight sums of the
+-- Planned and Available Run Hrs columns — see
+-- parsers/production_plan_xlsx.py for why those two specifically,
+-- not the sheet's own (broken) Hours Required column.
+CREATE TABLE IF NOT EXISTS production_plan_weekly (
+    id                      SERIAL PRIMARY KEY,
+    week_start              DATE NOT NULL,
+    source_filename         TEXT,
+    sheet_name              TEXT,
+    plan_quantity           NUMERIC,
+    plan_hours              NUMERIC,
+    row_count               INTEGER,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_production_plan_weekly_week_start ON production_plan_weekly (week_start);
+
 -- One free-text notes area per department (Production/Toolroom/
 -- Maintenance), living on that department's own page next to whichever
 -- downtime reason currently has the most hours. Deliberately a single
