@@ -162,10 +162,17 @@
     <p>Performance Hub</p>
   </div>
   <nav class="sidebar-nav">
-    <a class="nav-item" href="/">Monthly Check</a>
-    <a class="nav-item" href="/dashboard">Trend Dashboard</a>
-    <a class="nav-item" href="/teep">TEEP</a>
-    <a class="nav-item active" href="/board-review">Board Review</a>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header open" id="nav-header-board-review" onclick="toggleNavGroup('board-review')">
+        <span>Board Review</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items open" id="nav-group-board-review">
+        <a class="nav-item active" href="/board-review">Total Monthly Performance Review</a>
+        <a class="nav-item" href="/">Monthly Check</a>
+        <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+        <a class="nav-item" href="/teep">TEEP</a>
+      </div>
+    </div>
     <div class="nav-group">
       <button type="button" class="nav-group-header" id="nav-header-production" onclick="toggleNavGroup('production')">
         <span>Production</span><span class="chevron">▸</span>
