@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — TPM Schedule Completion</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh;
+    display: flex; flex-direction: column; padding: 24px 0;
+    border-right: 3px solid #95C11F;
+    position: sticky; top: 0; align-self: flex-start;
+  }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-item { color: #C7CFD6; font-size: 13px; text-decoration: none; padding: 11px 24px; border-left: 3px solid transparent; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.14); color: #95C11F; border-left-color: #95C11F; font-weight: bold; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; min-width: 0; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; }
+  .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
+  .page-header p { color: #888; font-size: 11.5px; margin-top: 3px; }
+
+  @media (max-width: 768px) {
+    body { flex-direction: column; }
+    .sidebar { width: 100%; min-height: auto; flex-direction: row; align-items: center; padding: 12px 16px; overflow-x: auto; border-right: none; border-bottom: 3px solid #95C11F; }
+    .sidebar-brand { border-bottom: none; padding: 0 16px 0 0; margin-bottom: 0; white-space: nowrap; width: 140px; }
+    .sidebar-nav { flex-direction: row; }
+    .nav-item { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-item.active { border-left: none; border-bottom-color: #95C11F; }
+    .sidebar-footer { display: none; }
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+
+  .state-msg { background: white; border-radius: 10px; padding: 40px; text-align: center; color: #888; font-size: 13px; }
+  .state-msg.error { color: #dc2626; }
+
+  .period-badge { background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; margin-bottom: 18px; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi { background: white; border-radius: 10px; padding: 20px 22px; border-top: 4px solid #ddd; }
+  .kpi.green { border-top-color: #95C11F; }
+  .kpi.navy { border-top-color: #243547; }
+  .kpi label { font-size: 10.5px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; }
+  .kpi .val { font-size: 30px; font-weight: bold; color: #243547; margin: 6px 0 4px; }
+  .kpi .delta { font-size: 11.5px; font-weight: bold; }
+  .kpi .delta.up { color: #dc2626; }
+  .kpi .delta.down { color: #16a34a; }
+  .kpi .delta.flat { color: #888; }
+  .kpi .sub { font-size: 11px; color: #aaa; margin-top: 2px; }
+
+  .chart-card { background: white; border-radius: 10px; padding: 20px 22px; margin-bottom: 24px; }
+  .chart-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .canvas-wrap { position: relative; height: 340px; }
+
+  .table-card { background: white; border-radius: 10px; padding: 20px 22px; }
+  .table-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
+  td.num, th.num { text-align: right; }
+  tr:hover td { background: #fafafa; }
+
+  footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Performance Hub</p>
+  </div>
+  <nav class="sidebar-nav">
+    <a class="nav-item" href="/">Monthly Check</a>
+    <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+    <a class="nav-item" href="/teep">TEEP</a>
+    <a class="nav-item" href="/board-review">Board Review</a>
+    <a class="nav-item" href="/daily">Daily Check</a>
+    <a class="nav-item" href="/daily-trend">Daily Trend</a>
+    <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+    <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+    <a class="nav-item" href="/daily-oee">Daily OEE</a>
+    <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
+    <a class="nav-item" href="/production-plan">Production Plan</a>
+    <a class="nav-item active" href="/tpm-schedule">TPM Schedule</a>
+    <div style="padding:16px 24px 6px; color:#55647a; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">Departments</div>
+    <a class="nav-item" href="/production">Production</a>
+    <a class="nav-item" href="/toolroom">Toolroom</a>
+    <a class="nav-item" href="/maintenance">Maintenance</a>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<div class="main">
+
+<div class="page-header">
+  <h1>TPM Schedule Completion</h1>
+  <p>Planned Service &amp; Maintenance jobs completed on or before their due date — Comp Date vs Due Date, from Agility's Due Date Performance export</p>
+</div>
+
+<div class="container" id="app">
+  <div class="state-msg" id="state-msg">Loading trend data...</div>
+</div>
+
+<footer>Clamason Maintenance — Internal Tool</footer>
+
+</div>
+
+<script>
+const NAVY = '#243547', LIME = '#95C11F';
+
+function fmt(n, d = 1) { return (n === null || n === undefined) ? '—' : Number(n).toFixed(d); }
+
+function deltaBadge(curr, prev) {
+  if (prev === null || prev === undefined || curr === null || curr === undefined) return '';
+  const diff = curr - prev;
+  if (Math.abs(diff) < 0.05) return `<span class="delta flat">— no change vs prior month</span>`;
+  // Higher on-time % is always better, so up is good here — the reverse
+  // of most of this app's other deltaBadge uses (gap%, downtime, etc.
+  // where up is bad). Kept as its own small function rather than reusing
+  // dashboard.html's deltaBadge(curr, prev, higherIsWorse) to avoid
+  // silently getting the direction backwards on this one page.
+  const cls = diff > 0 ? 'down' : 'up';
+  const arrow = diff > 0 ? '▲' : '▼';
+  return `<span class="delta ${cls}">${arrow} ${fmt(Math.abs(diff))}pt vs prior month</span>`;
+}
+
+async function load() {
+  let data;
+  try {
+    const res = await fetch('/api/trend');
+    data = await res.json();
+    if (data.error) throw new Error(data.error);
+  } catch (e) {
+    document.getElementById('state-msg').className = 'state-msg error';
+    document.getElementById('state-msg').textContent = 'Could not load trend data: ' + e.message;
+    return;
+  }
+
+  // Same monthly_runs rows the Trend Dashboard reads — only the months
+  // where the Due Date Performance file was actually uploaded carry
+  // ppm_completion_pct, so this filters down to just those before
+  // rendering anything (a run with every other figure but no PPM file
+  // that month is correctly excluded here, not shown as a false gap).
+  const allRuns = data.runs || [];
+  const runs = allRuns.filter(r => r.ppm_completion_pct !== null && r.ppm_completion_pct !== undefined);
+
+  if (runs.length === 0) {
+    document.getElementById('state-msg').textContent =
+      'No months with a saved Due Date Performance file yet. Upload it as part of a Monthly Check and save to see history here.';
+    return;
+  }
+
+  render(runs);
+}
+
+function render(runs) {
+  const latest = runs[runs.length - 1];
+  const prev = runs.length > 1 ? runs[runs.length - 2] : null;
+  const labels = runs.map(r => r.period_label || r.period);
+
+  document.getElementById('app').innerHTML = `
+    <div class="period-badge">Latest: ${latest.period_label || latest.period}</div>
+
+    <div class="kpi-row">
+      <div class="kpi green">
+        <label>On Time %</label>
+        <div class="val">${fmt(latest.ppm_completion_pct, 1)}%</div>
+        ${prev ? deltaBadge(latest.ppm_completion_pct, prev.ppm_completion_pct) : '<span class="sub">No prior month to compare</span>'}
+        <div class="sub">Comp Date vs Due Date</div>
+      </div>
+      <div class="kpi navy">
+        <label>Completed On Time</label>
+        <div class="val">${latest.ppm_completed == null ? '—' : latest.ppm_completed}</div>
+        <div class="sub">On or before due date</div>
+      </div>
+      <div class="kpi navy">
+        <label>Total PPM Jobs</label>
+        <div class="val">${latest.ppm_total == null ? '—' : latest.ppm_total}</div>
+        <div class="sub">Planned Service &amp; Maintenance, completed</div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h3>On Time % — Trend</h3>
+      <div class="canvas-wrap"><canvas id="ppmChart"></canvas></div>
+    </div>
+
+    <div class="table-card">
+      <h3>Monthly Detail</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Period</th><th class="num">On Time %</th><th class="num">Completed</th><th class="num">Total PPM Jobs</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${runs.slice().reverse().map(r => `
+            <tr>
+              <td>${r.period_label || r.period}</td>
+              <td class="num">${fmt(r.ppm_completion_pct, 1)}%</td>
+              <td class="num">${r.ppm_completed == null ? '–' : r.ppm_completed}</td>
+              <td class="num">${r.ppm_total == null ? '–' : r.ppm_total}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  new Chart(document.getElementById('ppmChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'On Time %', data: runs.map(r => r.ppm_completion_pct),
+        borderColor: LIME, backgroundColor: LIME + '15', fill: true, tension: 0.25,
+        pointBackgroundColor: LIME, pointRadius: 5,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+    },
+  });
+}
+
+load();
+</script>
+
+</body>
+</html>
