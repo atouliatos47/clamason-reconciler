@@ -170,6 +170,14 @@ function hasOee(runs) {
   return runs.some(r => r.oee_pct !== null && r.oee_pct !== undefined);
 }
 
+// Same guard convention as hasOee — most months before this file was first
+// uploaded (and any month nobody attached the Due Date Performance export)
+// have NULL here, so the section and chart hide rather than showing a
+// single-point "trend".
+function hasPpm(runs) {
+  return runs.some(r => r.ppm_completion_pct !== null && r.ppm_completion_pct !== undefined);
+}
+
 function oeeSection(latest, prev) {
   if (latest.oee_pct === null || latest.oee_pct === undefined) return '';
   // oee_week_count is a leftover from the old weekly-upload workflow —
@@ -250,6 +258,34 @@ function reliabilitySection(latest, prev) {
     </div>`;
 }
 
+function ppmSection(latest, prev) {
+  if (latest.ppm_completion_pct === null || latest.ppm_completion_pct === undefined) return '';
+  // total/completed count Maintenance/Electrician 'Planned Service &
+  // Maintenance' jobs only — a breakdown or a project isn't a missed PPM,
+  // so those never drag this figure down. See due_date_performance_parser.py.
+  return `
+    <div class="machine-card">
+      <h3>TPM Schedule Completion</h3>
+      <div class="kpi-row" style="margin-bottom:0;">
+        <div class="kpi green">
+          <label>On Time %</label>
+          <div class="val">${fmt(latest.ppm_completion_pct, 1)}%</div>
+          ${prev && prev.ppm_completion_pct != null ? deltaBadge(latest.ppm_completion_pct, prev.ppm_completion_pct, false) : '<span class="sub">Comp Date vs Due Date</span>'}
+        </div>
+        <div class="kpi navy">
+          <label>Completed</label>
+          <div class="val">${latest.ppm_completed == null ? '—' : latest.ppm_completed}</div>
+          <span class="sub">On or before due date</span>
+        </div>
+        <div class="kpi navy">
+          <label>PPM Jobs This Period</label>
+          <div class="val">${latest.ppm_total == null ? '—' : latest.ppm_total}</div>
+          <span class="sub">Planned Service &amp; Maintenance, completed</span>
+        </div>
+      </div>
+    </div>`;
+}
+
 function render(runs) {
   const latest = runs[runs.length - 1];
   const prev = runs.length > 1 ? runs[runs.length - 2] : null;
@@ -283,6 +319,7 @@ function render(runs) {
 
     ${oeeSection(latest, prev)}
     ${reliabilitySection(latest, prev)}
+    ${ppmSection(latest, prev)}
 
     <div class="machine-card">
       <h3>${latest.period_label || latest.period} — Fault Events vs Breakdown WOs by Machine</h3>
@@ -309,6 +346,14 @@ function render(runs) {
       <div class="chart-card">
         <h3>MTTR &amp; Response Time — Trend</h3>
         <div class="canvas-wrap short"><canvas id="mttrChart"></canvas></div>
+      </div>
+    </div>` : ''}
+
+    ${hasPpm(runs) ? `
+    <div class="chart-grid">
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h3>TPM Schedule Completion % — Trend</h3>
+        <div class="canvas-wrap short"><canvas id="ppmChart"></canvas></div>
       </div>
     </div>` : ''}
   `;
@@ -373,6 +418,28 @@ function render(runs) {
       scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
     },
   });
+
+  if (hasPpm(runs)) {
+    // spanGaps: same reasoning as the OEE chart above — a month with no
+    // Due Date Performance file uploaded leaves a break in the line rather
+    // than reading as a real 0% completion.
+    new Chart(document.getElementById('ppmChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'TPM Schedule Completion %', data: runs.map(r => r.ppm_completion_pct),
+          borderColor: LIME, backgroundColor: LIME + '15', fill: true, tension: 0.25,
+          pointBackgroundColor: LIME, pointRadius: 5, spanGaps: true,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+      },
+    });
+  }
 
   new Chart(document.getElementById('hoursChart'), {
     type: 'line',
