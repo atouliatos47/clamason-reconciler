@@ -193,7 +193,7 @@
             <tr>
               <th>Period</th><th>Days</th><th class="num">OEE %</th><th class="num">Availability %</th>
               <th class="num">Quality %</th><th class="num">Run Time</th><th class="num">Machines</th><th class="num">Parts</th>
-              <th class="num plan-col">Plan Quantity</th><th class="num plan-col">Plan Hours</th>
+              <th class="num plan-col">Plan Quantity</th><th class="num plan-col">Plan Hours</th><th class="num plan-col">Plan Hit %</th>
             </tr>
           </thead>
           <tbody id="trend-tbody"></tbody>
@@ -393,6 +393,14 @@ function renderChart(list) {
   });
 }
 
+// Parts actually produced against the saved Plan Quantity for that week —
+// '–' whenever either side is missing (no plan saved, or a week with no
+// parts data), never a fabricated 0% that would misread as "hit nothing".
+function planHitPct(b) {
+  if (b.plan_quantity == null || !b.plan_quantity || b.total_parts == null) return '–';
+  return (b.total_parts / b.plan_quantity * 100).toFixed(1) + '%';
+}
+
 function renderTable(list) {
   const titles = { daily: 'Daily Detail', weekly: 'Weekly Detail', monthly: 'Monthly Detail' };
   document.getElementById('table-title').textContent = titles[granularity];
@@ -419,7 +427,8 @@ function renderTable(list) {
       <td class="num">${b.machine_count}</td>
       <td class="num">${b.total_parts != null ? Math.round(b.total_parts).toLocaleString() : '–'}</td>
       <td class="num plan-col">${b.plan_quantity != null ? Math.round(b.plan_quantity).toLocaleString() : '–'}</td>
-      <td class="num plan-col">${b.plan_hours != null ? Number(b.plan_hours).toFixed(1) : '–'}</td>`;
+      <td class="num plan-col">${b.plan_hours != null ? Number(b.plan_hours).toFixed(1) : '–'}</td>
+      <td class="num plan-col">${planHitPct(b)}</td>`;
     tbody.appendChild(tr);
   });
 }
