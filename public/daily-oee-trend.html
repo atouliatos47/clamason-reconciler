@@ -78,7 +78,7 @@
   td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
   tr:hover td { background: #fafafa; }
   .plan-col { display: none; }
-  .plan-col.show { display: table-cell; }
+  #detail-table.show-plan .plan-col { display: table-cell; }
   tbody tr.selectable { cursor: pointer; }
   tbody tr.selected td { background: #f2f7e4; font-weight: bold; }
   .num { text-align: right; }
@@ -188,7 +188,7 @@
       </div>
       <div class="card-body" id="detail-body">
         <p class="hint">Click any row to see that period's OEE by press below.</p>
-        <table>
+        <table id="detail-table">
           <thead>
             <tr>
               <th>Period</th><th>Days</th><th class="num">OEE %</th><th class="num">Availability %</th>
@@ -400,7 +400,7 @@ function renderTable(list) {
   // Plan Quantity/Plan Hours only exist on weekly buckets (attach_production_plan
   // in daily_trend.py only merges saved plans onto weekly, never daily/monthly),
   // so the columns only make sense — and only get shown — in the weekly view.
-  document.querySelectorAll('.plan-col').forEach(el => el.classList.toggle('show', granularity === 'weekly'));
+  document.getElementById('detail-table').classList.toggle('show-plan', granularity === 'weekly');
 
   const tbody = document.getElementById('trend-tbody');
   tbody.innerHTML = '';
