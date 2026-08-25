@@ -318,7 +318,6 @@ function renderResult(data, fname, checkedAtIso) {
   const rows = [
     ['Source file', fname || '—'],
     ['Sheet found', data.sheet_name || '—'],
-    ['Data rows', data.row_count != null ? Number(data.row_count).toLocaleString() : '—'],
     ['Checked at', checkedAtIso ? new Date(checkedAtIso).toLocaleString('en-GB') : '—'],
   ];
   tbody.innerHTML = rows.map(r => `<tr><td style="color:#888;">${r[0]}</td><td>${r[1]}</td></tr>`).join('');

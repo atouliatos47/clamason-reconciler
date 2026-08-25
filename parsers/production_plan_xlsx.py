@@ -1,83 +1,66 @@
 """Weekly Production Plan import — same 'WK30'-style workbook Matt
-already maintains (WK_30D_2026.xlsx). The sheet we need gets renamed
-every week (WK30, WK31, WK32, ...), so instead of hardcoding a sheet
-name, this scans every sheet for the one with the right headers:
-'Machinery', 'Planned', and 'Available Run Hrs' together on the same
-row. That combination is specific to this one sheet — the workbook's
-other planning sheets ('4 wk Plan', '1 wk plan') carry some of these
-column names but never all three together.
+already maintains (WK_30D_2026.xlsx, WK_35D_2026.xlsx, ...). The sheet
+we need gets renamed every week (WK30, WK31, ..., WK35, ...), so
+instead of hardcoding a sheet name, this looks for the one sheet whose
+name starts with 'WK' followed by digits — distinct from the
+workbook's other planning sheets ('4 wk Plan', '1 wk plan'), which
+never match that pattern.
 
-Two numbers come out of this: Plan Quantity (a straight sum of the
-Planned column) and Plan Hours (a straight sum of the Available Run
-Hours column — the EFACS-rate figure, not the OEE-discounted one; see
-the conversation this was speced in for why). Both are plain, working
-column sums — no formula-fixing needed, unlike the sheet's own broken
-Hours Required column, which this deliberately never touches.
+Both numbers come straight from two fixed cells on that sheet, not
+computed here:
+  - Plan Quantity: E1
+  - Plan Hours:    F1
+
+These are already the workbook's own totals (checked against a real
+WK35 export: E1 is NOT simply the sum of the sheet's own 'Planned'
+column further down — it's built some other way inside the workbook,
+likely against a filtered or pivoted range this parser never sees).
+Reading the two finished cells is deliberately simpler and more
+reliable than trying to reverse-engineer whatever produces them, and
+matches what was actually asked for: read E1 and F1, don't recompute.
 """
+import re
+
 from openpyxl import load_workbook
 
-# Headers must appear together, in this order, somewhere on one row.
-REQUIRED_HEADERS = ['MACHINERY', 'PLANNED', 'AVAILABLE RUN HRS']
+SHEET_NAME_PATTERN = re.compile(r'^WK\d+', re.IGNORECASE)
 
 
 def _find_plan_sheet(wb):
-    """Search every sheet for the header row matching REQUIRED_HEADERS.
-    Returns (sheet_name, header_row_index, {header_text: col_index})."""
+    """Returns the first sheet name starting 'WK<digits>' (e.g. 'WK35'),
+    or None if no such sheet exists in this workbook."""
     for sheet_name in wb.sheetnames:
-        ws = wb[sheet_name]
-        for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=15, values_only=True), start=1):
-            found = {}
-            for col_idx, val in enumerate(row):
-                if val is None:
-                    continue
-                text = str(val).strip().upper()
-                for header in REQUIRED_HEADERS:
-                    if text == header or text.startswith(header):
-                        found[header] = col_idx
-            if all(h in found for h in REQUIRED_HEADERS):
-                return sheet_name, row_idx, found
-    return None, None, None
+        if SHEET_NAME_PATTERN.match(sheet_name.strip()):
+            return sheet_name
+    return None
 
 
 def parse_production_plan(path):
-    """Returns {'sheet_name', 'plan_quantity', 'plan_hours', 'row_count'}.
-    Raises ValueError with a clear message if no matching sheet is found,
-    or if the columns exist but contain no usable numeric data — better
-    to fail loudly here than silently save a zero."""
+    """Returns {'sheet_name', 'plan_quantity', 'plan_hours'}.
+    Raises ValueError with a clear message if no matching sheet is
+    found, or if E1/F1 aren't populated numbers — better to fail
+    loudly here than silently save a zero."""
     wb = load_workbook(path, data_only=True, read_only=True)
-    sheet_name, header_row, cols = _find_plan_sheet(wb)
+    sheet_name = _find_plan_sheet(wb)
     if sheet_name is None:
         raise ValueError(
-            "Could not find a sheet with Machinery / Planned / Available Run Hrs "
-            "columns in this workbook. Expected the same layout as the WK30-style "
-            "production plan sheet — check the file is the right export."
+            "Could not find a sheet named like 'WK35' in this workbook. "
+            "Expected the same layout as the WK30-style production plan "
+            "sheet — check the file is the right export."
         )
 
     ws = wb[sheet_name]
-    planned_col = cols['PLANNED']
-    hours_col = cols['AVAILABLE RUN HRS']
+    plan_quantity = ws['E1'].value
+    plan_hours = ws['F1'].value
 
-    plan_quantity = 0.0
-    plan_hours = 0.0
-    row_count = 0
-    for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
-        if planned_col < len(row) and isinstance(row[planned_col], (int, float)):
-            plan_quantity += row[planned_col]
-        if hours_col < len(row) and isinstance(row[hours_col], (int, float)):
-            plan_hours += row[hours_col]
-        if (planned_col < len(row) and row[planned_col] is not None) or \
-           (hours_col < len(row) and row[hours_col] is not None):
-            row_count += 1
-
-    if row_count == 0:
+    if not isinstance(plan_quantity, (int, float)) or not isinstance(plan_hours, (int, float)):
         raise ValueError(
-            f"Found sheet '{sheet_name}' with the right headers, but no data rows "
-            "underneath them. Check the file actually has this week's plan filled in."
+            f"Found sheet '{sheet_name}', but E1 and/or F1 aren't populated "
+            "numbers. Check the file actually has this week's plan filled in."
         )
 
     return {
         'sheet_name': sheet_name,
-        'plan_quantity': round(plan_quantity, 2),
-        'plan_hours': round(plan_hours, 2),
-        'row_count': row_count,
+        'plan_quantity': round(float(plan_quantity), 2),
+        'plan_hours': round(float(plan_hours), 2),
     }
