@@ -1,8 +1,8 @@
 {
   "name": "Clamason Performance Hub",
   "short_name": "Perf Hub",
-  "description": "Production, Toolroom, and Maintenance performance reporting — OEE trending, board review, and SFC/Agility/EFACS downtime reconciliation",
-  "start_url": "/",
+  "description": "Production, Toolroom, and Maintenance performance reporting \u2014 OEE trending, board review, and SFC/Agility/EFACS downtime reconciliation",
+  "start_url": "/splash",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f0f2f5",
