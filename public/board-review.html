@@ -216,6 +216,24 @@ function toggleNavGroup(name) {
   var isOpen = items.classList.toggle('open');
   header.classList.toggle('open', isOpen);
 }
+
+// Idle timeout — after 2 minutes with no mouse/keyboard/touch activity,
+// send everyone back to the splash/landing screen. Any of these events
+// firing resets the clock, so it only fires after a genuine 2-minute
+// gap with nobody touching the app at all.
+(function() {
+  var IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+  var idleTimer;
+  function goIdle() { window.location.href = '/splash'; }
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(goIdle, IDLE_TIMEOUT_MS);
+  }
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function(evt) {
+    document.addEventListener(evt, resetIdleTimer, { passive: true });
+  });
+  resetIdleTimer();
+})();
 </script>
 
 <div class="main">
