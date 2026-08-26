@@ -583,6 +583,11 @@ def tpm_schedule_view():
     return send_from_directory('public', 'tpm-schedule.html')
 
 
+@bp.route('/splash')
+def splash_view():
+    return send_from_directory('public', 'splash.html')
+
+
 @bp.route('/api/production-plan-check', methods=['POST'])
 def production_plan_check():
     """Weekly Production Plan check — same shape as /api/daily-oee-check:
