@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Toolroom Notes &amp; Action Plan</title>
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar { width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh; display: flex; flex-direction: column; padding: 24px 0; border-right: 3px solid #95C11F; position: sticky; top: 0; align-self: flex-start; }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-group-header { display: flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: none; color: #cfd8e3; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 24px; cursor: pointer; }
+  .nav-group-header:hover { color: white; }
+  .nav-group-header .chevron { transition: transform 0.15s; font-size: 10px; }
+  .nav-group-header.open .chevron { transform: rotate(90deg); }
+  .nav-group-items { display: none; flex-direction: column; }
+  .nav-group-items.open { display: flex; }
+  .nav-item { color: #b7c2d0; text-decoration: none; font-size: 13px; padding: 8px 24px 8px 36px; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.15); color: #95C11F; border-right: 3px solid #95C11F; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; padding: 28px 32px; min-width: 0; }
+  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; }
+  .page-header h1 { font-size: 20px; color: #243547; }
+  .page-header p { font-size: 12px; color: #666; margin-top: 4px; }
+  .print-btn { padding: 8px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; margin-left: 8px; }
+  .print-btn:hover { background: #95C11F; color: #243547; }
+
+  .container { width: 100%; }
+  .dept-bar { color: #fff; padding: 10px 14px; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center; background: #bf7d2c; }
+  .dept-bar span.name { font-size: 13px; font-weight: bold; letter-spacing: 0.7px; }
+  .dept-bar span.num { font-size: 9.5px; opacity: 0.75; font-family: monospace; }
+  .panel { background: #f7f8fa; border-radius: 8px; padding: 22px; }
+  .panel.with-dept-bar { border-radius: 0 0 8px 8px; padding-top: 20px; }
+
+  .notes-area textarea {
+    width: 100%; min-height: 90px; padding: 12px; border: 1px solid #ddd; border-radius: 6px;
+    font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5; resize: vertical;
+  }
+  .field-label { font-size: 12px; font-weight: bold; color: #243547; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
+  .field-label.actions { margin-top: 14px; }
+  .actions-list { display: flex; flex-direction: column; gap: 8px; }
+  .action-row { display: flex; align-items: stretch; gap: 10px; }
+  .action-box { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 8px; border: 1px solid #ddd; border-radius: 6px; padding: 9px 12px; background: white; }
+  .action-box input[type=checkbox] { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; cursor: pointer; }
+  .action-box textarea.action-text {
+    flex: 1; min-width: 0; min-height: 0; border: none; resize: none; overflow: hidden;
+    font-family: Arial, sans-serif; font-size: 13px; line-height: 1.4; background: transparent; padding: 0;
+  }
+  .action-box textarea.action-text:focus { outline: none; }
+  .action-row.done textarea.action-text { text-decoration: line-through; color: #999; }
+  .date-box { display: flex; align-items: center; gap: 8px; flex-shrink: 0; border: 1px solid #ddd; border-radius: 6px; padding: 9px 12px; background: white; }
+  .date-box label { font-size: 11px; color: #999; white-space: nowrap; }
+  .date-box input.action-date { font-size: 12px; border: 1px solid #ddd; border-radius: 4px; padding: 3px 4px; font-family: Arial, sans-serif; }
+  .action-remove { background: none; border: none; color: #999; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
+  .action-remove:hover { color: #c0392b; }
+  .add-action-btn {
+    margin-top: 10px; padding: 6px 12px; background: white; border: 1px solid #ccc; border-radius: 6px;
+    font-size: 12px; color: #243547; cursor: pointer;
+  }
+  .add-action-btn:hover { border-color: #95C11F; background: #f2f8e8; }
+  .notes-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; gap: 10px; }
+  .notes-meta input[type=text] { flex: 1; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+  .notes-save-btn { padding: 9px 18px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+  .notes-save-btn:hover { background: #95C11F; color: #243547; }
+  .notes-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .notes-status { font-size: 12px; color: #999; margin-top: 8px; min-height: 14px; }
+  .notes-status.ok { color: #16a34a; }
+
+  @media print {
+    .sidebar, .page-header { display: none; }
+    body { background: white; }
+    .main { padding: 0; }
+    .container { max-width: none; }
+    @page { size: A4 portrait; margin: 15mm; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Performance Hub</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-board-review" onclick="toggleNavGroup('board-review')">
+        <span>Board Review</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-board-review">
+        <a class="nav-item" href="/board-review">Total Monthly Performance Review</a>
+        <a class="nav-item" href="/">Monthly Check</a>
+        <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+        <a class="nav-item" href="/teep">TEEP</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-production" onclick="toggleNavGroup('production')">
+        <span>Production</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-production">
+        <a class="nav-item" href="/production">Monthly Performance Review</a>
+        <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/daily-oee">Daily OEE</a>
+        <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
+        <a class="nav-item" href="/production-plan">Production Plan</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
+        <span>Maintenance</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-maintenance">
+        <a class="nav-item" href="/maintenance">Monthly Performance Review</a>
+        <a class="nav-item" href="/maintenance-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/daily">Daily Check</a>
+        <a class="nav-item" href="/daily-trend">Daily Trend</a>
+        <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+        <a class="nav-item" href="/tpm-schedule">TPM Schedule</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header open" id="nav-header-toolroom" onclick="toggleNavGroup('toolroom')">
+        <span>Toolroom</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items open" id="nav-group-toolroom">
+        <a class="nav-item" href="/toolroom">Monthly Performance Review</a>
+        <a class="nav-item active" href="/toolroom-notes">Notes and Action Plan</a>
+      </div>
+    </div>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<script>
+function toggleNavGroup(name) {
+  var header = document.getElementById('nav-header-' + name);
+  var items = document.getElementById('nav-group-' + name);
+  var isOpen = items.classList.toggle('open');
+  header.classList.toggle('open', isOpen);
+}
+
+(function() {
+  var IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+  var idleTimer;
+  function goIdle() { window.location.href = '/splash'; }
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(goIdle, IDLE_TIMEOUT_MS);
+  }
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function(evt) {
+    document.addEventListener(evt, resetIdleTimer, { passive: true });
+  });
+  resetIdleTimer();
+})();
+</script>
+
+<div class="main">
+
+<div class="page-header">
+  <div>
+    <h1>Notes &amp; Action Plan</h1>
+  </div>
+  <div>
+    <button class="print-btn" onclick="window.print()">Print / PDF</button>
+    <button class="print-btn" onclick="window.print()">Save</button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="dept-bar">
+    <span class="name">TOOLROOM</span><span class="num">DEPT / 02</span>
+  </div>
+  <div class="panel with-dept-bar">
+    <div class="notes-area">
+      <div class="field-label">Root Cause</div>
+      <textarea id="dept-notes" placeholder="Root cause — what's actually happening?"></textarea>
+      <div class="field-label actions">Actions</div>
+      <div class="actions-list" id="actions-list"></div>
+      <button class="add-action-btn" id="add-action-btn" type="button" onclick="addActionRow()">+ Add action</button>
+      <div class="notes-meta">
+        <input type="text" id="notes-author" placeholder="Your name (optional)">
+        <button class="notes-save-btn" id="notes-save-btn" onclick="saveNotes()">Save</button>
+      </div>
+      <div class="notes-status" id="notes-status"></div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+const DEPARTMENT = 'toolroom';
+
+async function loadNotes() {
+  const statusEl = document.getElementById('notes-status');
+  try {
+    const res = await fetch(`/api/department-notes/${DEPARTMENT}`);
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    document.getElementById('dept-notes').value = d.notes || '';
+    document.getElementById('notes-author').value = d.updated_by || '';
+    document.getElementById('actions-list').innerHTML = '';
+    (d.actions || []).forEach(a => addActionRow(a));
+    statusEl.textContent = '';
+  } catch (e) {
+    statusEl.textContent = 'Could not load saved notes: ' + e.message;
+    statusEl.className = 'notes-status';
+  }
+}
+
+function addActionRow(action) {
+  action = action || {};
+  const row = document.createElement('div');
+  row.className = 'action-row' + (action.done ? ' done' : '');
+  row.innerHTML = `
+    <div class="action-box">
+      <input type="checkbox" class="action-done" ${action.done ? 'checked' : ''}>
+      <textarea class="action-text" placeholder="Action" rows="1">${(action.action_text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</textarea>
+    </div>
+    <div class="date-box">
+      <label>Target date</label>
+      <input type="date" class="action-date" value="${action.target_date || ''}">
+      <button type="button" class="action-remove" aria-label="Remove action">&times;</button>
+    </div>
+  `;
+  const textarea = row.querySelector('.action-text');
+  const grow = () => { textarea.style.height = 'auto'; textarea.style.height = textarea.scrollHeight + 'px'; };
+  textarea.addEventListener('input', grow);
+  row.querySelector('.action-done').addEventListener('change', e => {
+    row.classList.toggle('done', e.target.checked);
+  });
+  row.querySelector('.action-remove').addEventListener('click', () => row.remove());
+  document.getElementById('actions-list').appendChild(row);
+  grow();
+  return row;
+}
+
+function collectActions() {
+  return Array.from(document.querySelectorAll('#actions-list .action-row'))
+    .map(row => ({
+      action_text: row.querySelector('.action-text').value.trim(),
+      target_date: row.querySelector('.action-date').value || null,
+      done: row.querySelector('.action-done').checked,
+    }))
+    .filter(a => a.action_text);
+}
+
+async function saveNotes() {
+  const btn = document.getElementById('notes-save-btn');
+  const statusEl = document.getElementById('notes-status');
+  const notes = document.getElementById('dept-notes').value;
+  const updated_by = document.getElementById('notes-author').value.trim();
+  const actions = collectActions();
+
+  btn.disabled = true;
+  statusEl.textContent = 'Saving…';
+  statusEl.className = 'notes-status';
+
+  try {
+    const res = await fetch(`/api/department-notes/${DEPARTMENT}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, updated_by, actions }),
+    });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    const when = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    statusEl.textContent = `✓ Saved ${when}${updated_by ? ' by ' + updated_by : ''}`;
+    statusEl.className = 'notes-status ok';
+  } catch (e) {
+    statusEl.textContent = 'Error saving: ' + e.message;
+    statusEl.className = 'notes-status';
+  }
+
+  btn.disabled = false;
+}
+
+loadNotes();
+</script>
+
+</body>
+</html>

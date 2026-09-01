@@ -662,9 +662,19 @@ def production_view():
     return send_from_directory('public', 'production.html')
 
 
+@bp.route('/production-notes')
+def production_notes_view():
+    return send_from_directory('public', 'production-notes.html')
+
+
 @bp.route('/toolroom')
 def toolroom_view():
     return send_from_directory('public', 'toolroom.html')
+
+
+@bp.route('/toolroom-notes')
+def toolroom_notes_view():
+    return send_from_directory('public', 'toolroom-notes.html')
 
 
 @bp.route('/maintenance')
