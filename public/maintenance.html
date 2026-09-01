@@ -348,14 +348,6 @@ async function load() {
     // Newest first — that's the month you came here to present.
     sel.innerHTML = RUNS.slice().reverse()
       .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
-    // Picking a month on any of these four pages (Board Review,
-    // Production, Maintenance, Toolroom) is meant to carry over to the
-    // others — you're reviewing one month at a time across the whole
-    // site, not independently per page. localStorage (not a URL param)
-    // because it survives normal navigation between pages without
-    // anyone having to pass anything along; it just quietly falls back
-    // to "latest month" if nothing's been picked yet, or if a saved
-    // label no longer matches any saved run.
     const savedLabel = localStorage.getItem('clamason-selected-period');
     const savedIdx = savedLabel ? RUNS.findIndex(r => (r.period_label || r.period) === savedLabel) : -1;
     const startIdx = savedIdx !== -1 ? savedIdx : RUNS.length - 1;
