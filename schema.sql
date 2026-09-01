@@ -335,18 +335,18 @@ CREATE TABLE IF NOT EXISTS production_plan_weekly (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_production_plan_weekly_week_start ON production_plan_weekly (week_start);
 
--- One free-text notes area per department (Production/Toolroom/
+-- One free-text root-cause note per department (Production/Toolroom/
 -- Maintenance), living on that department's own page next to whichever
--- downtime reason currently has the most hours. Deliberately a single
--- shared text blob rather than a structured, multi-field action-plan
--- table — the exact shape of what belongs here (root cause, owner,
--- target date, whatever) isn't settled yet and depends on what each
--- department manager actually wants once they see the page, so this
--- starts as the simplest thing that can hold real content rather than
--- guessing at structure that might not fit. updated_by is free text,
--- not a real user system — there's no login on this app, so it's
--- whatever name someone types in, purely for "who last touched this"
--- context, not access control.
+-- downtime reason currently has the most hours. This used to hold the
+-- whole notes-and-actions blob as one shared string — the structure
+-- wasn't settled yet at the time. It's settled now: root cause stays
+-- here as free text (it's genuinely prose, no natural fields to split
+-- it into), and the actions themselves moved out to their own table,
+-- department_actions, below — each one needs its own target date,
+-- which a single text blob can't hold per-line. updated_by is free
+-- text, not a real user system — there's no login on this app, so
+-- it's whatever name someone types in, purely for "who last touched
+-- this" context, not access control.
 CREATE TABLE IF NOT EXISTS department_notes (
     id                      SERIAL PRIMARY KEY,
     department              TEXT NOT NULL,
@@ -356,3 +356,24 @@ CREATE TABLE IF NOT EXISTS department_notes (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_department_notes_dept ON department_notes (department);
+
+-- One row per action item under a department's action plan. Kept
+-- deliberately dumb: no owner/status enum, no separate audit trail —
+-- just the text, an optional target date, and a done flag, which is
+-- everything the mockup asked for. sort_order preserves the order
+-- someone typed the actions in (Postgres doesn't guarantee row order
+-- on its own), and is rewritten 0..n on every save alongside the rest
+-- of the row — see save_department_actions in db.py, which replaces
+-- a department's whole action list in one go rather than trying to
+-- diff and patch individual rows.
+CREATE TABLE IF NOT EXISTS department_actions (
+    id                      SERIAL PRIMARY KEY,
+    department              TEXT NOT NULL,
+    action_text             TEXT NOT NULL,
+    target_date             DATE,
+    done                    BOOLEAN NOT NULL DEFAULT false,
+    sort_order              INTEGER NOT NULL DEFAULT 0,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_department_actions_dept ON department_actions (department, sort_order);

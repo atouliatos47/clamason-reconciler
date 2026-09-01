@@ -684,8 +684,9 @@ def get_department_notes_route(department):
     if department not in _VALID_DEPARTMENTS:
         return jsonify({'error': f"Unknown department '{department}'"}), 404
     try:
-        result = db.get_department_notes(department)
-        return jsonify(result or {'notes': '', 'updated_by': None, 'updated_at': None})
+        result = db.get_department_notes(department) or {'notes': '', 'updated_by': None, 'updated_at': None}
+        result['actions'] = db.get_department_actions(department)
+        return jsonify(result)
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()})
@@ -699,7 +700,9 @@ def save_department_notes_route(department):
         data = request.get_json(force=True, silent=True) or {}
         notes = data.get('notes', '')
         updated_by = (data.get('updated_by') or '').strip() or None
+        actions = data.get('actions', [])
         db.save_department_notes(department, notes, updated_by)
+        db.save_department_actions(department, actions)
         return jsonify({'saved': True})
     except Exception as e:
         import traceback

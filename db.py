@@ -698,3 +698,59 @@ def save_department_notes(department, notes, updated_by):
                     updated_at = now()
             """, {'department': department, 'notes': notes, 'updated_by': updated_by})
         conn.commit()
+
+
+def get_department_actions(department):
+    """Returns a list of {'id', 'action_text', 'target_date', 'done'}
+    for this department, in the order they were last saved in.
+    target_date comes back as an ISO date string ('2026-09-12') or
+    None — never a raw date object, so routes.py can jsonify it
+    without extra conversion."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT id, action_text, target_date, done FROM department_actions "
+                "WHERE department = %(department)s ORDER BY sort_order",
+                {'department': department}
+            )
+            rows = cur.fetchall()
+    result = []
+    for row in rows:
+        r = dict(row)
+        if r.get('target_date') is not None:
+            r['target_date'] = r['target_date'].isoformat()
+        result.append(r)
+    return result
+
+
+def save_department_actions(department, actions):
+    """Replaces this department's whole action list in one go: deletes
+    every existing row for it, then re-inserts `actions` in the order
+    given. Simpler than diffing against what's already stored, and the
+    list is short enough (a handful of items) that this is cheap. Each
+    item in `actions` is a dict with 'action_text' (required),
+    'target_date' (ISO date string or None/missing), and 'done'
+    (bool, defaults False). Rows with no action_text are skipped, so
+    an empty row left in the UI doesn't get saved as blank."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM department_actions WHERE department = %(department)s",
+                {'department': department}
+            )
+            for i, action in enumerate(actions):
+                text = (action.get('action_text') or '').strip()
+                if not text:
+                    continue
+                cur.execute("""
+                    INSERT INTO department_actions
+                        (department, action_text, target_date, done, sort_order)
+                    VALUES (%(department)s, %(action_text)s, %(target_date)s, %(done)s, %(sort_order)s)
+                """, {
+                    'department': department,
+                    'action_text': text,
+                    'target_date': action.get('target_date') or None,
+                    'done': bool(action.get('done')),
+                    'sort_order': i,
+                })
+        conn.commit()
