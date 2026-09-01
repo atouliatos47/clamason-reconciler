@@ -3,10 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Clamason — Maintenance</title>
+<title>Clamason — Maintenance Notes &amp; Action Plan</title>
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
@@ -16,152 +15,68 @@
   .sidebar-logo { width: 100%; height: auto; display: block; }
   .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
   .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-  .nav-item { color: #C7CFD6; font-size: 13px; text-decoration: none; padding: 11px 24px; border-left: 3px solid transparent; display: block; }
-  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
-  .nav-item.active { background: rgba(149,193,31,0.14); color: #95C11F; border-left-color: #95C11F; font-weight: bold; }
-  .nav-group-header {
-    width: 100%; background: none; border: none; text-align: left; cursor: pointer;
-    color: #C7CFD6; font-size: 13px; padding: 11px 24px; border-left: 3px solid transparent;
-    display: flex; align-items: center; justify-content: space-between; font-family: inherit;
-  }
-  .nav-group-header:hover { background: rgba(255,255,255,0.06); color: white; }
-  .nav-group-header .chevron { font-size: 9px; transition: transform 0.15s; }
+  .nav-group-header { display: flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: none; color: #cfd8e3; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 24px; cursor: pointer; }
+  .nav-group-header:hover { color: white; }
+  .nav-group-header .chevron { transition: transform 0.15s; font-size: 10px; }
   .nav-group-header.open .chevron { transform: rotate(90deg); }
   .nav-group-items { display: none; flex-direction: column; }
   .nav-group-items.open { display: flex; }
-  .nav-group-items .nav-item { padding-left: 42px; font-size: 12.5px; }
+  .nav-item { color: #b7c2d0; text-decoration: none; font-size: 13px; padding: 8px 24px 8px 36px; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.15); color: #95C11F; border-right: 3px solid #95C11F; }
   .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
 
-  .main { flex: 1; min-width: 0; }
-  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; display: flex; justify-content: space-between; align-items: center; }
-  .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
-  .page-header p { color: #555; font-size: 11.5px; margin-top: 3px; }
-  select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 12.5px; }
+  .main { flex: 1; padding: 28px 32px; min-width: 0; }
+  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; }
+  .page-header h1 { font-size: 20px; color: #243547; }
+  .page-header p { font-size: 12px; color: #666; margin-top: 4px; }
   .print-btn { padding: 8px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; margin-left: 8px; }
   .print-btn:hover { background: #95C11F; color: #243547; }
 
-  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
-  .empty-note, .error-box { background: white; border-radius: 10px; padding: 24px; text-align: center; color: #888; font-size: 13px; display: none; }
-  .error-box { background: #fee2e2; border: 1px solid #dc2626; color: #dc2626; text-align: left; }
+  .container { max-width: 640px; }
+  .dept-bar { color: #fff; padding: 10px 14px; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center; background: #2e6b4f; }
+  .dept-bar span.name { font-size: 13px; font-weight: bold; letter-spacing: 0.7px; }
+  .dept-bar span.num { font-size: 9.5px; opacity: 0.75; font-family: monospace; }
+  .panel { background: #f7f8fa; border-radius: 8px; padding: 22px; }
+  .panel.with-dept-bar { border-radius: 0 0 8px 8px; padding-top: 20px; }
 
-  .slide { background: white; border-radius: 10px; padding: 22px 26px; }
-  .slide-head { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 12px; border-bottom: 3px solid #243547; margin-bottom: 18px; }
-  .slide-head h2 { font-size: 21px; color: #243547; }
-  .slide-head .period { font-size: 12px; color: #3a3a3a; }
-  .slide-head .period strong { color: #243547; }
+  .notes-area textarea {
+    width: 100%; min-height: 90px; padding: 12px; border: 1px solid #ddd; border-radius: 6px;
+    font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5; resize: vertical;
+  }
+  .field-label { font-size: 12px; font-weight: bold; color: #243547; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
+  .field-label.actions { margin-top: 14px; }
+  .actions-list { display: flex; flex-direction: column; gap: 8px; }
+  .action-row { border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; background: white; }
+  .action-row-top { display: flex; align-items: center; gap: 8px; }
+  .action-row input[type=checkbox] { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; }
+  .action-row input.action-text { flex: 1; min-width: 0; border: none; font-family: Arial, sans-serif; font-size: 13px; background: transparent; }
+  .action-row input.action-text:focus { outline: none; }
+  .action-row.done input.action-text { text-decoration: line-through; color: #999; }
+  .action-row-bottom { display: flex; align-items: center; gap: 6px; margin-top: 5px; padding-left: 24px; }
+  .action-row-bottom label { font-size: 11px; color: #999; }
+  .action-row input.action-date { font-size: 12px; border: 1px solid #ddd; border-radius: 4px; padding: 3px 4px; font-family: Arial, sans-serif; }
+  .action-remove { background: none; border: none; color: #999; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; flex-shrink: 0; margin-left: auto; }
+  .action-remove:hover { color: #c0392b; }
+  .add-action-btn {
+    margin-top: 10px; padding: 6px 12px; background: white; border: 1px solid #ccc; border-radius: 6px;
+    font-size: 12px; color: #243547; cursor: pointer;
+  }
+  .add-action-btn:hover { border-color: #95C11F; background: #f2f8e8; }
+  .notes-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; gap: 10px; }
+  .notes-meta input[type=text] { flex: 1; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+  .notes-save-btn { padding: 9px 18px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+  .notes-save-btn:hover { background: #95C11F; color: #243547; }
+  .notes-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .notes-status { font-size: 12px; color: #999; margin-top: 8px; min-height: 14px; }
+  .notes-status.ok { color: #16a34a; }
 
-  .cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 24px; align-items: start; }
-  .col { padding: 0; }
-  .col + .col { border-left: none; }
-  .dept { color: #fff; padding: 9px 12px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
-  .dept span.name { font-size: 13px; font-weight: bold; letter-spacing: 0.7px; }
-  .dept span.num { font-size: 9.5px; opacity: 0.75; font-family: monospace; }
-  .dept.production { background: #3d6491; }
-  .dept.toolroom { background: #bf7d2c; }
-  .dept.maintenance { background: #2e6b4f; }
-
-  .chart-label { display: flex; justify-content: space-between; font-size: 10px; color: #243547; font-weight: bold; margin: 14px 0 5px; letter-spacing: 0.4px; text-transform: uppercase; }
-  .chart-label .meta { color: #4a4a4a; font-weight: normal; }
-  .chart-label .hrs { color: #243547; font-weight: bold; }
-  /* overflow:hidden is a backstop, not the fix — the heights above are.
-     But a chart whose labels spill into the section beneath it is worse
-     than one that clips them, so this guarantees the box holds. */
-  .chart-box { border: 1px solid #e8eaee; border-radius: 5px; padding: 8px; overflow: hidden; }
-  /* Sits below the gauges, not above them. Between the chart and the
-     gauges it pushed the Production column's gauges out of line with
-     Toolroom and Maintenance, which reads as a layout fault on a slide
-     whose whole point is three comparable columns. */
-  .chart-note { font-size: 10px; color: #333; margin-top: 10px; line-height: 1.6; }
-  .chart-note strong { color: #243547; }
-  /* Taller than the plot alone needs: rotated tick labels are drawn
-     inside the canvas, so the height must cover the bars AND the angled
-     text beneath them. */
-  .chart-wrap { position: relative; height: 182px; }
-  .chart-wrap.other { height: 150px; margin-top: 6px; }
-  /* Reason charts are horizontal now, so height is set by how many bars
-     there are, not by how much room angled labels need. */
-  .chart-wrap.short { height: 165px; }
-
-  .gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
-  .gauge-label { font-size: 10px; color: #243547; font-weight: bold; margin-bottom: 5px; letter-spacing: 0.4px; text-transform: uppercase; }
-  .gauge-box { border: 1px solid #e8eaee; border-radius: 5px; padding: 12px 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-  /* Stacked rather than side-by-side: the ring no longer competes with
-     the text for width, so it can be larger and the note gets the full
-     column instead of wrapping after two or three words. */
-  .gauge-ring { position: relative; width: 96px; height: 48px; flex-shrink: 0; }
-  .gauge-note { font-size: 10px; color: #333; line-height: 1.6; text-align: center; }
-
-  .unclassified { margin-top: 18px; padding: 11px 14px; background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 11.5px; color: #92400e; line-height: 1.5; display: none; }
-  .slide-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 11px; border-top: 1px solid #e8eaee; font-size: 10px; color: #4a4a4a; }
-
-  .panel { background: #f7f8fa; border-radius: 8px; padding: 18px; }
-  .panel h3 { font-size: 12px; color: #243547; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
-  .top-reason-card { background: white; border-radius: 6px; padding: 16px; border-left: 4px solid #2e6b4f; margin-bottom: 18px; }
-  .top-reason-card .reason-name { font-size: 17px; font-weight: bold; color: #243547; }
-  .top-reason-card .reason-hrs { font-size: 12px; color: #666; margin-top: 4px; }
-  .top-reason-card .reason-empty { font-size: 12px; color: #888; font-style: italic; }
-  .reason-breakdown-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid #e2e5ea; }
-  /* Unscoped so the same empty-state look works outside .top-reason-card
-     too — the By Press chart's "no data" fallback reuses it below. */
-  .reason-empty { font-size: 12px; color: #888; font-style: italic; }
-  .print-brand-line, .print-brand-footer { display: none; }
   @media print {
-    .sidebar, .page-header, .print-btn { display: none; }
+    .sidebar, .page-header { display: none; }
     body { background: white; }
-    .container { max-width: none; padding: 0; }
-    .slide { border-radius: 0; padding: 12px; }
-    @page { size: A4 landscape; margin: 15mm 8mm 22mm 8mm; }
-
-    /* Matches slide 3 of Clamason_Rebrand_slideDeck_Template_JAN2026:
-       thin accent rule, logo bottom-left, tagline bottom-right. Same
-       colours and proportions as the template, adapted from its 16:9
-       canvas onto A4 landscape's slightly squarer page. */
-    /* position:fixed's containing block in paged media is the page's
-       CONTENT box, not the physical page — so top/bottom here have to
-       be negative to reach up/down into the @page margin reserved
-       above, verified precisely against real pixel measurements
-       (7.1mm clear gap on both sides, no overlap with content on any
-       page the content spans, at any page count). */
-    .print-brand-line {
-      display: block;
-      position: fixed;
-      top: -7mm; left: 0; right: 0;
-      border-top: 1.5pt solid #97C21E;
-    }
-    .print-brand-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      position: fixed;
-      bottom: -14mm; left: 0; right: 0;
-    }
-    .print-brand-footer img { height: 7mm; }
-    .print-brand-footer span {
-      font-size: 8pt;
-      letter-spacing: 0.5pt;
-      text-transform: uppercase;
-      color: #B4B3BB;
-    }
-    /* Prevents a browser from cutting a single widget in half at a
-       page boundary — e.g. a gauge's label landing on one printed
-       page and its ring on the next, or a tall reason-codes chart
-       running into the footer instead of moving to a fresh page
-       whole. Standard, well-supported print-CSS behaviour; scoped to
-       print only since it's a no-op outside a paginated context. */
-    .chart-box, .top-reason-card, .notes-area, .reason-breakdown-section {
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }
-    .chart-label {
-      break-after: avoid;
-      page-break-after: avoid;
-    }
-    /* Trimmed specifically for print, alongside the half-gauge switch
-       above — together these are what get the whole page onto one
-       printed sheet instead of two. Screen view is untouched: this
-       only takes effect inside @media print. */
-    .chart-wrap { height: 150px; }
-    .chart-wrap.short { height: 140px; }
+    .main { padding: 0; }
+    .container { max-width: none; }
+    @page { size: A4 portrait; margin: 15mm; }
   }
 </style>
 </head>
@@ -190,6 +105,7 @@
       </button>
       <div class="nav-group-items" id="nav-group-production">
         <a class="nav-item" href="/production">Monthly Performance Review</a>
+        <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
         <a class="nav-item" href="/daily-oee">Daily OEE</a>
         <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
         <a class="nav-item" href="/production-plan">Production Plan</a>
@@ -200,8 +116,8 @@
         <span>Maintenance</span><span class="chevron">▸</span>
       </button>
       <div class="nav-group-items open" id="nav-group-maintenance">
-        <a class="nav-item active" href="/maintenance">Monthly Performance Review</a>
-        <a class="nav-item" href="/maintenance-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/maintenance">Monthly Performance Review</a>
+        <a class="nav-item active" href="/maintenance-notes">Notes and Action Plan</a>
         <a class="nav-item" href="/daily">Daily Check</a>
         <a class="nav-item" href="/daily-trend">Daily Trend</a>
         <a class="nav-item" href="/sfc-daily">SFC Daily</a>
@@ -215,6 +131,7 @@
       </button>
       <div class="nav-group-items" id="nav-group-toolroom">
         <a class="nav-item" href="/toolroom">Monthly Performance Review</a>
+        <a class="nav-item" href="/toolroom-notes">Notes and Action Plan</a>
       </div>
     </div>
   </nav>
@@ -229,10 +146,6 @@ function toggleNavGroup(name) {
   header.classList.toggle('open', isOpen);
 }
 
-// Idle timeout — after 2 minutes with no mouse/keyboard/touch activity,
-// send everyone back to the splash/landing screen. Any of these events
-// firing resets the clock, so it only fires after a genuine 2-minute
-// gap with nobody touching the app at all.
 (function() {
   var IDLE_TIMEOUT_MS = 2 * 60 * 1000;
   var idleTimer;
@@ -252,796 +165,121 @@ function toggleNavGroup(name) {
 
 <div class="page-header">
   <div>
-    <h1>Maintenance</h1>
-    <p>Department detail, built from the same saved Monthly Check as Board Review</p>
+    <h1>Notes &amp; Action Plan</h1>
+    <p>Maintenance — this panel only, ready to copy straight into the board deck</p>
   </div>
   <div>
-    <select id="period-select" onchange="selectPeriod(this.value)"></select>
     <button class="print-btn" onclick="window.print()">Print / PDF</button>
     <button class="print-btn" onclick="window.print()">Save</button>
   </div>
 </div>
 
 <div class="container">
-  <div class="error-box" id="error-box"></div>
-  <div class="empty-note" id="empty-note">
-    No saved months yet — run a <a href="/">Monthly Check</a> and press Save to Trend Dashboard.
+  <div class="dept-bar">
+    <span class="name">MAINTENANCE</span><span class="num">DEPT / 03</span>
   </div>
-  <div class="print-brand-line"></div>
-  <div class="slide" id="slide" style="display:none;"></div>
-  <div class="print-brand-footer">
-    <img src="/clamason-logo-print.png" alt="Clamason">
-    <span>Precision Metal Stamping &amp; Presswork Specialists</span>
+  <div class="panel with-dept-bar">
+    <div class="notes-area">
+      <div class="field-label">Root Cause</div>
+      <textarea id="dept-notes" placeholder="Root cause — what's actually happening?"></textarea>
+      <div class="field-label actions">Actions</div>
+      <div class="actions-list" id="actions-list"></div>
+      <button class="add-action-btn" id="add-action-btn" type="button" onclick="addActionRow()">+ Add action</button>
+      <div class="notes-meta">
+        <input type="text" id="notes-author" placeholder="Your name (optional)">
+        <button class="notes-save-btn" id="notes-save-btn" onclick="saveNotes()">Save</button>
+      </div>
+      <div class="notes-status" id="notes-status"></div>
+    </div>
   </div>
 </div>
 
 </div>
 
 <script>
-let RUNS = [];
-let current = null;
-const charts = [];
-
-// Global default for every axis label, legend, and tick this page draws
-// with Chart.js — otherwise it falls back to the library's own default
-// gray, which is light enough to read fine on a bright monitor but
-// washes out once the page is pasted into a presentation and viewed on
-// a projector or a different screen. Set once here rather than per
-// chart, so nothing gets missed.
-Chart.defaults.color = '#333';
-
-const fmt = (v, d = 1) => (v === null || v === undefined) ? '–' : Number(v).toFixed(d);
-const hrs = (v, d = 1) => (v === null || v === undefined) ? '–' : Number(v).toFixed(d) + 'h';
-
-// Kept in step with config.py. Display-only: it decides which reason
-// rows appear in which department's chart. Every hours total on this
-// page is categorised server-side, so a code missing from these lists
-// shows up in the unclassified strip rather than being miscounted.
-const FAULT_CODES = ['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR',
-                     'FAULT-FEEDER/DECOILER/STRAIGHTENER', 'FAULT-SHAKER/CONVEYOR'];
-const TOOLROOM_CODES = ['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP',
-                        'TOOL UNAVAILABLE', 'WASTE IN THE TOOL'];
-const PLANNED_CODES = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED'];
-
-// Codes stripped out of the Production chart because they aren't lost
-// performance — they're time the line was never going to be producing.
-//
-//   LUNCH / BREAK / MEETING  contractual break time
-//   IDLE                     machine available, nothing scheduled on it
-//
-// Leaving them in put break time second on the column and buried Idle
-// inside Other, both inviting questions that have nothing to do with the
-// point the slide is making.
-//
-// PLANNED OFFLINE and NO PRODUCTION PLANNED don't need to be here —
-// they're in PLANNED_CODES and never reach this chart in the first place.
-//
-// Excluded, not hidden: the total is stated under the chart, and these
-// stay in the server-side production_hrs figure, so no stored number and
-// no other page moves because of this.
-const EXCLUDED_FROM_PRODUCTION = ['LUNCH / BREAK / MEETING', 'IDLE'];
-
-function categorise(reason) {
-  const r = (reason || '').toUpperCase().trim();
-  if (FAULT_CODES.includes(r)) return 'fault';
-  if (TOOLROOM_CODES.includes(r)) return 'tool';
-  if (PLANNED_CODES.includes(r)) return 'planned';
-  return 'production';
-}
-
-async function load() {
-  try {
-    const res = await fetch('/api/trend');
-    const json = await res.json();
-    if (json.error) return showError(json.error);
-    RUNS = json.runs || json || [];
-    if (!RUNS.length) {
-      document.getElementById('empty-note').style.display = 'block';
-      return;
-    }
-    const sel = document.getElementById('period-select');
-    // Newest first — that's the month you came here to present.
-    sel.innerHTML = RUNS.slice().reverse()
-      .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
-    selectPeriod(RUNS.length - 1);
-  } catch (e) {
-    showError(e.message);
-  }
-}
-
-function showError(msg) {
-  const b = document.getElementById('error-box');
-  b.textContent = msg;
-  b.style.display = 'block';
-}
-
-function selectPeriod(i) {
-  current = RUNS[Number(i)];
-  render();
-}
-
-// Aggregate each department's reason codes across every machine. The
-// per-machine reasons dicts are stored precisely so this can be rebuilt
-// from a saved run without re-uploading the source workbook.
-function reasonTotals(mb, cat, excludeBreaks) {
-  const totals = {};
-  mb.forEach(m => {
-    Object.entries(m.reasons || {}).forEach(([reason, h]) => {
-      if (excludeBreaks && EXCLUDED_FROM_PRODUCTION.includes(reason.toUpperCase().trim())) return;
-      if (categorise(reason) === cat) totals[reason] = (totals[reason] || 0) + h;
-    });
-  });
-  return Object.entries(totals).sort((a, b) => b[1] - a[1]);
-}
-
-// Hours removed, broken down by code, so the note can name them rather
-// than just quoting a total nobody can reconcile.
-function excludedHours(mb) {
-  const out = {};
-  mb.forEach(m => Object.entries(m.reasons || {}).forEach(([reason, h]) => {
-    const key = reason.toUpperCase().trim();
-    if (EXCLUDED_FROM_PRODUCTION.includes(key)) out[reason] = (out[reason] || 0) + h;
-  }));
-  return Object.entries(out).sort((a, b) => b[1] - a[1]);
-}
-
-function unclassifiedCodes(mb) {
-  // Nothing here is "unclassified" today — production is the residual
-  // bucket. This exists for the incoming SFC code list: when a new code
-  // appears it lands in production silently, so any production-bucket
-  // code that isn't one we've seen before gets surfaced for assignment
-  // rather than quietly diluting the numbers.
-  const known = new Set([...FAULT_CODES, ...TOOLROOM_CODES, ...PLANNED_CODES,
-    'CHANGEOVER', 'COIL CHANGEOVER', 'LUNCH / BREAK / MEETING', 'ADJUSTMENTS',
-    'LABOUR UNAVAILABLE', 'MATERIAL UNAVAILABLE', 'MATERIAL PROBLEM',
-    'WAITING QUALITY PASS OFF', 'QUALITY FAIL - VISUAL', 'QUALITY FAIL - DIMENSION',
-    'PLANNED SERVICE', 'PARTS PRESET REACHED', 'IDLE', 'WASTE BIN REMOVAL',
-    'MORNING SHIFT START UP', 'LUBRICATION/OIL REFILL', 'TOOL TRIAL',
-    'WAITING FOR PACKAGING', 'SHIFT CHANGE', 'BIN CHANGEOVER']);
-  const found = {};
-  mb.forEach(m => Object.entries(m.reasons || {}).forEach(([reason, h]) => {
-    if (!known.has(reason.toUpperCase().trim())) found[reason] = (found[reason] || 0) + h;
-  }));
-  return Object.entries(found).sort((a, b) => b[1] - a[1]);
-}
-
-function render() {
-  const d = current;
-  const mb = d.machine_breakdown || [];
-  charts.forEach(c => c.destroy());
-  charts.length = 0;
-
-  const siteFault = mb.reduce((s, m) => s + (m.fault_hrs || 0), 0);
-
-  const top5 = (cat) => mb.slice().sort((a, b) => (b[cat] || 0) - (a[cat] || 0)).slice(0, 5);
-
-  const col = (cls, name, num, cat, siteHrs, reasonLabel, gauges, note) => `
-    <div class="col">
-      <div class="dept ${cls}"><span class="name">${name}</span><span class="num">DEPT / ${num}</span></div>
-      <div class="chart-label"><span>Downtime Pareto</span><span class="meta">Top 5 presses</span></div>
-      <div class="chart-box"><div class="chart-wrap"><canvas id="p-${cls}"></canvas></div></div>
-      <div class="chart-label"><span>${reasonLabel}</span><span class="hrs">${siteHrs.toFixed(1)}h</span></div>
-      <div class="chart-box"><div class="chart-wrap short"><canvas id="r-${cls}"></canvas></div></div>
-      <div class="gauges">${gauges}</div>
-      ${note ? `<div class="chart-note" id="${cls}-note">${note}</div>` : ''}
-    </div>`;
-
-  const gauge = (id, label, note) => `
-    <div><div class="gauge-label">${label}</div>
-      <div class="gauge-box"><div class="gauge-ring"><canvas id="${id}"></canvas></div>
-      <div class="gauge-note">${note}</div></div></div>`;
-
-  // MTTF is the headline, in hours, with a real target (400h) — matching
-  // the board's own "Number of Full TPM schedules..." row exactly, which
-  // names MTTF specifically, not MTBF. MTBF = MTTF + MTTR, the whole
-  // cycle rather than just the running portion, so it's kept in the note
-  // as useful context, just not the number the ring itself reads against
-  // a confirmed target.
-  //
-  // mttfHrs computed here rather than inside the note IIFE below, so
-  // the ring() call further down can use the exact same number — one
-  // calculation, not two copies of the same subtraction that could
-  // quietly drift apart.
-  const mtbfHrs = d.mtbf_days == null ? null : d.mtbf_days * 24;
-  const mttfHrs = (mtbfHrs == null || d.mtbf_mttr_hrs == null) ? null : mtbfHrs - d.mtbf_mttr_hrs;
-
-  const mtbfNote = d.mtbf_mttr_hrs == null ? 'not uploaded' : (() => {
-    return `target ${TARGETS.mttf}h · tick on ring<br>`
-      + `MTBF ${d.mtbf_days == null ? '–' : fmt(d.mtbf_days, 1) + 'd'} · MTTR ${fmt(d.mtbf_mttr_hrs, 2)}h`
-      + `<br>wait ${fmt(d.mtbf_wait_hrs, 1)}h · ${d.mtbf_assets} of ${d.mtbf_asset_count} assets`;
-  })();
-  const maintGauges =
-    gauge('g-mtbf', 'MTTF', mtbfNote) +
-    gauge('g-fault', 'Downtime (SFC)', d.gap_pct == null
-      ? `Agility ${hrs(d.agility_maintenance_hrs)} · no SFC file this run<br>no target set`
-      : `Agility ${hrs(d.agility_maintenance_hrs)} · ${fmt(100 - d.gap_pct, 1)}% covered<br>no target set`) +
-    gauge('g-ppm', 'TPM Completion', d.ppm_completion_pct == null
-      ? 'not uploaded'
-      : `target ${TARGETS.ppmCompletion}% · tick on ring<br>${d.ppm_completed} of ${d.ppm_total} scheduled PPM jobs`);
-
-  document.getElementById('slide').innerHTML = `
-    <div class="slide-head">
-      <h2>Monthly Performance Review</h2>
-      <div class="period">Period: <strong>${d.period_label || d.period}</strong> · ${mb.length} presses</div>
-    </div>
-    <div class="cols">
-      ${col('maintenance', 'MAINTENANCE', '03', 'fault_hrs', siteFault, 'Fault downtime — reason codes', maintGauges)}
-      <div class="panel">
-        <h3>Top Downtime Reason</h3>
-        <div class="top-reason-card" id="top-reason-card"></div>
-        <div class="reason-breakdown-section" id="reason-breakdown-section" style="display:none;">
-          <h3 id="reason-breakdown-title">By Press</h3>
-          <div class="chart-wrap other" id="by-press-chart-wrap"><canvas id="by-press-chart"></canvas></div>
-          <div class="reason-empty" id="by-press-empty" style="display:none;">No per-press detail for this reason.</div>
-        </div>
-        <div class="reason-breakdown-section" id="other-chart-wrap" style="display:none;">
-          <h3 id="other-chart-title">Other — by code</h3>
-          <div class="chart-wrap other"><canvas id="other-chart"></canvas></div>
-        </div>
-      </div>
-    </div>
-    <div class="unclassified" id="unclassified"></div>
-    <div class="slide-foot">
-      <img src="/clamason-logo-print.png" alt="Clamason" style="height:14px;">
-      <span>Source: ShopFloorConnect · Agility CMMS${d.oee_pct != null ? ' · SFC OEE' : ''}</span>
-    </div>`;
-  document.getElementById('slide').style.display = 'block';
-
-  pareto('p-maintenance', top5('fault_hrs'), 'fault_hrs', '#2e6b4f');
-
-  reasonBars('r-maintenance', reasonTotals(mb, 'fault'), '#2e6b4f', siteFault);
-
-  // Same "% of target" trick as Run Time's gauge — 400h isn't a natural
-  // 0-100 scale, so it's expressed as progress toward that target
-  // instead, capped at 100 for the fill (the actual hours are what's
-  // printed in the ring and the note either way, so running past
-  // target is still visible, just not as an overfull ring).
-  ring('g-mtbf', mttfHrs == null ? null : Math.min(100, mttfHrs / TARGETS.mttf * 100),
-    mttfHrs == null ? '–' : Math.round(mttfHrs).toLocaleString() + 'h', '#2e6b4f', 100);
-  ring('g-fault', null, siteFault.toFixed(0) + 'h', '#c0392b');
-  // Real target arc now — confirmed against the board's own established
-  // "Number of Full TPM schedules completed to plan (%)" row (>90%),
-  // not a guess. Was a plain frame before this: no confirmed target
-  // existed yet, and drawing an arc against a number nobody'd approved
-  // would have implied a benchmark that wasn't real.
-  ring('g-ppm', d.ppm_completion_pct, d.ppm_completion_pct == null ? '–' : fmt(d.ppm_completion_pct, 0) + '%',
-    '#2e6b4f', TARGETS.ppmCompletion);
-
-  renderTopReason(mb, siteFault);
-  renderOtherChart(lastOtherContents['r-maintenance'] || []);
-}
-
-const MUTED = '#999', RED = '#c0392b';
-
-/**
- * Prints each bar's value on the bar, the way the original board slide
- * did. Reading a height off a gridline is guesswork at this size, and
- * the point of the slide is that someone can quote a number from it
- * without hovering anything.
- *
- * Handles both orientations: above the bar on the vertical Paretos, to
- * the right of it on the horizontal reason charts. The Pareto's
- * cumulative line is skipped — those values are percentages already
- * plotted against the right-hand axis, and labelling every point would
- * run a second row of numbers through the middle of the chart.
- */
-const barValues = {
-  id: 'barValues',
-  afterDatasetsDraw(chart) {
-    const ctx = chart.ctx;
-    const horizontal = chart.options.indexAxis === 'y';
-    chart.data.datasets.forEach((ds, di) => {
-      const meta = chart.getDatasetMeta(di);
-      if (ds.type === 'line' || meta.type === 'line') return;
-      meta.data.forEach((el, i) => {
-        const v = ds.data[i];
-        if (v === null || v === undefined) return;
-        // Whole hours once past 100 — '386.6h' beside a bar is more
-        // digits than the number deserves at this size.
-        const text = (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + 'h';
-        ctx.save();
-        ctx.fillStyle = '#243547';
-        ctx.font = '600 8.5px Arial';
-        if (horizontal) {
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(text, el.x + 5, el.y);
-        } else {
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'bottom';
-          ctx.fillText(text, el.x, el.y - 3);
-        }
-        ctx.restore();
-      });
-    });
-  },
-};
-// Axis ticks were the same washed-out grey as the section headings.
-// Darker so they survive a projector and a printed page.
-const TICK = '#555';
-const lastOtherContents = {};
-
-// Picks the largest genuinely-named reason, not just the biggest bar on
-// the chart above — "Other" (if present in the data) is a catch-all of
-// smaller codes bundled together, not one fixable cause. Someone can
-// write an action plan against a named reason; there's nothing to write
-// against "everything too small to name individually".
-// The "Other" bucket's individual codes as their own small chart — same
-// green as Maintenance's main reason-codes chart, same barValues plugin,
-// so it reads as part of the same family. Same 8-item limit as the
-// hover tooltip already uses on the main chart, with anything past that
-// summarised in the title rather than drawn as a 9th bar. Ported from
-// Production's identical version — worth knowing this may show nothing
-// most months: Maintenance's own reason chart only had 3 distinct fault
-// codes last time it was checked, well under the point where an "Other"
-// bucket would even form, so an empty result here isn't a bug, it's
-// this specific data genuinely not having one yet.
-let otherChart = null;
-let byPressChart = null;
-function renderOtherChart(other) {
-  const wrap = document.getElementById('other-chart-wrap');
-  if (otherChart) { otherChart.destroy(); otherChart = null; }
-  if (!other.length) { wrap.style.display = 'none'; return; }
-
-  const SHOWN = 8;
-  const shown = other.slice(0, SHOWN);
-  const remainder = other.slice(SHOWN);
-  const remainderHrs = remainder.reduce((s, e) => s + e[1], 0);
-
-  const labels = uniqueShortLabels(shown.map(e => e[0]), MAX_TICK_H);
-  const data = shown.map(e => e[1]);
-
-  otherChart = new Chart(document.getElementById('other-chart'), {
-    type: 'bar',
-    data: { labels, datasets: [{ data, backgroundColor: '#7fa88f', borderRadius: 2, maxBarThickness: 14 }] },
-    plugins: [barValues],
-    options: {
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 4, bottom: 4, left: 2, right: 36 } },
-      plugins: { legend: { display: false }, tooltip: { enabled: false } },
-      scales: {
-        x: { display: false },
-        y: { grid: { display: false }, ticks: { font: { size: 9.5 } } },
-      },
-    },
-  });
-
-  document.getElementById('other-chart-title').textContent = remainder.length
-    ? `Other — by code (+ ${remainder.length} more, ${remainderHrs.toFixed(0)}h)`
-    : 'Other — by code';
-
-  wrap.style.display = 'block';
-}
-
-function renderTopReason(mb, totalHrs) {
-  const totals = reasonTotals(mb, 'fault');
-  const actionable = totals.filter(([reason]) => reason.trim().toLowerCase() !== 'other');
-  const card = document.getElementById('top-reason-card');
-  if (!actionable.length) {
-    card.innerHTML = '<div class="reason-empty">No reason-coded downtime this period.</div>';
-    renderReasonBreakdown([], null);
-    return;
-  }
-  const [reason, hrs] = actionable[0];
-  const pct = totalHrs ? (hrs / totalHrs * 100).toFixed(0) : null;
-  card.innerHTML = `
-    <div class="reason-name">${reason}</div>
-    <div class="reason-hrs">${hrs.toFixed(1)}h${pct !== null ? ` · ${pct}% of downtime` : ''}</div>`;
-
-  renderReasonBreakdown(mb, reason);
-}
-
-// Which specific presses the top reason's hours actually came from —
-// already sitting in mb (each machine carries its own reasons dict, see
-// reconciliation.py's compute_machine_breakdown), just not shown
-// anywhere on this page before now. No separate report needed for
-// "which presses" — it's the same data already behind the chart above,
-// just re-sliced by reason instead of by machine.
-function renderReasonBreakdown(mb, reason) {
-  const section = document.getElementById('reason-breakdown-section');
-  const chartWrap = document.getElementById('by-press-chart-wrap');
-  const empty = document.getElementById('by-press-empty');
-  if (byPressChart) { byPressChart.destroy(); byPressChart = null; }
-  if (!reason) { section.style.display = 'none'; return; }
-
-  const byMachine = mb
-    .map(m => ({ machine: m.machine, hrs: (m.reasons || {})[reason] || 0 }))
-    .filter(x => x.hrs > 0)
-    .sort((a, b) => b.hrs - a.hrs);
-
-  section.style.display = 'block';
-
-  if (!byMachine.length) {
-    document.getElementById('reason-breakdown-title').textContent = `${reason} — by Press`;
-    chartWrap.style.display = 'none';
-    empty.style.display = 'block';
-    return;
-  }
-  chartWrap.style.display = 'block';
-  empty.style.display = 'none';
-
-  // Every press gets a bar now — no cap, no "+N more" note. Height
-  // grows with the list instead of squeezing it, same pattern as the
-  // Production reason-codes chart.
-  chartWrap.style.height = Math.max(150, byMachine.length * 20 + 16) + 'px';
-
-  const labels = uniqueShortLabels(byMachine.map(x => x.machine), MAX_TICK_H);
-  const data = byMachine.map(x => x.hrs);
-
-  byPressChart = new Chart(document.getElementById('by-press-chart'), {
-    type: 'bar',
-    data: { labels, datasets: [{ data, backgroundColor: '#2e6b4f', borderRadius: 2, maxBarThickness: 14 }] },
-    plugins: [barValues],
-    options: {
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 4, bottom: 4, left: 2, right: 36 } },
-      plugins: { legend: { display: false }, tooltip: { enabled: false } },
-      scales: {
-        x: { display: false },
-        y: { grid: { display: false }, ticks: { font: { size: 9.5 } } },
-      },
-    },
-  });
-
-  document.getElementById('reason-breakdown-title').textContent = `${reason} — by Press`;
-}
-
 const DEPARTMENT = 'maintenance';
 
-function pareto(id, rows, key, colour) {
-  const data = rows.map(r => r[key] || 0);
-  const total = data.reduce((a, b) => a + b, 0);
-  let run = 0;
-  const cum = data.map(v => { run += v; return total ? Math.round(run / total * 1000) / 10 : 0; });
-  charts.push(new Chart(document.getElementById(id), {
-    data: {
-      // Machine name only. The cumulative percentage used to be prefixed
-      // here, but it costs 4-5 characters of a 15-character budget and
-      // the percentage is already on the line and the right-hand axis —
-      // so it was being paid for twice, and the cost was 'Finzer Line
-      // 20' and 'Finzer Line 17' both truncating to 'Finzer Line'.
-      labels: uniqueShortLabels(rows.map(r => r.machine)),
-      datasets: [
-        { type: 'bar', data, backgroundColor: colour, borderRadius: 2, maxBarThickness: 34, order: 2 },
-        { type: 'line', data: cum, borderColor: RED, borderWidth: 1.4, pointRadius: 2,
-          pointBackgroundColor: RED, yAxisID: 'y1', order: 1 },
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      // Headroom so the value above the tallest bar is not clipped.
-      layout: { padding: { top: 14, bottom: 6, left: 2, right: 2 } },
-      plugins: { legend: { display: false },
-        tooltip: { callbacks: { label: c => c.dataset.type === 'line'
-          ? 'cumulative ' + c.parsed.y.toFixed(1) + '%' : c.parsed.y.toFixed(1) + 'h' } } },
-      scales: {
-        // Same 38-degree tick style as the reason charts below. The
-        // Pareto used flat two-line labels, which meant the two charts
-        // in a column disagreed about how to write a machine name.
-        x: { ticks: { color: TICK, font: { size: 8 }, maxRotation: 40, minRotation: 40, autoSkip: false },
-             grid: { display: false } },
-        // grace keeps the tallest bar off the ceiling so its printed
-        // value has somewhere to sit.
-        y: { ticks: { color: TICK, font: { size: 8 }, callback: v => v + 'h', maxTicksLimit: 6 },
-             grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true, grace: '12%' },
-        y1: { position: 'right', min: 0, max: 100, grid: { display: false },
-              ticks: { color: TICK, font: { size: 8 }, stepSize: 50, callback: v => v + '%' } },
-      },
-    },
-    plugins: [barValues],
-  }));
+async function loadNotes() {
+  const statusEl = document.getElementById('notes-status');
+  try {
+    const res = await fetch(`/api/department-notes/${DEPARTMENT}`);
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    document.getElementById('dept-notes').value = d.notes || '';
+    document.getElementById('notes-author').value = d.updated_by || '';
+    document.getElementById('actions-list').innerHTML = '';
+    (d.actions || []).forEach(a => addActionRow(a));
+    statusEl.textContent = '';
+  } catch (e) {
+    statusEl.textContent = 'Could not load saved notes: ' + e.message;
+    statusEl.className = 'notes-status';
+  }
 }
 
-// Tick labels are drawn at an angle inside a narrow column, so a long
-// name either overruns the chart box or collides with its neighbour.
-// 15 characters is what fits at 8px across a third of an A4 landscape
-// page; the full name is always in the tooltip.
-// Angled ticks under the Pareto bars — tight budget.
-const MAX_TICK = 13;
-// Horizontal ticks beside the reason bars — a whole column of width, so
-// almost every real reason code fits whole.
-const MAX_TICK_H = 24;
-
-function shortLabel(text, max) {
-  const limit = max || MAX_TICK;
-  const t = String(text);
-  return t.length > limit ? t.slice(0, limit - 1) + '…' : t;
-}
-
-/**
- * Shorten a set of labels WITHOUT making any two of them identical.
- *
- * Plain head-truncation collapses names that share a prefix. Both
- * 'Finzer Line 20' and 'Finzer Line 17' become 'Finzer Line…', and both
- * 'TOOL FAILURE - PRODUCTION' and 'TOOL FAILURE - SET UP' become
- * 'TOOL FAILURE…' — two bars, same label, no way to tell them apart.
- *
- * So where names collide, what's shown is what's DIFFERENT about them:
- * the text after their common prefix.
- *
- *   short distinguisher ('20', '17')  ->  keep the head too, put the
- *                                         ellipsis in the middle:
- *                                         'Finzer Lin…20'
- *   long distinguisher ('PRODUCTION') ->  the head is mostly the shared
- *                                         prefix and worth nothing, so
- *                                         lead with the ellipsis:
- *                                         '…PRODUCTION'
- *
- * Head-only truncation is deliberately never used for a collision, since
- * that's the case that produced the duplicate in the first place.
- */
-function commonPrefixLength(names) {
-  if (names.length < 2) return 0;
-  let i = 0;
-  while (i < names[0].length && names.every(n => n[i] === names[0][i])) i += 1;
-  return i;
-}
-
-function uniqueShortLabels(names, max) {
-  const limit = max || MAX_TICK;
-  const full = names.map(String);
-  const short = full.map(n => shortLabel(n, limit));
-  const counts = {};
-  short.forEach(l => { counts[l] = (counts[l] || 0) + 1; });
-
-  return short.map((l, i) => {
-    if (counts[l] === 1) return l;
-
-    // Only the names this one actually collides with define the prefix —
-    // an unrelated third bar shouldn't drag the common prefix to zero.
-    const clashing = full.filter((_, j) => short[j] === l);
-    const cut = commonPrefixLength(clashing);
-    const tail = full[i].slice(cut) || full[i];
-
-    if (tail.length <= 4) {
-      const head = limit - 1 - tail.length;
-      return head > 0 ? full[i].slice(0, head) + '…' + tail : '…' + tail;
-    }
-    return tail.length > limit - 1 ? '…' + tail.slice(-(limit - 1)) : '…' + tail;
+function addActionRow(action) {
+  action = action || {};
+  const row = document.createElement('div');
+  row.className = 'action-row' + (action.done ? ' done' : '');
+  row.innerHTML = `
+    <div class="action-row-top">
+      <input type="checkbox" class="action-done" ${action.done ? 'checked' : ''}>
+      <input type="text" class="action-text" placeholder="Action" value="${(action.action_text || '').replace(/"/g, '&quot;')}">
+      <button type="button" class="action-remove" aria-label="Remove action">&times;</button>
+    </div>
+    <div class="action-row-bottom">
+      <label>Target date</label>
+      <input type="date" class="action-date" value="${action.target_date || ''}">
+    </div>
+  `;
+  row.querySelector('.action-done').addEventListener('change', e => {
+    row.classList.toggle('done', e.target.checked);
   });
+  row.querySelector('.action-remove').addEventListener('click', () => row.remove());
+  document.getElementById('actions-list').appendChild(row);
+  return row;
 }
 
-// The codes rolled into the "Other" bar, biggest first. Returned so the
-// bar can name its own contents — a board slide shouldn't have a bar
-// nobody in the room can account for, and on June data Other is the
-// second-largest bar on the Production chart.
-function otherContents(entries, shown) {
-  return entries.slice(shown).sort((a, b) => b[1] - a[1]);
+function collectActions() {
+  return Array.from(document.querySelectorAll('#actions-list .action-row'))
+    .map(row => ({
+      action_text: row.querySelector('.action-text').value.trim(),
+      target_date: row.querySelector('.action-date').value || null,
+      done: row.querySelector('.action-done').checked,
+    }))
+    .filter(a => a.action_text);
 }
 
-// The "Other" bar's tooltip can run to a title line, a value line, and
-// up to 9 breakdown lines — comfortably taller than the chart it lives
-// in. Chart.js's default tooltip draws inside the canvas itself, so
-// .chart-box's overflow:hidden (a backstop against the canvas
-// overflowing its card in other ways, not built with this in mind)
-// clips it before anyone can read the bottom half. Rendering to a real
-// DOM element appended to <body> sidesteps that entirely — nothing
-// this attaches to can clip it, because it isn't nested inside any of
-// this page's cards at all.
-function externalTooltipHandler(context) {
-  const { chart, tooltip } = context;
-  let el = document.getElementById('chartjs-tooltip');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'chartjs-tooltip';
-    el.style.cssText = `
-      position: fixed; pointer-events: none; z-index: 9999;
-      background: #243547; color: white; border-radius: 6px;
-      padding: 8px 12px; font-family: Arial, sans-serif; font-size: 11px;
-      line-height: 1.5; box-shadow: 0 4px 14px rgba(0,0,0,0.25);
-      max-width: 280px; max-height: 320px; overflow-y: auto;
-      opacity: 0; transition: opacity 0.1s ease;
-    `;
-    document.body.appendChild(el);
+async function saveNotes() {
+  const btn = document.getElementById('notes-save-btn');
+  const statusEl = document.getElementById('notes-status');
+  const notes = document.getElementById('dept-notes').value;
+  const updated_by = document.getElementById('notes-author').value.trim();
+  const actions = collectActions();
+
+  btn.disabled = true;
+  statusEl.textContent = 'Saving…';
+  statusEl.className = 'notes-status';
+
+  try {
+    const res = await fetch(`/api/department-notes/${DEPARTMENT}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, updated_by, actions }),
+    });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    const when = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    statusEl.textContent = `✓ Saved ${when}${updated_by ? ' by ' + updated_by : ''}`;
+    statusEl.className = 'notes-status ok';
+  } catch (e) {
+    statusEl.textContent = 'Error saving: ' + e.message;
+    statusEl.className = 'notes-status';
   }
 
-  if (tooltip.opacity === 0) {
-    el.style.opacity = 0;
-    return;
-  }
-
-  const lines = [];
-  (tooltip.title || []).forEach(t => lines.push(`<div style="font-weight:bold;color:#95C11F;margin-bottom:2px">${t}</div>`));
-  (tooltip.body || []).forEach(b => {
-    b.lines.forEach(line => lines.push(`<div>${line}</div>`));
-    (b.after || []).forEach(line => lines.push(`<div style="color:#C7CFD6">${line}</div>`));
-  });
-  el.innerHTML = lines.join('');
-
-  // Positioned from the CANVAS's real screen location, since caretX/Y
-  // are relative to the canvas, not the page — this is the one part
-  // that's genuinely different from a normal in-canvas tooltip, not
-  // just where it's rendered.
-  const rect = chart.canvas.getBoundingClientRect();
-  let left = rect.left + tooltip.caretX + 12;
-  let top = rect.top + tooltip.caretY;
-
-  // Clamped to the viewport, not just freed from the card — a tooltip
-  // that escapes .chart-box only to run off the browser window's own
-  // right edge (this chart sits in the rightmost of three columns)
-  // would trade one clipping problem for another.
-  const elRect = el.getBoundingClientRect();
-  const tooltipWidth = elRect.width || 280;
-  const tooltipHeight = elRect.height || 100;
-  if (left + tooltipWidth > window.innerWidth - 8) left = rect.left + tooltip.caretX - tooltipWidth - 12;
-  if (top + tooltipHeight > window.innerHeight - 8) top = window.innerHeight - tooltipHeight - 8;
-  if (top < 8) top = 8;
-
-  el.style.left = left + 'px';
-  el.style.top = top + 'px';
-  el.style.opacity = 1;
+  btn.disabled = false;
 }
 
-function reasonBars(id, entries, colour, total, extras) {
-  // Top 4 plus an explicit "Other" — dropping the tail would make the
-  // column look smaller than the department's actual downtime.
-  const SHOWN = 4;
-  const top = entries.slice(0, SHOWN);
-  const inOther = otherContents(entries, SHOWN);
-  const rest = inOther.reduce((s, e) => s + e[1], 0);
-
-  // One array of bar objects rather than three parallel arrays, so a
-  // bar's label, colour and full name can't drift apart when the order
-  // changes below.
-  const bars = top.map(e => ({ label: null, full: e[0], value: e[1], colour }));
-  if (rest > 0.05) bars.push({ label: null, full: 'Other', value: rest, colour });
-
-  // `extras` appends other departments' totals to this chart, in their
-  // own colours. On the Production column that turns "here are our
-  // reason codes" into "here is every hour of unplanned downtime the
-  // line lost, and who owns each part" — which is the question a board
-  // actually asks.
-  (extras || []).forEach(e => bars.push({ label: null, full: e.label, value: e.hrs, colour: e.colour }));
-
-  // Labels shortened once, across the whole set, so duplicates can be
-  // spotted and disambiguated together. Horizontal ticks afford far more
-  // room than angled ones, so the cap is much more generous here.
-  uniqueShortLabels(bars.map(b => b.full), MAX_TICK_H).forEach((l, i) => { bars[i].label = l; });
-
-  // Sorted descending, same as the Pareto charts above. Appending the
-  // department bars in fixed positions left Other and Toolroom out of
-  // sequence, which makes the eye work to find the biggest loss — the
-  // one thing a downtime chart exists to show.
-  bars.sort((a, b) => b.value - a.value);
-
-  const labels = bars.map(b => b.label);
-  const data = bars.map(b => b.value);
-  const colours = bars.map(b => b.colour);
-
-  lastOtherContents[id] = inOther;
-  charts.push(new Chart(document.getElementById(id), {
-    type: 'bar',
-    data: { labels, datasets: [{ data, backgroundColor: colours, borderRadius: 2, maxBarThickness: 18 }] },
-    options: {
-      // Horizontal. Reason codes run to 25 characters ('TOOL FAILURE -
-      // PRODUCTION', 'FAULT-FEEDER/DECOILER/STR') and there is no angle
-      // at which those fit beneath a bar in a third-of-a-page column —
-      // every attempt either clipped them at the box edge or truncated
-      // them into uselessness. Turned on their side the labels get a
-      // whole column of width, sit level, and need almost no shortening.
-      //
-      // The Pareto charts above stay vertical: machine names are short,
-      // and a Pareto's cumulative line is read left-to-right.
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false,
-      // Right padding leaves room for the value printed at the end of
-      // the longest bar.
-      layout: { padding: { top: 4, bottom: 4, left: 2, right: 36 } },
-      plugins: { legend: { display: false },
-        tooltip: {
-          // enabled:false stops Chart.js drawing inside the canvas at
-          // all; external takes over rendering completely, using the
-          // exact same title/label/afterBody callbacks below to build
-          // its content — only where it renders changes, not what.
-          enabled: false,
-          external: externalTooltipHandler,
-          callbacks: {
-          // Full name from the bar itself, not from an index into
-          // `entries` — after sorting those no longer correspond.
-          title: c => (bars[c[0].dataIndex] || {}).full || c[0].label,
-          // Value is on x now that the bars are horizontal.
-          label: c => c.parsed.x.toFixed(1) + 'h' + (total ? ` (${(c.parsed.x / total * 100).toFixed(0)}%)` : ''),
-          // Hovering Other lists what's inside it, so the question
-          // "what's in that bar?" is answerable on the spot.
-          afterBody: c => (bars[c[0].dataIndex] || {}).full !== 'Other' ? [] :
-            inOther.slice(0, 8).map(e => `  ${e[0]} — ${e[1].toFixed(1)}h`)
-              .concat(inOther.length > 8 ? [`  + ${inOther.length - 8} more`] : []),
-        } } },
-      scales: {
-        // Hours along the bottom, categories down the side.
-        x: { ticks: { color: TICK, font: { size: 8 }, callback: v => v + 'h', maxTicksLimit: 5 },
-             grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true },
-        y: { ticks: { color: TICK, font: { size: 8.5 }, autoSkip: false },
-             grid: { display: false } },
-      },
-    },
-    plugins: [barValues],
-  }));
-}
-
-// Targets. OEE and Run Time have one agreed — everything else here is a
-// raw quantity (hours, work-order counts, days between failures) with no
-// number anyone has committed to yet.
-const TARGETS = { oee: 70, runTime: 2000, ppmCompletion: 90, mttf: 400 };
-
-/**
- * pct === null means "this value has no target".
- *
- * A doughnut filled to 100% is a claim: it says the value reached the top
- * of some scale. On a card showing 259 hours of tool downtime that claim
- * is meaningless, and worse, it sits next to OEE — which IS a real
- * percentage — so the eye reads them as comparable. They aren't.
- *
- * So a target-less card gets a thin flat ring: it frames the number
- * without implying a proportion. A card with a target gets a thick arc
- * plus a tick at the target, which is the only place a filled ring
- * actually means anything.
- */
-function ring(id, pct, text, colour, target) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const hasTarget = pct !== null && pct !== undefined;
-  const value = hasTarget ? Math.max(0, Math.min(100, pct)) : 100;
-
-  const centre = {
-    id: 'c' + id,
-    afterDraw(c) {
-      const x = c.ctx, a = c.chartArea;
-      // Half-gauge: text sits under the arc, in the flat space the
-      // full-circle version didn't have — bottom-anchored, not the
-      // vertical middle a full ring would use.
-      const cx = (a.left + a.right) / 2, cy = a.bottom;
-      x.save();
-      x.textAlign = 'center'; x.textBaseline = 'bottom';
-      x.fillStyle = '#243547';
-      x.font = '500 15px Arial';
-      x.fillText(text, cx, cy);
-
-      // Target tick — a notch through the ring at the target position,
-      // so "are we there yet" is answerable without reading the note.
-      // Angle sweeps left (0%) through top (50%) to right (100%),
-      // matching the half-gauge's own left-to-right sweep below.
-      if (hasTarget && target) {
-        const meta = c.getDatasetMeta(0).data[0];
-        const outer = meta.outerRadius, inner = meta.innerRadius;
-        const angle = Math.PI + (target / 100) * Math.PI;
-        x.strokeStyle = '#243547';
-        x.lineWidth = 2;
-        x.beginPath();
-        x.moveTo(cx + Math.cos(angle) * (inner - 1), cy + Math.sin(angle) * (inner - 1));
-        x.lineTo(cx + Math.cos(angle) * (outer + 1), cy + Math.sin(angle) * (outer + 1));
-        x.stroke();
-      }
-      x.restore();
-    },
-  };
-
-  charts.push(new Chart(el, {
-    type: 'doughnut',
-    data: {
-      datasets: [{
-        data: [value, 100 - value],
-        backgroundColor: hasTarget ? [colour, '#e8eaee'] : [colour, colour],
-        borderWidth: 0,
-      }],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      // Half-gauge, sweeping left-to-right through the top — same
-      // technique shown in the earlier preview, verified there before
-      // landing in the real app.
-      circumference: 180, rotation: 270,
-      // Thin for a plain frame, thick for a real progress arc.
-      cutout: hasTarget ? '74%' : '86%',
-      plugins: { legend: { display: false }, tooltip: { enabled: false } },
-    },
-    plugins: [centre],
-  }));
-}
-
-load();
+loadNotes();
 </script>
 
 </body>
