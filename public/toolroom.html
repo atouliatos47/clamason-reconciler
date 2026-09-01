@@ -100,9 +100,28 @@
   .top-reason-card .reason-hrs { font-size: 12px; color: #666; margin-top: 4px; }
   .top-reason-card .reason-empty { font-size: 12px; color: #888; font-style: italic; }
   .notes-area textarea {
-    width: 100%; min-height: 220px; padding: 12px; border: 1px solid #ddd; border-radius: 6px;
+    width: 100%; min-height: 70px; padding: 12px; border: 1px solid #ddd; border-radius: 6px;
     font-family: Arial, sans-serif; font-size: 12.5px; line-height: 1.5; resize: vertical;
   }
+  .field-label { font-size: 11px; font-weight: bold; color: #243547; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
+  .field-label.actions { margin-top: 12px; }
+  .actions-list { display: flex; flex-direction: column; gap: 8px; }
+  .action-row { border: 1px solid #ddd; border-radius: 6px; padding: 6px 8px; }
+  .action-row-top { display: flex; align-items: center; gap: 8px; }
+  .action-row input[type=checkbox] { width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
+  .action-row input.action-text { flex: 1; min-width: 0; border: none; font-family: Arial, sans-serif; font-size: 12.5px; background: transparent; }
+  .action-row input.action-text:focus { outline: none; }
+  .action-row.done input.action-text { text-decoration: line-through; color: #999; }
+  .action-row-bottom { display: flex; align-items: center; gap: 6px; margin-top: 5px; padding-left: 23px; }
+  .action-row-bottom label { font-size: 10.5px; color: #999; }
+  .action-row input.action-date { font-size: 11.5px; border: 1px solid #ddd; border-radius: 4px; padding: 3px 4px; font-family: Arial, sans-serif; }
+  .action-remove { background: none; border: none; color: #999; font-size: 15px; line-height: 1; cursor: pointer; padding: 2px 4px; flex-shrink: 0; margin-left: auto; }
+  .action-remove:hover { color: #c0392b; }
+  .add-action-btn {
+    margin-top: 8px; padding: 5px 10px; background: none; border: 1px solid #ccc; border-radius: 6px;
+    font-size: 11.5px; color: #243547; cursor: pointer;
+  }
+  .add-action-btn:hover { border-color: #95C11F; background: #f2f8e8; }
   .notes-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 10px; }
   .notes-meta input[type=text] { flex: 1; padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; }
   .notes-save-btn { padding: 8px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; white-space: nowrap; }
@@ -264,6 +283,7 @@ function toggleNavGroup(name) {
   <div>
     <select id="period-select" onchange="selectPeriod(this.value)"></select>
     <button class="print-btn" onclick="window.print()">Print / PDF</button>
+    <button class="print-btn" onclick="window.print()">Save</button>
   </div>
 </div>
 
@@ -475,7 +495,11 @@ function render() {
         <div class="top-reason-card" id="top-reason-card"></div>
         <h3>Notes &amp; Action Plan</h3>
         <div class="notes-area">
-          <textarea id="dept-notes" placeholder="What's being done about this? Add notes, owners, target dates — whatever's useful here."></textarea>
+          <div class="field-label">Root Cause</div>
+          <textarea id="dept-notes" placeholder="Root cause — what's actually happening?"></textarea>
+          <div class="field-label actions">Actions</div>
+          <div class="actions-list" id="actions-list"></div>
+          <button class="add-action-btn" id="add-action-btn" type="button" onclick="addActionRow()">+ Add action</button>
           <div class="notes-meta">
             <input type="text" id="notes-author" placeholder="Your name (optional)">
             <button class="notes-save-btn" id="notes-save-btn" onclick="saveNotes()">Save</button>
@@ -588,6 +612,8 @@ async function loadNotes() {
     if (d.error) throw new Error(d.error);
     document.getElementById('dept-notes').value = d.notes || '';
     document.getElementById('notes-author').value = d.updated_by || '';
+    document.getElementById('actions-list').innerHTML = '';
+    (d.actions || []).forEach(a => addActionRow(a));
     // Deliberately not shown — a persistent "Last updated by X" line
     // reads as internal editing chrome, not something that belongs on
     // a board slide when this panel gets copied straight into the
@@ -600,11 +626,56 @@ async function loadNotes() {
   }
 }
 
+// Appends one action row to #actions-list. `action` is optional —
+// omit it (or pass {}) to add a blank row for the user to fill in,
+// e.g. from the "+ Add action" button. Passed in with target_date
+// as an ISO string ('2026-09-12') or null/undefined, matching what
+// GET /api/department-notes returns and what a bare <input type=date>
+// accepts directly.
+function addActionRow(action) {
+  action = action || {};
+  const row = document.createElement('div');
+  row.className = 'action-row' + (action.done ? ' done' : '');
+  row.innerHTML = `
+    <div class="action-row-top">
+      <input type="checkbox" class="action-done" ${action.done ? 'checked' : ''}>
+      <input type="text" class="action-text" placeholder="Action" value="${(action.action_text || '').replace(/"/g, '&quot;')}">
+      <button type="button" class="action-remove" aria-label="Remove action">&times;</button>
+    </div>
+    <div class="action-row-bottom">
+      <label>Target date</label>
+      <input type="date" class="action-date" value="${action.target_date || ''}">
+    </div>
+  `;
+  row.querySelector('.action-done').addEventListener('change', e => {
+    row.classList.toggle('done', e.target.checked);
+  });
+  row.querySelector('.action-remove').addEventListener('click', () => row.remove());
+  document.getElementById('actions-list').appendChild(row);
+  return row;
+}
+
+// Reads the current DOM state of #actions-list back into the plain
+// array shape the API expects. Rows with an empty text field are
+// dropped here rather than on the backend — if someone clicked
+// "+ Add action" and then didn't fill it in, it shouldn't round-trip
+// as a saved blank action next time the page loads.
+function collectActions() {
+  return Array.from(document.querySelectorAll('#actions-list .action-row'))
+    .map(row => ({
+      action_text: row.querySelector('.action-text').value.trim(),
+      target_date: row.querySelector('.action-date').value || null,
+      done: row.querySelector('.action-done').checked,
+    }))
+    .filter(a => a.action_text);
+}
+
 async function saveNotes() {
   const btn = document.getElementById('notes-save-btn');
   const statusEl = document.getElementById('notes-status');
   const notes = document.getElementById('dept-notes').value;
   const updated_by = document.getElementById('notes-author').value.trim();
+  const actions = collectActions();
 
   btn.disabled = true;
   statusEl.textContent = 'Saving…';
@@ -614,7 +685,7 @@ async function saveNotes() {
     const res = await fetch(`/api/department-notes/${DEPARTMENT}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notes, updated_by }),
+      body: JSON.stringify({ notes, updated_by, actions }),
     });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
