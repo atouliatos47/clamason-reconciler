@@ -160,6 +160,11 @@
        only takes effect inside @media print. */
     .chart-wrap { height: 150px; }
     .chart-wrap.short { height: 140px; }
+    /* 2-column screen grid wraps a 3rd gauge onto its own row, adding
+       a full extra row of height — enough on its own to push the page
+       from 1 printed sheet to 2. 3 columns for print keeps all 3 side
+       by side in the same row instead. */
+    .gauges { grid-template-columns: 1fr 1fr 1fr; }
   }
 </style>
 </head>
