@@ -40,9 +40,10 @@
   .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
 
   .main { flex: 1; min-width: 0; }
-  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; display: flex; justify-content: space-between; align-items: flex-start; }
   .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
   .page-header p { color: #888; font-size: 11.5px; margin-top: 3px; }
+  select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 12.5px; }
 
   @media (max-width: 768px) {
     body { flex-direction: column; }
@@ -181,8 +182,13 @@ function toggleNavGroup(name) {
 <div class="main">
 
 <div class="page-header">
-  <h1>Maintenance Trend Dashboard</h1>
-  <p>SFC fault downtime vs Agility work order coverage — month over month</p>
+  <div>
+    <h1>Maintenance Trend Dashboard</h1>
+    <p>SFC fault downtime vs Agility work order coverage — month over month</p>
+  </div>
+  <div>
+    <select id="period-select" onchange="selectPeriod(this.value)"></select>
+  </div>
 </div>
 
 <div class="container" id="app">
@@ -195,6 +201,7 @@ function toggleNavGroup(name) {
 
 <script>
 const NAVY = '#243547', LIME = '#95C11F', RED = '#dc2626', AMBER = '#d97706';
+let RUNS = [];
 
 function fmt(n, d=1) { return (n === null || n === undefined) ? '—' : Number(n).toFixed(d); }
 
@@ -225,14 +232,32 @@ async function load() {
     return;
   }
 
-  const runs = data.runs || [];
-  if (runs.length === 0) {
+  RUNS = data.runs || [];
+  if (RUNS.length === 0) {
     document.getElementById('state-msg').textContent =
       'No saved runs yet. Go run a maintenance check and click "Save to Trend Dashboard" to see history here.';
     return;
   }
 
-  render(runs);
+  const sel = document.getElementById('period-select');
+  // Newest first — that's the month you came here to review.
+  sel.innerHTML = RUNS.slice().reverse()
+    .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
+  // Shared with Board Review, Production, Maintenance, and Toolroom —
+  // picking a month on any of those carries over here too, and vice
+  // versa. Falls back to the latest month if nothing's been picked yet,
+  // or if a saved label no longer matches any saved run.
+  const savedLabel = localStorage.getItem('clamason-selected-period');
+  const savedIdx = savedLabel ? RUNS.findIndex(r => (r.period_label || r.period) === savedLabel) : -1;
+  const startIdx = savedIdx !== -1 ? savedIdx : RUNS.length - 1;
+  sel.value = startIdx;
+  selectPeriod(startIdx);
+}
+
+function selectPeriod(i) {
+  const idx = Number(i);
+  localStorage.setItem('clamason-selected-period', (RUNS[idx].period_label || RUNS[idx].period));
+  render(RUNS, idx);
 }
 
 // Months saved before OEE could be uploaded have NULL in every OEE
@@ -359,13 +384,13 @@ function ppmSection(latest, prev) {
     </div>`;
 }
 
-function render(runs) {
-  const latest = runs[runs.length - 1];
-  const prev = runs.length > 1 ? runs[runs.length - 2] : null;
+function render(runs, idx) {
+  const latest = runs[idx];
+  const prev = idx > 0 ? runs[idx - 1] : null;
 
   const app = document.getElementById('app');
   app.innerHTML = `
-    <div class="period-badge">Latest period: ${latest.period_label || latest.period}</div>
+    <div class="period-badge">Period: ${latest.period_label || latest.period}</div>
 
     <div class="kpi-row">
       <div class="kpi red">
