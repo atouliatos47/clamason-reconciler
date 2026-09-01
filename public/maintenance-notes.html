@@ -47,16 +47,19 @@
   .field-label { font-size: 12px; font-weight: bold; color: #243547; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
   .field-label.actions { margin-top: 14px; }
   .actions-list { display: flex; flex-direction: column; gap: 8px; }
-  .action-row { border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; background: white; }
-  .action-row-top { display: flex; align-items: center; gap: 10px; }
-  .action-row input[type=checkbox] { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; }
-  .action-row input.action-text { flex: 1; min-width: 0; border: none; font-family: Arial, sans-serif; font-size: 13px; background: transparent; }
-  .action-row input.action-text:focus { outline: none; }
-  .action-row.done input.action-text { text-decoration: line-through; color: #999; }
-  .action-row-date { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-  .action-row-date label { font-size: 11px; color: #999; white-space: nowrap; }
-  .action-row input.action-date { font-size: 12px; border: 1px solid #ddd; border-radius: 4px; padding: 3px 4px; font-family: Arial, sans-serif; }
-  .action-remove { background: none; border: none; color: #999; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; flex-shrink: 0; }
+  .action-row { display: flex; align-items: stretch; gap: 10px; }
+  .action-box { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 8px; border: 1px solid #ddd; border-radius: 6px; padding: 9px 12px; background: white; }
+  .action-box input[type=checkbox] { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; cursor: pointer; }
+  .action-box textarea.action-text {
+    flex: 1; min-width: 0; min-height: 0; border: none; resize: none; overflow: hidden;
+    font-family: Arial, sans-serif; font-size: 13px; line-height: 1.4; background: transparent; padding: 0;
+  }
+  .action-box textarea.action-text:focus { outline: none; }
+  .action-row.done textarea.action-text { text-decoration: line-through; color: #999; }
+  .date-box { display: flex; align-items: center; gap: 8px; flex-shrink: 0; border: 1px solid #ddd; border-radius: 6px; padding: 9px 12px; background: white; }
+  .date-box label { font-size: 11px; color: #999; white-space: nowrap; }
+  .date-box input.action-date { font-size: 12px; border: 1px solid #ddd; border-radius: 4px; padding: 3px 4px; font-family: Arial, sans-serif; }
+  .action-remove { background: none; border: none; color: #999; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
   .action-remove:hover { color: #c0392b; }
   .add-action-btn {
     margin-top: 10px; padding: 6px 12px; background: white; border: 1px solid #ccc; border-radius: 6px;
@@ -220,21 +223,25 @@ function addActionRow(action) {
   const row = document.createElement('div');
   row.className = 'action-row' + (action.done ? ' done' : '');
   row.innerHTML = `
-    <div class="action-row-top">
+    <div class="action-box">
       <input type="checkbox" class="action-done" ${action.done ? 'checked' : ''}>
-      <input type="text" class="action-text" placeholder="Action" value="${(action.action_text || '').replace(/"/g, '&quot;')}">
-      <div class="action-row-date">
-        <label>Target date</label>
-        <input type="date" class="action-date" value="${action.target_date || ''}">
-      </div>
+      <textarea class="action-text" placeholder="Action" rows="1">${(action.action_text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</textarea>
+    </div>
+    <div class="date-box">
+      <label>Target date</label>
+      <input type="date" class="action-date" value="${action.target_date || ''}">
       <button type="button" class="action-remove" aria-label="Remove action">&times;</button>
     </div>
   `;
+  const textarea = row.querySelector('.action-text');
+  const grow = () => { textarea.style.height = 'auto'; textarea.style.height = textarea.scrollHeight + 'px'; };
+  textarea.addEventListener('input', grow);
   row.querySelector('.action-done').addEventListener('change', e => {
     row.classList.toggle('done', e.target.checked);
   });
   row.querySelector('.action-remove').addEventListener('click', () => row.remove());
   document.getElementById('actions-list').appendChild(row);
+  grow();
   return row;
 }
 
