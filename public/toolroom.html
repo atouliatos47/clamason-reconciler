@@ -77,6 +77,7 @@
      inside the canvas, so the height must cover the bars AND the angled
      text beneath them. */
   .chart-wrap { position: relative; height: 182px; }
+  .chart-wrap.other { height: 150px; margin-top: 6px; }
   /* Reason charts are horizontal now, so height is set by how many bars
      there are, not by how much room angled labels need. */
   .chart-wrap.short { height: 165px; }
@@ -99,6 +100,10 @@
   .top-reason-card .reason-name { font-size: 17px; font-weight: bold; color: #243547; }
   .top-reason-card .reason-hrs { font-size: 12px; color: #666; margin-top: 4px; }
   .top-reason-card .reason-empty { font-size: 12px; color: #888; font-style: italic; }
+  .reason-breakdown-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid #e2e5ea; }
+  /* Unscoped so the same empty-state look works outside .top-reason-card
+     too — the By Press chart's "no data" fallback reuses it below. */
+  .reason-empty { font-size: 12px; color: #888; font-style: italic; }
   .print-brand-line, .print-brand-footer { display: none; }
   @media print {
     .sidebar, .page-header, .print-btn { display: none; }
@@ -143,7 +148,7 @@
        running into the footer instead of moving to a fresh page
        whole. Standard, well-supported print-CSS behaviour; scoped to
        print only since it's a no-op outside a paginated context. */
-    .chart-box, .top-reason-card, .notes-area, .reason-breakdown-section {
+    .chart-box, .top-reason-card, .notes-area, .reason-breakdown-section, .gauge-box {
       break-inside: avoid;
       page-break-inside: avoid;
     }
@@ -463,6 +468,11 @@ function render() {
       <div class="panel">
         <h3>Top Downtime Reason</h3>
         <div class="top-reason-card" id="top-reason-card"></div>
+        <div class="reason-breakdown-section" id="reason-breakdown-section" style="display:none;">
+          <h3 id="reason-breakdown-title">By Press</h3>
+          <div class="chart-wrap other" id="by-press-chart-wrap"><canvas id="by-press-chart"></canvas></div>
+          <div class="reason-empty" id="by-press-empty" style="display:none;">No per-press detail for this reason.</div>
+        </div>
       </div>
     </div>
     <div class="unclassified" id="unclassified"></div>
@@ -549,6 +559,7 @@ function renderTopReason(mb, totalHrs) {
   const card = document.getElementById('top-reason-card');
   if (!actionable.length) {
     card.innerHTML = '<div class="reason-empty">No reason-coded downtime this period.</div>';
+    renderReasonBreakdown([], null);
     return;
   }
   const [reason, hrs] = actionable[0];
@@ -556,8 +567,64 @@ function renderTopReason(mb, totalHrs) {
   card.innerHTML = `
     <div class="reason-name">${reason}</div>
     <div class="reason-hrs">${hrs.toFixed(1)}h${pct !== null ? ` · ${pct}% of downtime` : ''}</div>`;
+
+  renderReasonBreakdown(mb, reason);
 }
 
+// Which specific presses the top reason's hours actually came from —
+// already sitting in mb (each machine carries its own reasons dict, see
+// reconciliation.py's compute_machine_breakdown), just not shown
+// anywhere on this page before now. No separate report needed for
+// "which presses" — it's the same data already behind the chart above,
+// just re-sliced by reason instead of by machine.
+function renderReasonBreakdown(mb, reason) {
+  const section = document.getElementById('reason-breakdown-section');
+  const chartWrap = document.getElementById('by-press-chart-wrap');
+  const empty = document.getElementById('by-press-empty');
+  if (byPressChart) { byPressChart.destroy(); byPressChart = null; }
+  if (!reason) { section.style.display = 'none'; return; }
+
+  const byMachine = mb
+    .map(m => ({ machine: m.machine, hrs: (m.reasons || {})[reason] || 0 }))
+    .filter(x => x.hrs > 0)
+    .sort((a, b) => b.hrs - a.hrs);
+
+  section.style.display = 'block';
+
+  if (!byMachine.length) {
+    document.getElementById('reason-breakdown-title').textContent = `${reason} — by Press`;
+    chartWrap.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  chartWrap.style.display = 'block';
+  empty.style.display = 'none';
+
+  chartWrap.style.height = Math.max(150, byMachine.length * 20 + 16) + 'px';
+
+  const labels = uniqueShortLabels(byMachine.map(x => x.machine), MAX_TICK_H);
+  const data = byMachine.map(x => x.hrs);
+
+  byPressChart = new Chart(document.getElementById('by-press-chart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: '#bf7d2c', borderRadius: 2, maxBarThickness: 14 }] },
+    plugins: [barValues],
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 4, bottom: 4, left: 2, right: 36 } },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { display: false },
+        y: { grid: { display: false }, ticks: { font: { size: 9.5 } } },
+      },
+    },
+  });
+
+  document.getElementById('reason-breakdown-title').textContent = `${reason} — by Press`;
+}
+
+let byPressChart = null;
 const DEPARTMENT = 'toolroom';
 
 function pareto(id, rows, key, colour) {
