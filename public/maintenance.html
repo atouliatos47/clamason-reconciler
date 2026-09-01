@@ -108,7 +108,8 @@
     width: 100%; min-height: 70px; padding: 12px; border: 1px solid #ddd; border-radius: 6px;
     font-family: Arial, sans-serif; font-size: 12.5px; line-height: 1.5; resize: vertical;
   }
-  .actions-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px; }
+  .field-label { font-size: 11px; font-weight: bold; color: #243547; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
+  .field-label.actions { margin-top: 12px; }
   .actions-list { display: flex; flex-direction: column; gap: 8px; max-height: 160px; overflow-y: auto; }
   .action-row { border: 1px solid #ddd; border-radius: 6px; padding: 6px 8px; }
   .action-row-top { display: flex; align-items: center; gap: 8px; }
@@ -499,8 +500,9 @@ function render() {
         <div class="top-reason-card" id="top-reason-card"></div>
         <h3>Notes &amp; Action Plan</h3>
         <div class="notes-area">
+          <div class="field-label">Root Cause</div>
           <textarea id="dept-notes" placeholder="Root cause — what's actually happening?"></textarea>
-          <div class="actions-label">Actions</div>
+          <div class="field-label actions">Actions</div>
           <div class="actions-list" id="actions-list"></div>
           <button class="add-action-btn" id="add-action-btn" type="button" onclick="addActionRow()">+ Add action</button>
           <div class="notes-meta">
