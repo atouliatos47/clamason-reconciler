@@ -33,7 +33,7 @@
   .print-btn { padding: 8px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; margin-left: 8px; }
   .print-btn:hover { background: #95C11F; color: #243547; }
 
-  .container { max-width: 640px; }
+  .container { width: 100%; }
   .dept-bar { color: #fff; padding: 10px 14px; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center; background: #2e6b4f; }
   .dept-bar span.name { font-size: 13px; font-weight: bold; letter-spacing: 0.7px; }
   .dept-bar span.num { font-size: 9.5px; opacity: 0.75; font-family: monospace; }
@@ -48,15 +48,15 @@
   .field-label.actions { margin-top: 14px; }
   .actions-list { display: flex; flex-direction: column; gap: 8px; }
   .action-row { border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; background: white; }
-  .action-row-top { display: flex; align-items: center; gap: 8px; }
+  .action-row-top { display: flex; align-items: center; gap: 10px; }
   .action-row input[type=checkbox] { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; }
   .action-row input.action-text { flex: 1; min-width: 0; border: none; font-family: Arial, sans-serif; font-size: 13px; background: transparent; }
   .action-row input.action-text:focus { outline: none; }
   .action-row.done input.action-text { text-decoration: line-through; color: #999; }
-  .action-row-bottom { display: flex; align-items: center; gap: 6px; margin-top: 5px; padding-left: 24px; }
-  .action-row-bottom label { font-size: 11px; color: #999; }
+  .action-row-date { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .action-row-date label { font-size: 11px; color: #999; white-space: nowrap; }
   .action-row input.action-date { font-size: 12px; border: 1px solid #ddd; border-radius: 4px; padding: 3px 4px; font-family: Arial, sans-serif; }
-  .action-remove { background: none; border: none; color: #999; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; flex-shrink: 0; margin-left: auto; }
+  .action-remove { background: none; border: none; color: #999; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; flex-shrink: 0; }
   .action-remove:hover { color: #c0392b; }
   .add-action-btn {
     margin-top: 10px; padding: 6px 12px; background: white; border: 1px solid #ccc; border-radius: 6px;
@@ -166,7 +166,6 @@ function toggleNavGroup(name) {
 <div class="page-header">
   <div>
     <h1>Notes &amp; Action Plan</h1>
-    <p>Maintenance — this panel only, ready to copy straight into the board deck</p>
   </div>
   <div>
     <button class="print-btn" onclick="window.print()">Print / PDF</button>
@@ -224,11 +223,11 @@ function addActionRow(action) {
     <div class="action-row-top">
       <input type="checkbox" class="action-done" ${action.done ? 'checked' : ''}>
       <input type="text" class="action-text" placeholder="Action" value="${(action.action_text || '').replace(/"/g, '&quot;')}">
+      <div class="action-row-date">
+        <label>Target date</label>
+        <input type="date" class="action-date" value="${action.target_date || ''}">
+      </div>
       <button type="button" class="action-remove" aria-label="Remove action">&times;</button>
-    </div>
-    <div class="action-row-bottom">
-      <label>Target date</label>
-      <input type="date" class="action-date" value="${action.target_date || ''}">
     </div>
   `;
   row.querySelector('.action-done').addEventListener('change', e => {
