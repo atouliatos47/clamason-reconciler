@@ -253,8 +253,13 @@ function formatUKDate(isoDate) {
 }
 
 function rowLabel(row) {
-  if (granularity === 'monthly') return row.label; // e.g. "July 2026" — already text, not a date to reformat
-  return formatUKDate(granularity === 'daily' ? row.date : row.label);
+  // Daily rows carry a raw ISO date (row.date) that genuinely needs
+  // reformatting. Weekly and monthly rows carry an already-built display
+  // string (row.label, e.g. "Week 36 (31 Aug)" or "July 2026") — running
+  // either through formatUKDate() would split on hyphens that aren't
+  // there, producing "undefined/undefined/<label>" instead of the label.
+  if (granularity === 'daily') return formatUKDate(row.date);
+  return row.label;
 }
 
 function rowPlannedPct(row) {
