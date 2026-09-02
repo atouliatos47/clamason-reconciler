@@ -55,8 +55,9 @@
     font-family: Arial, sans-serif; font-size: 13px; line-height: 1.4; background: transparent; padding: 0;
   }
   .action-box textarea.action-text:focus { outline: none; }
-  .action-row.done textarea.action-text { text-decoration: line-through; color: #999; }
-  .date-box { display: flex; align-items: center; gap: 8px; flex-shrink: 0; border: 1px solid #ddd; border-radius: 6px; padding: 9px 12px; background: white; }
+  .action-row.done textarea.action-text { color: inherit; }
+  .date-box { display: flex; align-items: center; gap: 8px; flex-shrink: 0; border: 1px solid #e0a0a0; border-radius: 6px; padding: 9px 12px; background: white; transition: border-color 0.15s; }
+  .action-row.done .date-box { border-color: #7cc47f; }
   .date-box label { font-size: 11px; color: #999; white-space: nowrap; }
   .date-box input.action-date { font-size: 12px; border: 1px solid #ddd; border-radius: 4px; padding: 3px 4px; font-family: Arial, sans-serif; }
   .action-remove { background: none; border: none; color: #999; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
