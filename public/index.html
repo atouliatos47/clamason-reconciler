@@ -623,7 +623,7 @@ function render(d) {
 
   document.getElementById('reason-tbody').innerHTML = hasSfc
     ? (Object.entries(s.reasons || {})
-        .filter(([k]) => ['FAULT - PRESS','FAULT-FEEDER/DECOILER/STR','FAULT-SHAKER/CONVEYOR','FAULT-FEEDER/DECOILER/STRAIGHTENER','LUBRICATION/OIL REFILL'].includes(k.toUpperCase()))
+        .filter(([k]) => ['FAULT - PRESS','FAULT-FEEDER/DECOILER/STR','FAULT-SHAKER/CONVEYOR','FAULT-FEEDER/DECOILER/STRAIGHTENER','LUBRICATION/OIL REFILL','MA-FAULT PRESS','MA-FAULT-FEEDER/DECOILER/','MA-FAULT SHAKER/CONVEYOR'].includes(k.toUpperCase()))
         .map(([k, v]) => `<tr><td>${k}</td><td>${v}h</td></tr>`).join('') || '<tr><td colspan="2" style="text-align:center;color:#888;padding:20px">No maintenance-coded reasons found</td></tr>')
     : '<tr><td colspan="2" style="text-align:center;color:#888;padding:20px">SFC Monthly Downtime Summary not uploaded this run</td></tr>';
 }

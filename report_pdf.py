@@ -60,7 +60,7 @@ def _build_header(story, styles, period):
 def _build_headline(story, styles, sfc_summary, wo_count, gap_hrs, gap_pct):
     reasons = sfc_summary.get('reasons', {})
     reason_evts = sfc_summary.get('reason_events', {})
-    maint_reasons = {k: v for k, v in reasons.items() if k.upper() in BLAME_FAULT_CODES}
+    maint_reasons = {k: v for k, v in reasons.items() if k.strip().upper() in BLAME_FAULT_CODES}
     fault_events = sum(reason_evts.get(k, 0) for k in maint_reasons)
 
     if gap_pct >= 60:
@@ -99,8 +99,10 @@ def _build_headline(story, styles, sfc_summary, wo_count, gap_hrs, gap_pct):
     story.append(headline)
     story.append(Spacer(1, 4 * mm))
     story.append(Paragraph(
-        'What this checks: only downtime SFC recorded as <b>FAULT - PRESS</b> or '
-        '<b>FAULT-FEEDER/DECOILER/STR</b> — the two reason codes logged against Maintenance. '
+        'What this checks: only downtime SFC recorded as a press fault '
+        '(<b>FAULT - PRESS</b> / <b>MA-FAULT PRESS</b>) or a feeder/decoiler fault '
+        '(<b>FAULT-FEEDER/DECOILER/STR</b> / <b>MA-FAULT-FEEDER/DECOILER/</b>) — the two reason '
+        'codes logged against Maintenance, old and new SFC naming alike. '
         'Work Orders on machines SFC doesn\u2019t track fault codes for (chillers, compressors, '
         'welders, etc.) are excluded — they can\u2019t count as covering this downtime.',
         styles['body']))
@@ -186,7 +188,7 @@ def _build_sfc_reasons_table(story, styles, sfc_summary):
     real WO table below for coverage — no fabricated check marks."""
     reasons = sfc_summary.get('reasons', {})
     reason_evts = sfc_summary.get('reason_events', {})
-    maint_reasons = {k: v for k, v in reasons.items() if k.upper() in BLAME_FAULT_CODES}
+    maint_reasons = {k: v for k, v in reasons.items() if k.strip().upper() in BLAME_FAULT_CODES}
 
     story.append(Paragraph('Downtime Logged Against Maintenance (SFC)', styles['section']))
     story.append(HRFlowable(width='100%', thickness=2, color=LIME, spaceAfter=4))
