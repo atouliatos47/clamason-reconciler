@@ -246,7 +246,7 @@ function toggleNavGroup(name) {
 
   <div class="upload-section">
     <h2>Upload Today's Work Orders</h2>
-    <p>Selective Work Orders export from Agility. Down Time Analysis is optional — add it too if you want a real MTTR for today's breakdowns instead of a manual entry.</p>
+    <p>Selective Work Orders export from Agility. Down Time Analysis is optional — add it too for a real calculated MTTR on today's breakdowns; without it, MTTR is left blank rather than guessed.</p>
     <div style="display:flex;gap:16px;flex-wrap:wrap;">
       <div class="upload-card" id="card-wo">
         <h3>🔧 Selective Work Orders</h3>
@@ -540,7 +540,7 @@ function render(d) {
   } else if (d.breakdowns.total === 0) {
     mttrNote.innerHTML = '⏱️ MTTR: no breakdowns today — nothing to average.';
   } else {
-    mttrNote.innerHTML = '⏱️ MTTR: upload Agility Down Time above for a real calculated figure — manual entry for now.';
+    mttrNote.innerHTML = '⏱️ MTTR: upload Agility Down Time above for a real calculated figure — left blank for today.';
   }
 
   renderFilterTabs(d);
