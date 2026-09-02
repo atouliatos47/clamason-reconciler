@@ -9,6 +9,24 @@ reclassified, this is the only file that should need to change.
 
 # --- SFC downtime reason codes -------------------------------------------
 
+# SFC switched to a prefixed naming scheme (MA-/TR-/QA-) from September
+# 2026 — e.g. 'FAULT - PRESS' became 'MA-FAULT PRESS'. Both old and new
+# spellings are kept in every set below, on purpose: a month reprocessed
+# from an older upload still needs the old spelling to categorise
+# correctly, and there's no reliable way to tell "this file predates the
+# rename" from the data alone. QA-prefixed codes (QA-QUALITY FAIL,
+# QA-WAITING QUALITY PASS OFF...) are new categories, not renames of
+# anything that existed before — they're not in any set here yet, so
+# they land in the 'production' residual bucket until/unless a
+# dedicated quality category gets built.
+#
+# 'MA-FAULT-FEEDER/DECOILER/' is exactly what SFC's own export gives —
+# it cuts off right at the slash, same as the old 'FAULT-FEEDER/
+# DECOILER/STR' short form did. Not confirmed whether that's genuinely
+# the full code or a display truncation; if downtime under this reason
+# stops showing up as Maintenance-owned after the SFC switch, check the
+# exact string in a fresh export first.
+#
 # Broader set: anything that's ever been coded as a maintenance-caused
 # downtime reason in SFC, including lubrication.
 MAINTENANCE_CODES = {
@@ -17,6 +35,9 @@ MAINTENANCE_CODES = {
     'FAULT-SHAKER/CONVEYOR',
     'FAULT-FEEDER/DECOILER/STRAIGHTENER',
     'LUBRICATION/OIL REFILL',
+    'MA-FAULT PRESS',
+    'MA-FAULT-FEEDER/DECOILER/',
+    'MA-FAULT SHAKER/CONVEYOR',
 }
 
 # Narrower set: only these two reasons are actually logged against
@@ -24,7 +45,7 @@ MAINTENANCE_CODES = {
 # for the "is this fairly attributed to Maintenance?" gap report.
 # Lubrication and the other MAINTENANCE_CODES entries are deliberately
 # excluded from this specific check.
-BLAME_FAULT_CODES = {'FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR'}
+BLAME_FAULT_CODES = {'FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR', 'MA-FAULT PRESS', 'MA-FAULT-FEEDER/DECOILER/'}
 
 # Departmental attribution for the board review — every code that is a
 # FAULT on plant maintenance is responsible for.
@@ -49,6 +70,9 @@ FAULT_CODES = {
     'FAULT-FEEDER/DECOILER/STR',
     'FAULT-FEEDER/DECOILER/STRAIGHTENER',
     'FAULT-SHAKER/CONVEYOR',
+    'MA-FAULT PRESS',
+    'MA-FAULT-FEEDER/DECOILER/',
+    'MA-FAULT SHAKER/CONVEYOR',
 }
 
 TOOLROOM_CODES = {
@@ -56,6 +80,8 @@ TOOLROOM_CODES = {
     'TOOL FAILURE - SET UP',
     'TOOL UNAVAILABLE',
     'WASTE IN THE TOOL',
+    'TR-TOOL UNAVAILABLE',
+    'TR-TOOL FAILURE',
 }
 
 PLANNED_CODES = {'PLANNED OFFLINE', 'NO PRODUCTION PLANNED'}
