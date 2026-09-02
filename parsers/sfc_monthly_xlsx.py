@@ -57,7 +57,7 @@ def _categorise(reason):
     residual on purpose: a new reason code appearing in SFC lands there
     rather than silently vanishing from the totals.
     """
-    up = reason.upper()
+    up = reason.strip().upper()
     # FAULT_CODES, not BLAME_FAULT_CODES — see the note in config.py.
     # This is departmental ownership, a different question from what the
     # gap report can match against a work order.
@@ -178,11 +178,11 @@ def parse_monthly_summary_xlsx(filepath):
     if period_hrs is None:
         period_hrs = 24
 
-    maint_hrs = round(sum(v for k, v in reasons.items() if k.upper() in BLAME_FAULT_CODES), 2)
-    tool_hrs = round(sum(v for k, v in reasons.items() if k.upper() in TOOLROOM_CODES), 2)
+    maint_hrs = round(sum(v for k, v in reasons.items() if k.strip().upper() in BLAME_FAULT_CODES), 2)
+    tool_hrs = round(sum(v for k, v in reasons.items() if k.strip().upper() in TOOLROOM_CODES), 2)
     prod_hrs = round(grand_total_hrs - maint_hrs - tool_hrs, 2)
 
-    planned_offline_hrs = round(sum(v for k, v in reasons.items() if k.upper() in PLANNED_CODES), 2)
+    planned_offline_hrs = round(sum(v for k, v in reasons.items() if k.strip().upper() in PLANNED_CODES), 2)
     max_possible_hrs = round(machine_count * period_hrs, 2)
     scheduled_hrs = round(max_possible_hrs - planned_offline_hrs, 2)
 

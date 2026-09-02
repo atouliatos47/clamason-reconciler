@@ -287,10 +287,16 @@ const hrs = (v, d = 1) => (v === null || v === undefined) ? '–' : Number(v).to
 // rows appear in which department's chart. Every hours total on this
 // page is categorised server-side, so a code missing from these lists
 // shows up in the unclassified strip rather than being miscounted.
+// SFC switched to a prefixed naming scheme (MA-/TR-/QA-) from September
+// 2026 — e.g. 'FAULT - PRESS' became 'MA-FAULT PRESS'. Both spellings
+// are kept here, same reasoning as config.py on the backend: a month
+// reprocessed from an older upload still needs the old spelling.
 const FAULT_CODES = ['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR',
-                     'FAULT-FEEDER/DECOILER/STRAIGHTENER', 'FAULT-SHAKER/CONVEYOR'];
+                     'FAULT-FEEDER/DECOILER/STRAIGHTENER', 'FAULT-SHAKER/CONVEYOR',
+                     'MA-FAULT PRESS', 'MA-FAULT-FEEDER/DECOILER/', 'MA-FAULT SHAKER/CONVEYOR'];
 const TOOLROOM_CODES = ['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP',
-                        'TOOL UNAVAILABLE', 'WASTE IN THE TOOL'];
+                        'TOOL UNAVAILABLE', 'WASTE IN THE TOOL',
+                        'TR-TOOL UNAVAILABLE', 'TR-TOOL FAILURE'];
 const PLANNED_CODES = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED'];
 
 // Codes stripped out of the Production chart because they aren't lost
