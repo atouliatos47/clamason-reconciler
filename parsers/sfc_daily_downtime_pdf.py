@@ -97,9 +97,16 @@ def _parse_reason_rows(page1_text):
             grand_total_events, grand_total_hrs = events_n, hrs
             break
 
-        if hrs > 0:
-            reasons[reason] = round(reasons.get(reason, 0) + hrs, 3)
-            reason_events[reason] = reason_events.get(reason, 0) + events_n
+        # Previously skipped whenever hrs == 0 ('if hrs > 0:'), to avoid
+        # cluttering the reasons list with zero-duration noise. That
+        # silently dropped those rows' events too, which is exactly what
+        # broke the Grand Totals check below — the PDF's own total still
+        # counts a reason with 1 event at 0:00:00 duration, so the
+        # parsed count came up short by however many such rows existed
+        # that day. Always counting keeps this validation meaningful; a
+        # reason sitting at 0.0h is honest output, not noise.
+        reasons[reason] = round(reasons.get(reason, 0) + hrs, 3)
+        reason_events[reason] = reason_events.get(reason, 0) + events_n
 
     if grand_total_events is None:
         raise ValueError('Could not find a "Grand Totals" row — the PDF layout may have changed')
@@ -139,11 +146,11 @@ def parse_daily_downtime_pdf(filepath):
     if period_hrs is None:
         period_hrs = 24
 
-    maint_hrs = round(sum(v for k, v in reasons.items() if k.upper() in BLAME_FAULT_CODES), 2)
-    tool_hrs = round(sum(v for k, v in reasons.items() if k.upper() in TOOLROOM_CODES), 2)
+    maint_hrs = round(sum(v for k, v in reasons.items() if k.strip().upper() in BLAME_FAULT_CODES), 2)
+    tool_hrs = round(sum(v for k, v in reasons.items() if k.strip().upper() in TOOLROOM_CODES), 2)
     prod_hrs = round(grand_total_hrs - maint_hrs - tool_hrs, 2)
 
-    planned_offline_hrs = round(sum(v for k, v in reasons.items() if k.upper() in PLANNED_CODES), 2)
+    planned_offline_hrs = round(sum(v for k, v in reasons.items() if k.strip().upper() in PLANNED_CODES), 2)
     max_possible_hrs = round(machine_count * period_hrs, 2)
     scheduled_hrs = round(max_possible_hrs - planned_offline_hrs, 2)
 
