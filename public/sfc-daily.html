@@ -379,8 +379,8 @@ function hideRestoredNote() {
 // config.py. If those lists ever change, update this copy too, or the
 // pill on a row could show the wrong category while the hours
 // underneath it (computed server-side) stay correct regardless.
-const BLAME_FAULT_CODES = new Set(['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR']);
-const TOOLROOM_CODES = new Set(['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP', 'TOOL UNAVAILABLE', 'WASTE IN THE TOOL']);
+const BLAME_FAULT_CODES = new Set(['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR', 'MA-FAULT PRESS', 'MA-FAULT-FEEDER/DECOILER/']);
+const TOOLROOM_CODES = new Set(['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP', 'TOOL UNAVAILABLE', 'WASTE IN THE TOOL', 'TR-TOOL UNAVAILABLE', 'TR-TOOL FAILURE']);
 const PLANNED_CODES = new Set(['PLANNED OFFLINE', 'NO PRODUCTION PLANNED']);
 
 function categoryFor(reason) {

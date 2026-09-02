@@ -297,8 +297,8 @@ function toggleNavGroup(name) {
 // Display-only: it colours the badge in the Pareto table. Every hours figure
 // on this page is categorised server-side, so a reason missing from this list
 // shows as "Other" but is never miscounted in any total.
-const MAINTENANCE_REASONS = ['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR', 'FAULT-FEEDER/DECOILER/STRAIGHTENER'];
-const TOOLROOM_REASONS = ['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP', 'TOOL UNAVAILABLE', 'WASTE IN THE TOOL'];
+const MAINTENANCE_REASONS = ['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR', 'FAULT-FEEDER/DECOILER/STRAIGHTENER', 'MA-FAULT PRESS', 'MA-FAULT-FEEDER/DECOILER/'];
+const TOOLROOM_REASONS = ['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP', 'TOOL UNAVAILABLE', 'WASTE IN THE TOOL', 'TR-TOOL UNAVAILABLE', 'TR-TOOL FAILURE'];
 const PLANNED_REASONS = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED'];
 
 function categorise(reason) {
