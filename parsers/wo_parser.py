@@ -131,6 +131,23 @@ def parse_wo_file(filepath):
     return filtered, asset_lookup
 
 
+def parse_wo_file_for_toolroom_gap(filepath):
+    """Toolmaker-craft WOs, restricted to MAINTENANCE_JOB_TYPES — the
+    Toolroom equivalent of parse_wo_file(). Kept separate from
+    parse_toolroom_wo_file() on purpose: that one deliberately returns
+    every job type for the Toolroom backlog card, and narrowing it
+    would move a number already on the board. This one feeds the new
+    Toolroom SFC-vs-Agility gap instead, which — like the Maintenance
+    gap — should only count WOs that are actually repair work, not
+    every WO a Toolmaker's name appears on."""
+    records, asset_lookup = _parse_all_maintenance_wos(filepath, craft_filter=TOOLROOM_CRAFTS)
+    filtered = [
+        r for r in records
+        if not r['jobType'] or r['jobType'].lower() in MAINTENANCE_JOB_TYPES
+    ]
+    return filtered, asset_lookup
+
+
 def parse_toolroom_wo_file(filepath):
     """Toolmaker-craft WOs, every job type. Used only for the Toolroom
     card on the board review.
