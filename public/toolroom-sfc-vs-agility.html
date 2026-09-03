@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Toolroom SFC vs Agility</title>
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar { width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh; display: flex; flex-direction: column; padding: 24px 0; border-right: 3px solid #95C11F; position: sticky; top: 0; align-self: flex-start; }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-group-header { display: flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: none; color: #cfd8e3; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 24px; cursor: pointer; }
+  .nav-group-header:hover { color: white; }
+  .nav-group-header .chevron { transition: transform 0.15s; font-size: 10px; }
+  .nav-group-header.open .chevron { transform: rotate(90deg); }
+  .nav-group-items { display: none; flex-direction: column; }
+  .nav-group-items.open { display: flex; }
+  .nav-item { color: #b7c2d0; text-decoration: none; font-size: 13px; padding: 8px 24px 8px 36px; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.15); color: #95C11F; border-right: 3px solid #95C11F; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; padding: 28px 32px; min-width: 0; }
+  .page-header { margin-bottom: 22px; }
+  .page-header h1 { font-size: 20px; color: #243547; }
+  .page-header p { font-size: 12px; color: #666; margin-top: 4px; }
+
+  .container { max-width: 900px; }
+  .dept-bar { color: #fff; padding: 10px 14px; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center; background: #bf7d2c; }
+  .dept-bar span.name { font-size: 13px; font-weight: bold; letter-spacing: 0.7px; }
+  .dept-bar span.num { font-size: 9.5px; opacity: 0.75; font-family: monospace; }
+  .panel { background: #f7f8fa; border-radius: 0 0 8px 8px; padding: 40px 28px; }
+
+  .empty-state { text-align: center; padding: 30px 20px; }
+  .empty-state .icon { font-size: 32px; margin-bottom: 12px; }
+  .empty-state h2 { font-size: 15px; color: #243547; margin-bottom: 8px; }
+  .empty-state p { font-size: 13px; color: #777; max-width: 480px; margin: 0 auto; line-height: 1.6; }
+  .empty-state .checklist { text-align: left; max-width: 420px; margin: 20px auto 0; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 14px 18px; }
+  .empty-state .checklist li { font-size: 12.5px; color: #555; margin-bottom: 6px; list-style: none; }
+  .empty-state .checklist li:last-child { margin-bottom: 0; }
+  .empty-state .checklist .done { color: #16a34a; }
+  .empty-state .checklist .pending { color: #bf7d2c; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Performance Hub</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-board-review" onclick="toggleNavGroup('board-review')">
+        <span>Board Review</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-board-review">
+        <a class="nav-item" href="/board-review">Total Monthly Performance Review</a>
+        <a class="nav-item" href="/">Monthly Check</a>
+        <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+        <a class="nav-item" href="/teep">TEEP</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-production" onclick="toggleNavGroup('production')">
+        <span>Production</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-production">
+        <a class="nav-item" href="/production">Monthly Performance Review</a>
+        <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/daily-oee">Daily OEE</a>
+        <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
+        <a class="nav-item" href="/production-plan">Production Plan</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
+        <span>Maintenance</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-maintenance">
+        <a class="nav-item" href="/maintenance">Monthly Performance Review</a>
+        <a class="nav-item" href="/maintenance-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/daily">Daily Check</a>
+        <a class="nav-item" href="/daily-trend">Daily Trend</a>
+        <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+        <a class="nav-item" href="/tpm-schedule">TPM Schedule</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header open" id="nav-header-toolroom" onclick="toggleNavGroup('toolroom')">
+        <span>Toolroom</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items open" id="nav-group-toolroom">
+        <a class="nav-item" href="/toolroom">Monthly Performance Review</a>
+        <a class="nav-item" href="/toolroom-notes">Notes and Action Plan</a>
+        <a class="nav-item active" href="/toolroom-sfc-vs-agility">SFC vs Agility</a>
+      </div>
+    </div>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<script>
+function toggleNavGroup(name) {
+  var header = document.getElementById('nav-header-' + name);
+  var items = document.getElementById('nav-group-' + name);
+  var isOpen = items.classList.toggle('open');
+  header.classList.toggle('open', isOpen);
+}
+
+(function() {
+  var IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+  var idleTimer;
+  function goIdle() { window.location.href = '/splash'; }
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(goIdle, IDLE_TIMEOUT_MS);
+  }
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function(evt) {
+    document.addEventListener(evt, resetIdleTimer, { passive: true });
+  });
+  resetIdleTimer();
+})();
+</script>
+
+<div class="main">
+
+<div class="page-header">
+  <h1>SFC vs Agility</h1>
+  <p>Toolroom — how often a tool reason gets logged in SFC vs how often it turns into an Agility work order</p>
+</div>
+
+<div class="container">
+  <div class="dept-bar">
+    <span class="name">TOOLROOM</span><span class="num">DEPT / 02</span>
+  </div>
+  <div class="panel">
+    <div class="empty-state">
+      <h2>Not built yet — waiting on one thing from Scott</h2>
+      <p>This page will compare SFC's tool-reason events against Agility work orders raised by a Toolmaker, per press — the same idea as Maintenance's Trend Dashboard, just for Toolroom.</p>
+      <div class="checklist">
+        <li class="done">✓ Page location and name — "SFC vs Agility" under Toolroom</li>
+        <li class="done">✓ Agility matching — any WO with a Toolmaker on the task list</li>
+        <li class="pending">— Which SFC reason codes count as Toolroom's (waiting on Scott)</li>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+</body>
+</html>

@@ -677,6 +677,11 @@ def toolroom_notes_view():
     return send_from_directory('public', 'toolroom-notes.html')
 
 
+@bp.route('/toolroom-sfc-vs-agility')
+def toolroom_sfc_vs_agility_view():
+    return send_from_directory('public', 'toolroom-sfc-vs-agility.html')
+
+
 @bp.route('/maintenance')
 def maintenance_view():
     return send_from_directory('public', 'maintenance.html')
