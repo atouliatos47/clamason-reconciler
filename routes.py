@@ -692,6 +692,11 @@ def maintenance_notes_view():
     return send_from_directory('public', 'maintenance-notes.html')
 
 
+@bp.route('/maintenance-sfc-vs-agility')
+def maintenance_sfc_vs_agility_view():
+    return send_from_directory('public', 'maintenance-sfc-vs-agility.html')
+
+
 # Allowlist rather than accepting any string — keeps department_notes
 # clean (no typo'd department names quietly creating their own row)
 # and stops the API being used to write notes against something that
