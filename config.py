@@ -112,6 +112,26 @@ MAINTENANCE_JOB_TYPES = [
     'corrective maintenance',
 ]
 
+# Confirmed directly with Scott (Toolroom Manager), 3 Sept 2026 — the
+# actual job types he picks when raising a WO against a tool. Not the
+# same list as MAINTENANCE_JOB_TYPES above and not a guess at overlap:
+# none of the OUT-* tool-repair-sounding job types (OUT-R008 Incorrect
+# Tool Repair, OUT-TW003 Tool Wear) are actually in Scott's list, and
+# several of his (the IN-* codes, 1st Off Reject, Size Changes) aren't
+# maintenance job types at all. Using MAINTENANCE_JOB_TYPES here — as
+# the first version of the Toolroom gap did — silently matched zero
+# real WOs, because Toolroom genuinely doesn't use that list.
+TOOLROOM_JOB_TYPES = [
+    '1st off reject',
+    'breakdown repair',
+    'in-is007 incorrect setting',
+    'in-mf006 miss feeds',
+    'in-ri004 repair in',
+    'in-ta009 tooling adjustments',
+    'modification',
+    'size changes',
+]
+
 # Only these crafts count as "Maintenance" for the gap report.
 # Everything else (Toolmaker/Toolroom, Production, Quality, etc.) is a
 # different area and must not appear in a Maintenance downtime report.

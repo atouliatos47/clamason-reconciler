@@ -12,7 +12,7 @@ NOT happen here — that's reconciliation.py's job, same as in
 downtime_parser.py. This file only answers "is this a real Maintenance
 WO", not "does it matter for the press-fault gap report".
 """
-from config import MAINTENANCE_CRAFTS, MAINTENANCE_JOB_TYPES, TOOLROOM_CRAFTS, PLANNED_JOB_TYPES_DAILY
+from config import MAINTENANCE_CRAFTS, MAINTENANCE_JOB_TYPES, TOOLROOM_CRAFTS, TOOLROOM_JOB_TYPES, PLANNED_JOB_TYPES_DAILY
 
 
 def _clean(val):
@@ -132,18 +132,23 @@ def parse_wo_file(filepath):
 
 
 def parse_wo_file_for_toolroom_gap(filepath):
-    """Toolmaker-craft WOs, restricted to MAINTENANCE_JOB_TYPES — the
+    """Toolmaker-craft WOs, restricted to TOOLROOM_JOB_TYPES — the
     Toolroom equivalent of parse_wo_file(). Kept separate from
     parse_toolroom_wo_file() on purpose: that one deliberately returns
     every job type for the Toolroom backlog card, and narrowing it
     would move a number already on the board. This one feeds the new
     Toolroom SFC-vs-Agility gap instead, which — like the Maintenance
     gap — should only count WOs that are actually repair work, not
-    every WO a Toolmaker's name appears on."""
+    every WO a Toolmaker's name appears on.
+
+    Filters on TOOLROOM_JOB_TYPES, NOT MAINTENANCE_JOB_TYPES — the
+    first version of this function used the Maintenance list, which
+    matched zero real Toolroom WOs, because Toolroom raises work under
+    a genuinely different set of job types (confirmed with Scott)."""
     records, asset_lookup = _parse_all_maintenance_wos(filepath, craft_filter=TOOLROOM_CRAFTS)
     filtered = [
         r for r in records
-        if not r['jobType'] or r['jobType'].lower() in MAINTENANCE_JOB_TYPES
+        if not r['jobType'] or r['jobType'].lower() in TOOLROOM_JOB_TYPES
     ]
     return filtered, asset_lookup
 
