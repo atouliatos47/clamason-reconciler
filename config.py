@@ -84,6 +84,21 @@ TOOLROOM_CODES = {
     'TR-TOOL FAILURE',
 }
 
+# Narrower set, confirmed directly with Scott (Toolroom Manager,
+# 3 Sept 2026): these three are what he actually raises a work order
+# against. WASTE IN THE TOOL is deliberately excluded here even though
+# it's in the broader TOOLROOM_CODES above — same reasoning as
+# BLAME_FAULT_CODES vs FAULT_CODES: this narrower set feeds the
+# Toolroom SFC-vs-Agility gap specifically, and widening it would
+# count something Scott doesn't consider a WO-worthy tool fault.
+TOOLROOM_BLAME_CODES = {
+    'TOOL UNAVAILABLE',
+    'TOOL FAILURE - PRODUCTION',
+    'TOOL FAILURE - SET UP',
+    'TR-TOOL UNAVAILABLE',
+    'TR-TOOL FAILURE',
+}
+
 PLANNED_CODES = {'PLANNED OFFLINE', 'NO PRODUCTION PLANNED'}
 
 # --- Agility work order rules ----------------------------------------------

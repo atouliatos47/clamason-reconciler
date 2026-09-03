@@ -6,6 +6,7 @@
 <title>Clamason — Toolroom SFC vs Agility</title>
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
@@ -27,25 +28,30 @@
   .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
 
   .main { flex: 1; padding: 28px 32px; min-width: 0; }
-  .page-header { margin-bottom: 22px; }
+  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; }
   .page-header h1 { font-size: 20px; color: #243547; }
   .page-header p { font-size: 12px; color: #666; margin-top: 4px; }
+  select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 12.5px; }
 
-  .container { max-width: 900px; }
+  .container { max-width: 1100px; }
   .dept-bar { color: #fff; padding: 10px 14px; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center; background: #bf7d2c; }
   .dept-bar span.name { font-size: 13px; font-weight: bold; letter-spacing: 0.7px; }
   .dept-bar span.num { font-size: 9.5px; opacity: 0.75; font-family: monospace; }
-  .panel { background: #f7f8fa; border-radius: 0 0 8px 8px; padding: 40px 28px; }
+  .panel { background: #f7f8fa; border-radius: 0 0 8px 8px; padding: 22px; }
 
-  .empty-state { text-align: center; padding: 30px 20px; }
-  .empty-state .icon { font-size: 32px; margin-bottom: 12px; }
-  .empty-state h2 { font-size: 15px; color: #243547; margin-bottom: 8px; }
-  .empty-state p { font-size: 13px; color: #777; max-width: 480px; margin: 0 auto; line-height: 1.6; }
-  .empty-state .checklist { text-align: left; max-width: 420px; margin: 20px auto 0; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 14px 18px; }
-  .empty-state .checklist li { font-size: 12.5px; color: #555; margin-bottom: 6px; list-style: none; }
-  .empty-state .checklist li:last-child { margin-bottom: 0; }
-  .empty-state .checklist .done { color: #16a34a; }
-  .empty-state .checklist .pending { color: #bf7d2c; font-weight: bold; }
+  .machine-card { background: white; border-radius: 10px; padding: 20px 22px; }
+  .machine-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .canvas-wrap { position: relative; height: 460px; }
+
+  .chart-card { background: white; border-radius: 10px; padding: 20px 22px; margin-top: 18px; }
+  .chart-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .chart-card p { font-size: 11.5px; color: #888; margin-bottom: 14px; }
+  .canvas-wrap.short { height: 240px; }
+
+  .state-msg { font-size: 13px; color: #888; padding: 20px; text-align: center; }
+  .state-msg.error { color: #c0392b; }
+
+  .scope-note { font-size: 11px; color: #999; padding: 10px 22px 0; font-style: italic; }
 </style>
 </head>
 <body>
@@ -134,8 +140,13 @@ function toggleNavGroup(name) {
 <div class="main">
 
 <div class="page-header">
-  <h1>SFC vs Agility</h1>
-  <p>Toolroom — how often a tool reason gets logged in SFC vs how often it turns into an Agility work order</p>
+  <div>
+    <h1>SFC vs Agility</h1>
+    <p>Toolroom — how many SFC tool-reason events per press actually got an Agility breakdown work order</p>
+  </div>
+  <div>
+    <select id="period-select" onchange="selectPeriod(this.value)"></select>
+  </div>
 </div>
 
 <div class="container">
@@ -143,19 +154,171 @@ function toggleNavGroup(name) {
     <span class="name">TOOLROOM</span><span class="num">DEPT / 02</span>
   </div>
   <div class="panel">
-    <div class="empty-state">
-      <h2>Not built yet — waiting on one thing from Scott</h2>
-      <p>This page will compare SFC's tool-reason events against Agility work orders raised by a Toolmaker, per press — the same idea as Maintenance's Trend Dashboard, just for Toolroom.</p>
-      <div class="checklist">
-        <li class="done">✓ Page location and name — "SFC vs Agility" under Toolroom</li>
-        <li class="done">✓ Agility matching — any WO with a Toolmaker on the task list</li>
-        <li class="pending">— Which SFC reason codes count as Toolroom's (waiting on Scott)</li>
-      </div>
+    <div id="state-msg" class="state-msg"></div>
+    <div class="machine-card" id="machine-card" style="display:none;">
+      <h3 id="machine-card-title">Tool Events vs Breakdown WOs by Machine</h3>
+      <div class="canvas-wrap"><canvas id="machineChart"></canvas></div>
     </div>
+    <div class="chart-card" id="gap-card" style="display:none;">
+      <h3>Tool Coverage Gap % — Trend</h3>
+      <p>Share of SFC tool hours with no matching Agility breakdown WO from a Toolmaker — lower is better. Every saved month shown, not just the one selected above.</p>
+      <div class="canvas-wrap short"><canvas id="gapChart"></canvas></div>
+    </div>
+    <p class="scope-note">Scope confirmed with Scott (Toolroom Manager), 3 Sept 2026: Tool Unavailable, Tool Failure - Production, Tool Failure - Set Up (old and new SFC naming). Agility side: any work order with a Toolmaker on the task list.</p>
   </div>
 </div>
 
 </div>
+
+<script>
+const NAVY = '#243547', ORANGE = '#bf7d2c';
+let RUNS = [];
+let machineChartInstance = null;
+let gapChartInstance = null;
+
+const barValueLabels = {
+  id: 'barValueLabels',
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    chart.data.datasets.forEach((dataset, di) => {
+      const meta = chart.getDatasetMeta(di);
+      meta.data.forEach((bar, i) => {
+        const value = dataset.data[i];
+        if (value === null || value === undefined) return;
+        ctx.save();
+        ctx.fillStyle = '#243547';
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(value), bar.x + 6, bar.y);
+        ctx.restore();
+      });
+    });
+  },
+};
+
+async function load() {
+  const stateEl = document.getElementById('state-msg');
+  let data;
+  try {
+    const res = await fetch('/api/trend');
+    data = await res.json();
+    if (data.error) throw new Error(data.error);
+  } catch (e) {
+    stateEl.className = 'state-msg error';
+    stateEl.textContent = 'Could not load trend data: ' + e.message;
+    return;
+  }
+
+  RUNS = data.runs || [];
+  if (RUNS.length === 0) {
+    stateEl.textContent = 'No saved runs yet. Go run a maintenance check and click "Save to Trend Dashboard" to see this chart.';
+    return;
+  }
+
+  const sel = document.getElementById('period-select');
+  sel.innerHTML = RUNS.slice().reverse()
+    .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
+  const savedLabel = localStorage.getItem('clamason-selected-period');
+  const savedIdx = savedLabel ? RUNS.findIndex(r => (r.period_label || r.period) === savedLabel) : -1;
+  const startIdx = savedIdx !== -1 ? savedIdx : RUNS.length - 1;
+  sel.value = startIdx;
+  selectPeriod(startIdx);
+  renderGapTrend();
+}
+
+function selectPeriod(i) {
+  const idx = Number(i);
+  const run = RUNS[idx];
+  localStorage.setItem('clamason-selected-period', run.period_label || run.period);
+  renderChart(run);
+}
+
+function renderChart(run) {
+  const stateEl = document.getElementById('state-msg');
+  const card = document.getElementById('machine-card');
+  // Months saved before this feature was built have no
+  // toolroom_machine_breakdown at all — undefined, not an empty array
+  // — so that's treated as "not computed for this month" rather than
+  // "genuinely nothing happened", which get a different message.
+  const mb = run.toolroom_machine_breakdown;
+
+  if (mb === undefined || mb === null) {
+    card.style.display = 'none';
+    stateEl.textContent = `${run.period_label || run.period} was saved before this comparison existed — re-run and save this month to see it here.`;
+    return;
+  }
+  if (!mb.length) {
+    card.style.display = 'none';
+    stateEl.textContent = `No tool-reason events or Toolmaker WOs recorded for ${run.period_label || run.period}.`;
+    return;
+  }
+
+  stateEl.textContent = '';
+  card.style.display = 'block';
+  document.getElementById('machine-card-title').textContent =
+    `${run.period_label || run.period} — Tool Events vs Breakdown WOs by Machine`;
+
+  const sorted = mb.slice().sort((a, b) => b.tool_hrs - a.tool_hrs);
+
+  if (machineChartInstance) { machineChartInstance.destroy(); }
+  machineChartInstance = new Chart(document.getElementById('machineChart'), {
+    type: 'bar',
+    data: {
+      labels: sorted.map(m => m.machine),
+      datasets: [
+        { label: 'SFC tool events', data: sorted.map(m => m.tool_events), backgroundColor: NAVY, borderRadius: 3 },
+        { label: 'Agility breakdown WOs', data: sorted.map(m => m.wo_count), backgroundColor: ORANGE, borderRadius: 3 },
+      ],
+    },
+    plugins: [barValueLabels],
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 24 } },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: { x: { beginAtZero: true } },
+    },
+  });
+}
+
+// Independent of the month selector above — every saved month shown at
+// once, same reasoning as Maintenance's equivalent trend: this answers
+// "is coverage improving over time", not "what was one month like".
+// Months saved before this feature existed have toolroom_gap_pct as
+// undefined/null already (Chart.js just leaves a gap in the line),
+// so nothing extra needed here for that case.
+function renderGapTrend() {
+  const card = document.getElementById('gap-card');
+  const withGap = RUNS.filter(r => r.toolroom_gap_pct !== undefined && r.toolroom_gap_pct !== null);
+  if (withGap.length < 2) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  const labels = RUNS.map(r => r.period_label || r.period);
+
+  if (gapChartInstance) { gapChartInstance.destroy(); }
+  gapChartInstance = new Chart(document.getElementById('gapChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Tool gap %', data: RUNS.map(r => r.toolroom_gap_pct),
+        borderColor: ORANGE, backgroundColor: ORANGE + '15', fill: true, tension: 0.25,
+        pointBackgroundColor: ORANGE, pointRadius: 5, spanGaps: true,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+    },
+  });
+}
+
+load();
+</script>
 
 </body>
 </html>

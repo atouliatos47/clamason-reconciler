@@ -118,6 +118,22 @@ CREATE TABLE IF NOT EXISTS monthly_runs (
     toolroom_wo_completed   INTEGER,
     toolroom_wo_cancelled   INTEGER,
     toolroom_wo_open        INTEGER,
+
+    -- Toolroom's own SFC-vs-Agility gap — the same idea as
+    -- agility_maintenance_hrs/gap_pct/wo_count/machine_breakdown above,
+    -- scoped to Scott's confirmed 3 tool-reason codes
+    -- (config.TOOLROOM_BLAME_CODES) and Toolmaker-craft WOs instead of
+    -- Maintenance/Electrician. Named toolroom_gap_wo_count rather than
+    -- reusing toolroom_wo_count above — that column already means
+    -- something different (total WOs raised, any job type, for the
+    -- board's backlog card); this one is WOs matched to a real tool
+    -- fault, restricted to breakdown-type job types, for the gap chart.
+    toolroom_sfc_hrs         NUMERIC,
+    agility_toolroom_hrs     NUMERIC,
+    toolroom_gap_hrs         NUMERIC,
+    toolroom_gap_pct         NUMERIC,
+    toolroom_gap_wo_count    INTEGER,
+    toolroom_machine_breakdown JSONB,
     -- TPM/PPM Schedule Completion — the board's own established KPI
     -- (see parsers/wo_parser.py summarise_ppm_completion), never
     -- previously surfaced by this reconciler. total/completed count
@@ -195,6 +211,12 @@ ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_count       INTEGE
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_completed   INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_cancelled   INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_wo_open        INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_sfc_hrs         NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS agility_toolroom_hrs     NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_gap_hrs         NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_gap_pct         NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_gap_wo_count    INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_machine_breakdown JSONB;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_total                INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_completed            INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_completion_pct       NUMERIC;

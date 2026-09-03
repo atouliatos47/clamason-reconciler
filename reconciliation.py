@@ -205,6 +205,92 @@ def compute_machine_breakdown(sfc_summary, matched_wos):
     return rows
 
 
+def compute_toolroom_gap(sfc_summary, matched_toolroom_wos):
+    """Toolroom's equivalent of compute_gap() — same shape, same
+    reasoning about None vs 0, just scoped to Scott's confirmed 3
+    tool-reason codes (config.TOOLROOM_BLAME_CODES) instead of the two
+    Maintenance fault codes, and to Toolmaker-craft WOs instead of
+    Maintenance/Electrician.
+
+    sfc_hrs here is NOT sfc_summary['tool_hrs'] — that site-wide total
+    includes WASTE IN THE TOOL, which Scott's 3-code list deliberately
+    excludes. Summed instead from each machine's own reasons dict, the
+    same source machine_breakdown already draws on, so this number and
+    the per-machine chart below always agree with each other."""
+    from config import TOOLROOM_BLAME_CODES
+
+    by_machine_sfc = sfc_summary.get('by_machine', {})
+    sfc_hrs = None
+    if by_machine_sfc:
+        sfc_hrs = 0
+        for m in by_machine_sfc.values():
+            for reason, hrs in (m.get('reasons') or {}).items():
+                if reason.strip().upper() in TOOLROOM_BLAME_CODES:
+                    sfc_hrs += hrs
+        sfc_hrs = round(sfc_hrs, 2)
+
+    agility_hrs = round(sum(d['downtime_hrs'] for d in matched_toolroom_wos), 2)
+    if sfc_hrs is None:
+        return {
+            'agility_toolroom_hrs': agility_hrs,
+            'toolroom_gap_hrs': None,
+            'toolroom_gap_pct': None,
+            'toolroom_wo_count': len(matched_toolroom_wos),
+        }
+    gap_hrs = round(sfc_hrs - agility_hrs, 2)
+    gap_pct = round((gap_hrs / sfc_hrs * 100) if sfc_hrs > 0 else 0, 1)
+    return {
+        'toolroom_sfc_hrs': sfc_hrs,
+        'agility_toolroom_hrs': agility_hrs,
+        'toolroom_gap_hrs': gap_hrs,
+        'toolroom_gap_pct': gap_pct,
+        'toolroom_wo_count': len(matched_toolroom_wos),
+    }
+
+
+def compute_toolroom_machine_breakdown(sfc_summary, matched_toolroom_wos):
+    """Per-machine table for the Toolroom SFC-vs-Agility chart — same
+    shape as compute_machine_breakdown(), scoped to Scott's 3 codes and
+    Toolmaker-craft WOs. A separate function rather than a parameter on
+    compute_machine_breakdown(): that one is already relied on for the
+    Maintenance Pareto and the board slide, and a shared function with
+    a department switch is exactly the "same rule written out twice"
+    failure mode this module's docstring warns about — easier to keep
+    two small, obviously-parallel functions than one with a branch."""
+    from config import SFC_TO_AGILITY, TOOLROOM_BLAME_CODES
+
+    by_machine_sfc = sfc_summary.get('by_machine', {})
+
+    wo_by_asset_count = {}
+    wo_by_asset_hrs = {}
+    for d in matched_toolroom_wos:
+        a = d['asset']
+        wo_by_asset_count[a] = wo_by_asset_count.get(a, 0) + 1
+        wo_by_asset_hrs[a] = round(wo_by_asset_hrs.get(a, 0) + d['downtime_hrs'], 2)
+
+    rows = []
+    for machine, asset_codes in SFC_TO_AGILITY.items():
+        sfc = by_machine_sfc.get(machine, {})
+        reasons = sfc.get('reasons') or {}
+        reason_events = sfc.get('reason_events') or {}
+        tool_hrs = round(sum(h for r, h in reasons.items() if r.strip().upper() in TOOLROOM_BLAME_CODES), 2)
+        tool_events = sum(e for r, e in reason_events.items() if r.strip().upper() in TOOLROOM_BLAME_CODES)
+        wo_count = sum(wo_by_asset_count.get(a, 0) for a in asset_codes)
+        wo_hrs = round(sum(wo_by_asset_hrs.get(a, 0) for a in asset_codes), 2)
+        if tool_hrs == 0 and tool_events == 0 and wo_count == 0:
+            continue  # genuinely nothing happened on this machine this period
+        rows.append({
+            'machine': machine,
+            'tool_hrs': tool_hrs,
+            'tool_events': tool_events,
+            'wo_count': wo_count,
+            'wo_hrs': wo_hrs,
+        })
+
+    rows.sort(key=lambda r: -r['tool_hrs'])
+    return rows
+
+
 def reconcile(sfc_summary, downtime_data, wo_data, asset_lookup, wo_file_provided=True):
     """Top-level entry point — everything a route or the dashboard
     needs from one call. This is the only function routes.py should

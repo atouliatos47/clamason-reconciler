@@ -165,6 +165,16 @@ def save_run(result, period_label):
         'toolroom_wo_open': tw.get('open'),
     })
 
+    tg = result.get('toolroom_gap') or {}
+    row.update({
+        'toolroom_sfc_hrs': tg.get('toolroom_sfc_hrs'),
+        'agility_toolroom_hrs': tg.get('agility_toolroom_hrs'),
+        'toolroom_gap_hrs': tg.get('toolroom_gap_hrs'),
+        'toolroom_gap_pct': tg.get('toolroom_gap_pct'),
+        'toolroom_gap_wo_count': tg.get('toolroom_wo_count'),
+        'toolroom_machine_breakdown': json.dumps(result.get('toolroom_machine_breakdown', [])),
+    })
+
     ppm = result.get('ppm_completion') or {}
     row.update({
         'ppm_total': ppm.get('total'),
@@ -191,7 +201,9 @@ def save_run(result, period_label):
                      toolroom_wo_open, ppm_total, ppm_completed, ppm_completion_pct,
                      oee_quality_source, efacs_scrap_qty, efacs_scrap_cost,
                      oee_intended_hours, oee_utilization_vs_intended_pct,
-                     oee_teep_vs_intended_pct, oee_intended_configured_count)
+                     oee_teep_vs_intended_pct, oee_intended_configured_count,
+                     toolroom_sfc_hrs, agility_toolroom_hrs, toolroom_gap_hrs,
+                     toolroom_gap_pct, toolroom_gap_wo_count, toolroom_machine_breakdown)
                 VALUES
                     (%(period)s, %(period_label)s, %(machine_count)s, %(total_hrs)s, %(total_events)s,
                      %(maintenance_hrs)s, %(toolroom_hrs)s, %(agility_maintenance_hrs)s,
@@ -208,7 +220,9 @@ def save_run(result, period_label):
                      %(toolroom_wo_open)s, %(ppm_total)s, %(ppm_completed)s, %(ppm_completion_pct)s,
                      %(oee_quality_source)s, %(efacs_scrap_qty)s, %(efacs_scrap_cost)s,
                      %(oee_intended_hours)s, %(oee_utilization_vs_intended_pct)s,
-                     %(oee_teep_vs_intended_pct)s, %(oee_intended_configured_count)s)
+                     %(oee_teep_vs_intended_pct)s, %(oee_intended_configured_count)s,
+                     %(toolroom_sfc_hrs)s, %(agility_toolroom_hrs)s, %(toolroom_gap_hrs)s,
+                     %(toolroom_gap_pct)s, %(toolroom_gap_wo_count)s, %(toolroom_machine_breakdown)s)
                 ON CONFLICT (period) DO UPDATE SET
                     period_label = EXCLUDED.period_label,
                     machine_count = EXCLUDED.machine_count,
@@ -265,7 +279,13 @@ def save_run(result, period_label):
                     ppm_completion_pct = EXCLUDED.ppm_completion_pct,
                     oee_quality_source = EXCLUDED.oee_quality_source,
                     efacs_scrap_qty = EXCLUDED.efacs_scrap_qty,
-                    efacs_scrap_cost = EXCLUDED.efacs_scrap_cost
+                    efacs_scrap_cost = EXCLUDED.efacs_scrap_cost,
+                    toolroom_sfc_hrs = EXCLUDED.toolroom_sfc_hrs,
+                    agility_toolroom_hrs = EXCLUDED.agility_toolroom_hrs,
+                    toolroom_gap_hrs = EXCLUDED.toolroom_gap_hrs,
+                    toolroom_gap_pct = EXCLUDED.toolroom_gap_pct,
+                    toolroom_gap_wo_count = EXCLUDED.toolroom_gap_wo_count,
+                    toolroom_machine_breakdown = EXCLUDED.toolroom_machine_breakdown
             """, row)
         conn.commit()
 
@@ -301,6 +321,7 @@ def get_all_runs():
         'efacs_scrap_qty', 'efacs_scrap_cost',
         'oee_intended_hours', 'oee_utilization_vs_intended_pct',
         'oee_teep_vs_intended_pct', 'ppm_completion_pct',
+        'toolroom_sfc_hrs', 'agility_toolroom_hrs', 'toolroom_gap_hrs', 'toolroom_gap_pct',
     ]
     result = []
     for r in rows:

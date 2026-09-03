@@ -19,12 +19,13 @@ PLANT_ASSET_CODE = re.compile(r'^\d{1,6}$')
 from parsers.mtbf_parser import parse_mtbf_file, summarise_mtbf
 from parsers.wo_parser import (
     parse_wo_file, parse_wo_file_all_types, parse_toolroom_wo_file,
+    parse_wo_file_for_toolroom_gap,
 )
 from parsers.due_date_performance_parser import (
     parse_due_date_performance, summarise_due_date_performance,
 )
 from parsers.efacs_scrap_parser import parse_efacs_scrap_file
-from reconciliation import reconcile
+from reconciliation import reconcile, enrich_and_filter, compute_toolroom_gap, compute_toolroom_machine_breakdown
 from report_pdf import build_gap_pdf
 from daily import compute_daily_summary
 from daily_trend import (
@@ -209,6 +210,7 @@ def _parse_uploads():
     wo_data = []
     wo_provided = bool(wo_file)
     toolroom_wos = None
+    toolroom_gap_wo_data = []
     if wo_file:
         with saved_upload(wo_file, 'agility_wo') as path:
             wo_data, asset_lookup = parse_wo_file(path)
@@ -224,6 +226,13 @@ def _parse_uploads():
             # ('Tools awaiting repair / maintenance', target <25) instead
             # of a number with no board-approved target to read against.
             toolroom_records = parse_toolroom_wo_file(path)
+            # Third pass, same file: Toolmaker craft AND job-type
+            # restricted, for the new Toolroom SFC-vs-Agility gap. Not
+            # the same list as toolroom_records above (that one is
+            # every job type, for the backlog card) or wo_data above
+            # (that one is Maintenance/Electrician craft) — see
+            # parse_wo_file_for_toolroom_gap's own docstring.
+            toolroom_gap_wo_data, _ = parse_wo_file_for_toolroom_gap(path)
         toolroom_wos = {
             'total': len(toolroom_records),
             'completed': sum(1 for r in toolroom_records
@@ -256,12 +265,24 @@ def _parse_uploads():
     if efacs_scrap:
         apply_efacs_scrap_correction(oee_result, efacs_scrap['total_quantity'])
 
+    # Toolroom's own SFC-vs-Agility gap, same shape as the Maintenance
+    # one reconcile() produces below but scoped to Scott's confirmed
+    # 3 tool-reason codes and Toolmaker-craft WOs. Computed here rather
+    # than inside reconcile() itself — see that module's docstring on
+    # why a shared function with a department switch is the wrong
+    # shape for this.
+    matched_toolroom_wos, _ = enrich_and_filter(downtime_data, toolroom_gap_wo_data, asset_lookup)
+    toolroom_gap = compute_toolroom_gap(sfc_summary, matched_toolroom_wos)
+    toolroom_machine_breakdown = compute_toolroom_machine_breakdown(sfc_summary, matched_toolroom_wos)
+
     extras = {
         'oee': oee_result,
         'efacs_scrap': efacs_scrap,
         'mtbf': _parse_mtbf_upload(),
         'toolroom_wos': toolroom_wos,
         'ppm_completion': _parse_ppm_completion_upload(),
+        'toolroom_gap': toolroom_gap,
+        'toolroom_machine_breakdown': toolroom_machine_breakdown,
     }
 
     return sfc_summary, downtime_data, wo_data, asset_lookup, wo_provided, extras
