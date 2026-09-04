@@ -306,7 +306,7 @@ function toggleNavGroup(name) {
         <span class="collapse-arrow" id="reason-pareto-arrow">▼</span>
       </div>
       <div class="card-body" id="reason-pareto-body">
-        <p class="hint">Top 10 reasons for the selected period, all categories included — same idea as the Monthly Performance Review's press Pareto, but by reason, since this report has no per-press breakdown.</p>
+        <p class="hint">Top 10 reasons for the selected period — same idea as the Monthly Performance Review's press Pareto, but by reason, since this report has no per-press breakdown. Planned Offline, No Production Planned, and Lunch/Break/Meeting are excluded — they dominate every period and would flatten everything else into invisibility.</p>
         <canvas id="reason-pareto-chart"></canvas>
       </div>
     </div>
@@ -550,7 +550,19 @@ function renderReasonPareto(b) {
   if (reasonParetoChart) { reasonParetoChart.destroy(); reasonParetoChart = null; }
   if (!b || !b.top_reasons.length) return;
 
-  const sorted = b.top_reasons.slice().sort((a, c) => c.hrs - a.hrs).slice(0, 10);
+  // Excluded per Andreas, 4 Sept 2026: these three dominate every
+  // period so heavily (Planned Offline + No Production Planned alone
+  // were ~84% of the whole Pareto on 3 Sept) that they flatten
+  // everything else into invisibility — same reasoning the main trend
+  // chart above already uses to exclude the two Planned codes. Filtered
+  // out before the top-10 slice and the cumulative-% total, not just
+  // hidden after, so a reason that would've been #11 gets its place in
+  // the chart and the % axis reflects only what's actually shown.
+  const PARETO_EXCLUDED = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED', 'LUNCH / BREAK / MEETING'];
+  const eligible = b.top_reasons.filter(r => !PARETO_EXCLUDED.includes(r.reason.toUpperCase().trim()));
+  if (!eligible.length) return;
+
+  const sorted = eligible.slice().sort((a, c) => c.hrs - a.hrs).slice(0, 10);
   const totalHrs = sorted.reduce((s, r) => s + r.hrs, 0) || 1;
   let running = 0;
   const cumPct = sorted.map(r => { running += r.hrs; return running / totalHrs * 100; });
