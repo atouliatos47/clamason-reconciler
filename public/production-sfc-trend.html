@@ -317,7 +317,7 @@ function toggleNavGroup(name) {
         <span class="collapse-arrow" id="prod-reasons-arrow">▼</span>
       </div>
       <div class="card-body" id="prod-reasons-body">
-        <p class="hint">Everything not owned by Maintenance or Toolroom, for the selected period.</p>
+        <p class="hint">Everything not owned by Maintenance or Toolroom, for the selected period. Planned Offline, No Production Planned, and Lunch/Break/Meeting are excluded — same reasoning as the Pareto above.</p>
         <div class="reason-bars" id="prod-reasons-bars"></div>
       </div>
     </div>
@@ -521,7 +521,20 @@ function renderPareto(b) {
     tbody.innerHTML = '<tr><td colspan="5" style="color:#999;">No reasons recorded for this period.</td></tr>';
     return;
   }
-  b.top_reasons.forEach(r => {
+  // Same exclusion as the Pareto and Production Reason Codes sections
+  // above, confirmed by Andreas across all three (4 Sept 2026). % of
+  // Total is left as the backend computed it — against the TRUE site
+  // total including the excluded codes — since this table's own title
+  // is "Downtime Reasons" generally, not a Pareto or a Production-only
+  // view; only which rows are shown changes here, not what the
+  // percentages mean.
+  const TABLE_EXCLUDED = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED', 'LUNCH / BREAK / MEETING'];
+  const visibleReasons = b.top_reasons.filter(r => !TABLE_EXCLUDED.includes(r.reason.toUpperCase().trim()));
+  if (!visibleReasons.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#999;">No reasons recorded for this period.</td></tr>';
+    return;
+  }
+  visibleReasons.forEach(r => {
     const cat = categorise(r.reason);
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -610,8 +623,14 @@ function renderProductionReasons(b) {
   container.innerHTML = '';
   if (!b || !b.top_reasons.length) return;
 
+  // Same exclusion as renderReasonPareto above, confirmed by Andreas to
+  // apply here too (4 Sept 2026): Planned Offline, No Production
+  // Planned, and Lunch/Break/Meeting dominate every period so heavily
+  // they'd make every other bar in this list unreadably thin.
+  const PROD_REASONS_EXCLUDED = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED', 'LUNCH / BREAK / MEETING'];
   const prodReasons = b.top_reasons
     .filter(r => categorise(r.reason) !== 'maintenance' && categorise(r.reason) !== 'toolroom')
+    .filter(r => !PROD_REASONS_EXCLUDED.includes(r.reason.toUpperCase().trim()))
     .sort((a, c) => c.hrs - a.hrs);
   if (!prodReasons.length) return;
 
