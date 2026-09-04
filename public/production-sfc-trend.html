@@ -324,7 +324,7 @@ const pct = (v) => (v === null || v === undefined) ? '–' : Number(v).toFixed(1
 
 async function load() {
   try {
-    const res = await fetch('/api/sfc-daily-trend');
+    const res = await fetch('/api/production-sfc-daily-trend');
     const json = await res.json();
     if (json.error) return showError(json.error);
 

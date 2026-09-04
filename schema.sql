@@ -305,6 +305,38 @@ CREATE TABLE IF NOT EXISTS sfc_daily_snapshots (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sfc_daily_snapshots_date ON sfc_daily_snapshots (date);
 
+-- Deliberately a full, separate copy of sfc_daily_snapshots above, not a
+-- shared table with a department column. Confirmed directly with
+-- Andreas (4 Sept 2026): Matt (Production) and Maintenance's own
+-- uploads of the same SFC Daily Downtime Summary PDF must never
+-- overwrite each other, even when they cover the same date — each
+-- keeps its own independent saved history, at the cost of needing the
+-- same PDF uploaded twice if both departments want it recorded for a
+-- given day. The stateless parse-only check (/api/sfc-daily-check,
+-- parsers/sfc_daily_downtime_pdf.py) stays shared between both pages —
+-- only the SAVED rows need to stay apart, since only saving touches
+-- the database at all.
+CREATE TABLE IF NOT EXISTS production_sfc_daily_snapshots (
+    id                      SERIAL PRIMARY KEY,
+    date                    DATE NOT NULL,
+    period                  TEXT,
+    total_events            INTEGER,
+    total_hrs               NUMERIC,
+    maintenance_hrs         NUMERIC,
+    toolroom_hrs            NUMERIC,
+    production_hrs          NUMERIC,
+    machine_count           INTEGER,
+    period_hrs              NUMERIC,
+    max_possible_hrs        NUMERIC,
+    planned_offline_hrs     NUMERIC,
+    scheduled_hrs           NUMERIC,
+    reasons                 JSONB,
+    reason_events           JSONB,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_production_sfc_daily_snapshots_date ON production_sfc_daily_snapshots (date);
+
 -- One day's Daily UK OEE By Machine Tabular export. Deliberately stores
 -- raw summable hours/parts, not oee_pct/availability_pct/etc directly —
 -- OEE percentages can't be averaged across days any more than they can

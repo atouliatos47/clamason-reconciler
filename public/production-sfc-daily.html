@@ -293,7 +293,7 @@ let checkedAt = null;
 // The PDF File object itself is NOT stored: File isn't serialisable, and
 // base64-ing a PDF into a ~5MB localStorage budget is a quota failure waiting
 // to happen. Only the parsed summary is kept. That's enough to redraw every
-// number on the page, but not enough to re-POST to /api/save-sfc-daily, which
+// number on the page, but not enough to re-POST to /api/save-production-sfc-daily, which
 // deliberately re-parses the file rather than trusting the browser. So a
 // restored check displays fully but needs the file re-picked before it can be
 // saved — the banner says so rather than letting you find out at the Save button.
@@ -518,7 +518,7 @@ async function saveSfcDaily() {
     const fd = new FormData();
     fd.append('sfc_daily_pdf', file);
     fd.append('date', dateVal);
-    const res = await fetch('/api/save-sfc-daily', { method: 'POST', body: fd });
+    const res = await fetch('/api/save-production-sfc-daily', { method: 'POST', body: fd });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
     statusEl.textContent = `✓ Saved for ${formatUKDate(d.date)}`;

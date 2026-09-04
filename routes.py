@@ -499,6 +499,56 @@ def save_sfc_daily():
         return jsonify({'error': str(e), 'trace': traceback.format_exc()})
 
 
+@bp.route('/api/save-production-sfc-daily', methods=['POST'])
+def save_production_sfc_daily():
+    """Production's own copy of /api/save-sfc-daily — same PDF, same
+    parser, but writes to production_sfc_daily_snapshots instead of
+    sfc_daily_snapshots. Confirmed with Andreas: Production's saved
+    history must stay fully independent, even for the same date, so
+    this never touches the Maintenance table and vice versa."""
+    try:
+        date = request.form.get('date', '').strip()
+        if not date:
+            return jsonify({'error': 'date is required (YYYY-MM-DD)'})
+
+        pdf_file = request.files.get('sfc_daily_pdf')
+        if not pdf_file:
+            return jsonify({'error': 'SFC Daily Downtime Summary PDF is required'})
+
+        with saved_upload(pdf_file, 'sfc_daily_pdf') as path:
+            summary = parse_daily_downtime_pdf(path)
+
+        db.save_production_sfc_daily_snapshot(summary, date)
+        return jsonify({'saved': True, 'date': date, 'production_hrs': summary['production_hrs']})
+    except ValueError as e:
+        return jsonify({'error': str(e)})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/api/production-sfc-daily-trend')
+def production_sfc_daily_trend():
+    """Production's own copy of /api/sfc-daily-trend — reads
+    production_sfc_daily_snapshots instead of sfc_daily_snapshots.
+    Same optional ?start=&end= window, same rollup functions (those
+    just take a list of snapshot dicts, so no need for Production-
+    specific rollup logic — only the saved rows themselves need to
+    stay apart)."""
+    try:
+        start = request.args.get('start') or None
+        end = request.args.get('end') or None
+        snapshots = db.get_production_sfc_daily_snapshots(start_date=start, end_date=end)
+        return jsonify({
+            'daily': sfc_daily_rollup(snapshots),
+            'weekly': sfc_weekly_rollup(snapshots),
+            'monthly': sfc_monthly_rollup(snapshots),
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
 @bp.route('/daily-oee')
 def daily_oee_view():
     return send_from_directory('public', 'daily-oee.html')
