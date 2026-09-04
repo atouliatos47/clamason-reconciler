@@ -312,7 +312,7 @@ function toggleNavGroup(name) {
         <span class="collapse-arrow" id="reason-pareto-arrow">▼</span>
       </div>
       <div class="card-body" id="reason-pareto-body">
-        <p class="hint">Top 10 reasons for the selected period — same idea as the Monthly Performance Review's press Pareto, but by reason, since this report has no per-press breakdown. Planned Offline, No Production Planned, and Lunch/Break/Meeting are excluded — they dominate every period and would flatten everything else into invisibility.</p>
+        <p class="hint">Top 10 reasons for the selected period — same idea as the Monthly Performance Review's press Pareto, but by reason, since this report has no per-press breakdown. Planned Offline, No Production Planned, Lunch/Break/Meeting, Changeover Offline, Idle, and Parts Preset Reached are excluded — they dominate every period and would flatten everything else into invisibility.</p>
         <canvas id="reason-pareto-chart"></canvas>
       </div>
     </div>
@@ -323,7 +323,7 @@ function toggleNavGroup(name) {
         <span class="collapse-arrow" id="prod-reasons-arrow">▼</span>
       </div>
       <div class="card-body" id="prod-reasons-body">
-        <p class="hint">Everything not owned by Maintenance or Toolroom, for the selected period. Planned Offline, No Production Planned, and Lunch/Break/Meeting are excluded — same reasoning as the Pareto above.</p>
+        <p class="hint">Everything not owned by Maintenance or Toolroom, for the selected period. Planned Offline, No Production Planned, Lunch/Break/Meeting, Changeover Offline, Idle, and Parts Preset Reached are excluded — same reasoning as the Pareto above.</p>
         <div class="reason-bars" id="prod-reasons-bars"></div>
       </div>
     </div>
@@ -600,15 +600,17 @@ function renderReasonPareto(b) {
   if (reasonParetoChart) { reasonParetoChart.destroy(); reasonParetoChart = null; }
   if (!b || !b.top_reasons.length) return;
 
-  // Excluded per Andreas, 4 Sept 2026: these three dominate every
-  // period so heavily (Planned Offline + No Production Planned alone
-  // were ~84% of the whole Pareto on 3 Sept) that they flatten
-  // everything else into invisibility — same reasoning the main trend
-  // chart above already uses to exclude the two Planned codes. Filtered
-  // out before the top-10 slice and the cumulative-% total, not just
-  // hidden after, so a reason that would've been #11 gets its place in
+  // Excluded per Andreas, 4 Sept 2026: first three (Planned Offline,
+  // No Production Planned, Lunch/Break/Meeting) dominate every period
+  // so heavily (~84% of the whole Pareto on 3 Sept alone) that they
+  // flatten everything else into invisibility — same reasoning the
+  // main trend chart above already uses to exclude the two Planned
+  // codes. Changeover Offline, Idle, and Parts Preset Reached added
+  // the same day for the same reason: high hours but not the kind of
+  // loss this Pareto is meant to surface. Filtered out before the
+  // top-10 slice and the cumulative-% total, not just hidden after, so a reason that would've been #11 gets its place in
   // the chart and the % axis reflects only what's actually shown.
-  const PARETO_EXCLUDED = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED', 'LUNCH / BREAK / MEETING'];
+  const PARETO_EXCLUDED = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED', 'LUNCH / BREAK / MEETING', 'CHANGEOVER OFFLINE', 'IDLE', 'PARTS PRESET REACHED'];
   const eligible = b.top_reasons.filter(r => !PARETO_EXCLUDED.includes(r.reason.toUpperCase().trim()));
   if (!eligible.length) return;
 
@@ -662,9 +664,10 @@ function renderProductionReasons(b) {
 
   // Same exclusion as renderReasonPareto above, confirmed by Andreas to
   // apply here too (4 Sept 2026): Planned Offline, No Production
-  // Planned, and Lunch/Break/Meeting dominate every period so heavily
-  // they'd make every other bar in this list unreadably thin.
-  const PROD_REASONS_EXCLUDED = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED', 'LUNCH / BREAK / MEETING'];
+  // Planned, Lunch/Break/Meeting, Changeover Offline, Idle, and Parts
+  // Preset Reached all dominate every period so heavily they'd make
+  // every other bar in this list unreadably thin.
+  const PROD_REASONS_EXCLUDED = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED', 'LUNCH / BREAK / MEETING', 'CHANGEOVER OFFLINE', 'IDLE', 'PARTS PRESET REACHED'];
   const prodReasons = b.top_reasons
     .filter(r => categorise(r.reason) !== 'maintenance' && categorise(r.reason) !== 'toolroom')
     .filter(r => !PROD_REASONS_EXCLUDED.includes(r.reason.toUpperCase().trim()))
