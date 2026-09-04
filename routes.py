@@ -413,6 +413,16 @@ def sfc_daily_trend_view():
     return send_from_directory('public', 'sfc-daily-trend.html')
 
 
+@bp.route('/production-sfc-daily')
+def production_sfc_daily_view():
+    return send_from_directory('public', 'production-sfc-daily.html')
+
+
+@bp.route('/production-sfc-trend')
+def production_sfc_trend_view():
+    return send_from_directory('public', 'production-sfc-trend.html')
+
+
 @bp.route('/api/sfc-daily-trend')
 def sfc_daily_trend():
     """Saved sfc_daily_snapshots plus weekly/monthly rollups, for the SFC

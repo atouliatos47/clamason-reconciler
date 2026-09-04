@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Clamason — Daily OEE Trend</title>
+<title>Clamason — Production SFC Trend</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
@@ -65,12 +65,12 @@
 
   .scope-pill { display: inline-block; background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 6px 14px; border-radius: 14px; margin-bottom: 16px; }
 
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
   .card { background: white; border-radius: 10px; padding: 16px 18px; border-top: 3px solid #95C11F; }
-  .card.run   { border-top-color: #d97706; }
-  .card.avail { border-top-color: #243547; }
-  .card.qual  { border-top-color: #dc2626; }
-  .card.parts { border-top-color: #0891b2; }
+  .card.maint { border-top-color: #dc2626; }
+  .card.tool  { border-top-color: #f59e0b; }
+  .card.other { border-top-color: #94a3b8; }
+  .card.prod { border-top-color: #3d6491; }
   .card h4 { font-size: 10.5px; color: #667; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
   .card .value { font-size: 25px; font-weight: bold; color: #243547; }
   .card .sub { font-size: 10.5px; color: #999; margin-top: 5px; line-height: 1.4; }
@@ -92,16 +92,14 @@
   th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
   td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
   tr:hover td { background: #fafafa; }
-  .plan-col { display: none; }
-  #detail-table.show-plan .plan-col { display: table-cell; }
   tbody tr.selectable { cursor: pointer; }
   tbody tr.selected td { background: #f2f7e4; font-weight: bold; }
-  .num { text-align: right; }
 
-  .pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; display: inline-block; white-space: nowrap; }
-  .pill-green { background: #eef4ea; color: #3f6b1a; }
-  .pill-amber { background: #fef3c7; color: #92400e; }
-  .pill-red { background: #fee2e2; color: #dc2626; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; }
+  .badge.maintenance { background: #fee2e2; color: #b91c1c; }
+  .badge.toolroom    { background: #fef3c7; color: #b45309; }
+  .badge.planned     { background: #e5e7eb; color: #4b5563; }
+  .badge.other       { background: #eef2f7; color: #64748b; }
 
   .hint { font-size: 11px; color: #999; margin-bottom: 12px; }
 
@@ -135,10 +133,10 @@
         <a class="nav-item" href="/production">Monthly Performance Review</a>
         <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
         <a class="nav-item" href="/daily-oee">Daily OEE</a>
-        <a class="nav-item active" href="/daily-oee-trend">Daily OEE Trend</a>
+        <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
         <a class="nav-item" href="/production-plan">Production Plan</a>
         <a class="nav-item" href="/production-sfc-daily">SFC Daily</a>
-        <a class="nav-item" href="/production-sfc-trend">SFC Trend</a>
+        <a class="nav-item active" href="/production-sfc-trend">SFC Trend</a>
       </div>
     </div>
     <div class="nav-group">
@@ -200,15 +198,15 @@ function toggleNavGroup(name) {
 <div class="main">
 
 <div class="page-header">
-  <h1>Daily OEE Trend</h1>
-  <p>Rolled up from saved Daily OEE snapshots</p>
+  <h1>Production SFC Trend</h1>
+  <p>Rolled up from the same saved SFC Daily Downtime snapshots — Production's angle on it</p>
 </div>
 
 <div class="container">
 
   <div class="error-box" id="error-box"></div>
   <div class="empty-note" id="empty-note">
-    No saved OEE snapshots yet — head to <a href="/daily-oee">Daily OEE</a>, run a check, and hit Save to start building history here.
+    No saved SFC snapshots yet — head to <a href="/production-sfc-daily">SFC Daily</a>, run a check, and hit Save to start building history here.
   </div>
 
   <div id="content" style="display:none;">
@@ -217,35 +215,30 @@ function toggleNavGroup(name) {
 
     <div class="cards">
       <div class="card">
-        <h4>Fleet OEE</h4>
-        <div class="value" id="c-oee">–</div>
-        <div class="sub" id="c-oee-sub"></div>
+        <h4>Unplanned Downtime</h4>
+        <div class="value" id="c-unplanned">–</div>
+        <div class="sub" id="c-unplanned-sub"></div>
       </div>
-      <div class="card run">
-        <h4>Run Time</h4>
-        <div class="value" id="c-run">–</div>
-        <div class="sub" id="c-run-sub"></div>
+      <div class="card maint">
+        <h4>Maintenance Hrs</h4>
+        <div class="value" id="c-maint">–</div>
+        <div class="sub" id="c-maint-sub"></div>
       </div>
-      <div class="card avail">
-        <h4>Availability</h4>
-        <div class="value" id="c-avail">–</div>
-        <div class="sub">Run ÷ Net Avail</div>
+      <div class="card tool">
+        <h4>Toolroom Hrs</h4>
+        <div class="value" id="c-tool">–</div>
+        <div class="sub" id="c-tool-sub"></div>
       </div>
-      <div class="card qual">
-        <h4>Quality</h4>
-        <div class="value" id="c-qual">–</div>
-        <div class="sub" id="c-qual-sub"></div>
-      </div>
-      <div class="card parts">
-        <h4>Total Parts</h4>
-        <div class="value" id="c-parts">–</div>
-        <div class="sub" id="c-parts-sub"></div>
+      <div class="card prod">
+        <h4>Production Hrs (Unplanned)</h4>
+        <div class="value" id="c-other">–</div>
+        <div class="sub" id="c-other-sub"></div>
       </div>
     </div>
 
     <div class="table-card">
       <div class="card-header" onclick="toggleCard('trend')">
-        <h3>OEE &amp; Run Time Trend</h3>
+        <h3>Unplanned Downtime Trend</h3>
         <span class="collapse-arrow" id="trend-arrow">▼</span>
       </div>
       <div class="card-body" id="trend-body">
@@ -254,6 +247,10 @@ function toggleNavGroup(name) {
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('weekly', this)">Weekly</button>
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
         </div>
+        <p class="hint">
+          Planned Offline and No Production Planned are excluded — they're the biggest numbers in the report
+          but they aren't lost time, and including them would flatten everything else into invisibility.
+        </p>
         <canvas id="trend-chart"></canvas>
       </div>
     </div>
@@ -264,13 +261,12 @@ function toggleNavGroup(name) {
         <span class="collapse-arrow" id="detail-arrow">▼</span>
       </div>
       <div class="card-body" id="detail-body">
-        <p class="hint">Click any row to see that period's OEE by press below.</p>
-        <table id="detail-table">
+        <p class="hint">Click any row to see that period's downtime reasons below.</p>
+        <table>
           <thead>
             <tr>
-              <th>Period</th><th>Days</th><th class="num">OEE %</th><th class="num">Availability %</th>
-              <th class="num">Quality %</th><th class="num">Run Time</th><th class="num">Machines</th><th class="num">Parts</th>
-              <th class="num plan-col">Plan Quantity</th><th class="num plan-col">Plan Hours</th><th class="num plan-col">Plan Hit %</th>
+              <th>Period</th><th>Days</th><th>Unplanned</th><th>Maintenance</th>
+              <th>Toolroom</th><th>Production</th><th>% of Scheduled</th><th>Events</th>
             </tr>
           </thead>
           <tbody id="trend-tbody"></tbody>
@@ -279,18 +275,16 @@ function toggleNavGroup(name) {
     </div>
 
     <div class="table-card">
-      <div class="card-header" onclick="toggleCard('machines')">
-        <h3 id="machines-title">OEE by Press</h3>
-        <span class="collapse-arrow" id="machines-arrow">▼</span>
+      <div class="card-header" onclick="toggleCard('pareto')">
+        <h3 id="pareto-title">Downtime Reasons</h3>
+        <span class="collapse-arrow" id="pareto-arrow">▼</span>
       </div>
-      <div class="card-body" id="machines-body">
-        <p class="hint" style="margin-bottom:4px;">🔴 below 50%   🟡 50–69%   🟢 70%+ (target)</p>
-        <p class="hint" id="machines-hint"></p>
+      <div class="card-body" id="pareto-body">
         <table>
           <thead>
-            <tr><th>Machine</th><th class="num">OEE %</th><th class="num">Run Time</th><th class="num">Availability %</th><th class="num">Quality %</th><th class="num">Parts</th></tr>
+            <tr><th>Reason</th><th>Category</th><th># of Events</th><th>Hours</th><th>% of Total</th></tr>
           </thead>
-          <tbody id="machines-tbody"></tbody>
+          <tbody id="pareto-tbody"></tbody>
         </table>
       </div>
     </div>
@@ -299,54 +293,38 @@ function toggleNavGroup(name) {
 
 </div>
 
-<footer>Clamason Maintenance — Internal Tool</footer>
+<footer>Clamason Production — Internal Tool</footer>
 
 </div>
 
 <script>
+// Kept in sync with config.py — BLAME_FAULT_CODES, TOOLROOM_CODES, PLANNED_CODES.
+// Display-only: it colours the badge in the Pareto table. Every hours figure
+// on this page is categorised server-side, so a reason missing from this list
+// shows as "Other" but is never miscounted in any total.
+const MAINTENANCE_REASONS = ['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR', 'FAULT-FEEDER/DECOILER/STRAIGHTENER', 'MA-FAULT PRESS', 'MA-FAULT-FEEDER/DECOILER/'];
+const TOOLROOM_REASONS = ['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP', 'TOOL UNAVAILABLE', 'WASTE IN THE TOOL', 'TR-TOOL UNAVAILABLE', 'TR-TOOL FAILURE'];
+const PLANNED_REASONS = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED'];
+
+function categorise(reason) {
+  const r = (reason || '').toUpperCase().trim();
+  if (MAINTENANCE_REASONS.includes(r)) return 'maintenance';
+  if (TOOLROOM_REASONS.includes(r)) return 'toolroom';
+  if (PLANNED_REASONS.includes(r)) return 'planned';
+  return 'other';
+}
+
 let DATA = { daily: [], weekly: [], monthly: [] };
 let granularity = 'daily';
 let selectedIndex = null;
 let chart = null;
 
-// Self-contained rather than a third-party plugin — draws each bar's
-// value directly onto the canvas using Chart.js's own documented
-// plugin hooks, no external script or registration step involved. If
-// the bars themselves are rendering (they are, Chart.js core is
-// clearly working), this has no separate dependency that could fail
-// the same way the CDN plugin just did.
-const barValueLabels = {
-  id: 'barValueLabels',
-  afterDatasetsDraw(chart) {
-    const ctx = chart.ctx;
-    chart.data.datasets.forEach((dataset, di) => {
-      const meta = chart.getDatasetMeta(di);
-      if (meta.hidden) return;
-      meta.data.forEach((bar, i) => {
-        const value = dataset.data[i];
-        if (value === null || value === undefined) return;
-        const label = dataset.yAxisID === 'y'
-          ? Number(value).toFixed(1) + 'h'
-          : Number(value).toFixed(1) + '%';
-        ctx.save();
-        ctx.fillStyle = dataset.labelColor || dataset.backgroundColor;
-        ctx.font = 'bold 11px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(label, bar.x, bar.y - 6);
-        ctx.restore();
-      });
-    });
-  },
-};
-
-const fmt = (v, d=1) => (v === null || v === undefined) ? '–' : Number(v).toFixed(d);
-const h = (v) => (v === null || v === undefined) ? '–' : Number(v).toFixed(1) + 'h';
+const h = (v) => (v === null || v === undefined) ? '–' : Number(v).toFixed(2) + 'h';
 const pct = (v) => (v === null || v === undefined) ? '–' : Number(v).toFixed(1) + '%';
 
 async function load() {
   try {
-    const res = await fetch('/api/daily-oee-trend');
+    const res = await fetch('/api/sfc-daily-trend');
     const json = await res.json();
     if (json.error) return showError(json.error);
 
@@ -356,26 +334,10 @@ async function load() {
       return;
     }
     document.getElementById('content').style.display = 'block';
-    renderAllTimeParts();
     render();
   } catch (e) {
     showError(e.message);
   }
-}
-
-// Deliberately NOT part of renderCards()/render() — this card is a
-// running total across every saved day, the same figure whichever
-// tab or row you're looking at, so it has to be set once from the
-// full DATA.daily set rather than re-derived from whichever period
-// happens to be selected. Summing DATA.daily specifically (not
-// weekly/monthly) because it's the one list guaranteed to be exactly
-// one row per saved day — no risk of a day being counted twice.
-function renderAllTimeParts() {
-  const totalParts = DATA.daily.reduce((s, d) => s + (d.total_parts || 0), 0);
-  const scrapParts = DATA.daily.reduce((s, d) => s + (d.scrap_parts || 0), 0);
-  document.getElementById('c-parts').textContent = Math.round(totalParts).toLocaleString();
-  document.getElementById('c-parts-sub').textContent =
-    `${Math.round(totalParts - scrapParts).toLocaleString()} good · ${Math.round(scrapParts).toLocaleString()} scrap · all-time`;
 }
 
 function showError(msg) {
@@ -386,7 +348,7 @@ function showError(msg) {
 
 function setGranularity(g, btn) {
   granularity = g;
-  selectedIndex = null;
+  selectedIndex = null;   // reset — a week index means nothing on the monthly tab
   document.querySelectorAll('#granularity-tabs .filter-tab')
     .forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
@@ -397,29 +359,37 @@ function rows() { return DATA[granularity] || []; }
 
 function render() {
   const list = rows();
+  // Default to the most recent period rather than the oldest — that's the
+  // one you actually came here to look at.
   if (selectedIndex === null || selectedIndex >= list.length) {
     selectedIndex = list.length - 1;
   }
   renderCards(list[selectedIndex]);
   renderChart(list);
   renderTable(list);
-  renderMachines(list[selectedIndex]);
+  renderPareto(list[selectedIndex]);
 }
 
 function renderCards(b) {
   if (!b) return;
   document.getElementById('scope-pill').textContent =
-    `${b.label} · ${b.days} day${b.days === 1 ? '' : 's'} · ${b.machine_count} machines`;
+    `${b.label} · ${b.days} day${b.days === 1 ? '' : 's'} · ${b.machine_count} monitored presses`;
 
-  document.getElementById('c-oee').textContent = pct(b.oee_pct);
-  document.getElementById('c-oee-sub').textContent = 'Availability × Performance × Quality';
+  document.getElementById('c-unplanned').textContent = h(b.unplanned_hrs);
+  document.getElementById('c-unplanned-sub').textContent =
+    `${pct(b.downtime_pct_of_scheduled)} of ${h(b.scheduled_hrs)} scheduled`;
 
-  document.getElementById('c-run').textContent = h(b.run_time_hrs);
-  document.getElementById('c-run-sub').textContent = `of ${h(b.net_avail_hrs)} scheduled`;
+  document.getElementById('c-maint').textContent = h(b.maintenance_hrs);
+  document.getElementById('c-maint-sub').textContent =
+    `${pct(b.maintenance_pct_of_unplanned)} of unplanned · ${pct(b.maintenance_pct)} of all downtime`;
 
-  document.getElementById('c-avail').textContent = pct(b.availability_pct);
-  document.getElementById('c-qual').textContent = b.quality_pct == null ? '–' : Number(b.quality_pct).toFixed(2) + '%';
-  document.getElementById('c-qual-sub').textContent = b.scrap_parts != null ? `${Math.round(b.scrap_parts).toLocaleString()} scrap logged` : '';
+  document.getElementById('c-tool').textContent = h(b.toolroom_hrs);
+  document.getElementById('c-tool-sub').textContent =
+    `${pct(b.toolroom_pct_of_unplanned)} of unplanned · ${pct(b.toolroom_pct)} of all downtime`;
+
+  document.getElementById('c-other').textContent = h(b.other_unplanned_hrs);
+  document.getElementById('c-other-sub').textContent =
+    'Setting, changeover, labour, quality etc.';
 }
 
 function renderChart(list) {
@@ -430,38 +400,35 @@ function renderChart(list) {
     data: {
       labels: list.map(b => b.label),
       datasets: [
-        // All three as bars, not a line+bar mix — with only a handful
-        // of days saved so far, a line with one or two points just
-        // draws as a near-invisible dot next to a bar that fills the
-        // whole category. Three grouped bars read as three comparable
-        // figures from day one; once there's a real run of history,
-        // Chart.js still groups them the same way, just narrower as
-        // more days join the x-axis.
-        { type: 'bar', label: 'OEE %', data: list.map(b => b.oee_pct),
-          backgroundColor: '#243547', yAxisID: 'y1' },
-        { type: 'bar', label: 'Availability %', data: list.map(b => b.availability_pct),
-          backgroundColor: '#95C11F', labelColor: '#5a7a12', yAxisID: 'y1' },
-        { type: 'bar', label: 'Run Time (h)', data: list.map(b => b.run_time_hrs),
-          backgroundColor: '#d97706', yAxisID: 'y' },
+        { type: 'bar', label: 'Maintenance', data: list.map(b => b.maintenance_hrs),
+          backgroundColor: '#dc2626', stack: 's', order: 3 },
+        { type: 'bar', label: 'Toolroom', data: list.map(b => b.toolroom_hrs),
+          backgroundColor: '#f59e0b', stack: 's', order: 3 },
+        { type: 'bar', label: 'Production', data: list.map(b => b.other_unplanned_hrs),
+          backgroundColor: '#3d6491', stack: 's', order: 3 },
+        { type: 'line', label: '% of scheduled lost',
+          data: list.map(b => b.downtime_pct_of_scheduled),
+          borderColor: '#243547', backgroundColor: '#243547',
+          borderWidth: 2, pointRadius: 3, yAxisID: 'y1', order: 1 }
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      layout: { padding: { top: 20 } },
       scales: {
-        x: { grid: { display: false } },
-        y: { beginAtZero: true, position: 'left', title: { display: true, text: 'Run Time (hours)' } },
-        y1: { beginAtZero: true, max: 100, position: 'right', grid: { drawOnChartArea: false },
-              title: { display: true, text: '%' }, ticks: { callback: v => v + '%' } },
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Hours' } },
+        y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false },
+              title: { display: true, text: '% of scheduled' },
+              ticks: { callback: v => v + '%' } }
       },
       plugins: {
         legend: { labels: { boxWidth: 12, font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: (c) => c.dataset.yAxisID === 'y'
-              ? `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}h`
-              : `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}%`
+            label: (c) => c.dataset.yAxisID === 'y1'
+              ? `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}%`
+              : `${c.dataset.label}: ${Number(c.parsed.y).toFixed(2)}h`
           }
         }
       }
@@ -469,25 +436,13 @@ function renderChart(list) {
   });
 }
 
-// Parts actually produced against the saved Plan Quantity for that week —
-// '–' whenever either side is missing (no plan saved, or a week with no
-// parts data), never a fabricated 0% that would misread as "hit nothing".
-function planHitPct(b) {
-  if (b.plan_quantity == null || !b.plan_quantity || b.total_parts == null) return '–';
-  return (b.total_parts / b.plan_quantity * 100).toFixed(1) + '%';
-}
-
 function renderTable(list) {
   const titles = { daily: 'Daily Detail', weekly: 'Weekly Detail', monthly: 'Monthly Detail' };
   document.getElementById('table-title').textContent = titles[granularity];
 
-  // Plan Quantity/Plan Hours only exist on weekly buckets (attach_production_plan
-  // in daily_trend.py only merges saved plans onto weekly, never daily/monthly),
-  // so the columns only make sense — and only get shown — in the weekly view.
-  document.getElementById('detail-table').classList.toggle('show-plan', granularity === 'weekly');
-
   const tbody = document.getElementById('trend-tbody');
   tbody.innerHTML = '';
+  // Newest first in the table, while the chart stays oldest-first left to right.
   list.slice().reverse().forEach((b) => {
     const realIndex = list.indexOf(b);
     const tr = document.createElement('tr');
@@ -496,67 +451,53 @@ function renderTable(list) {
     tr.innerHTML = `
       <td>${b.label}</td>
       <td>${b.days}</td>
-      <td class="num">${pct(b.oee_pct)}</td>
-      <td class="num">${pct(b.availability_pct)}</td>
-      <td class="num">${b.quality_pct == null ? '–' : Number(b.quality_pct).toFixed(2) + '%'}</td>
-      <td class="num">${h(b.run_time_hrs)}</td>
-      <td class="num">${b.machine_count}</td>
-      <td class="num">${b.total_parts != null ? Math.round(b.total_parts).toLocaleString() : '–'}</td>
-      <td class="num plan-col">${b.plan_quantity != null ? Math.round(b.plan_quantity).toLocaleString() : '–'}</td>
-      <td class="num plan-col">${b.plan_hours != null ? Number(b.plan_hours).toFixed(1) : '–'}</td>
-      <td class="num plan-col">${planHitPct(b)}</td>`;
+      <td>${h(b.unplanned_hrs)}</td>
+      <td>${h(b.maintenance_hrs)}</td>
+      <td>${h(b.toolroom_hrs)}</td>
+      <td>${h(b.other_unplanned_hrs)}</td>
+      <td>${pct(b.downtime_pct_of_scheduled)}</td>
+      <td>${b.total_events}</td>`;
     tbody.appendChild(tr);
   });
 }
 
-function oeePill(p) {
-  if (p == null) return '–';
-  const cls = p >= 70 ? 'pill-green' : p >= 50 ? 'pill-amber' : 'pill-red';
-  return `<span class="pill ${cls}">${fmt(p, 1)}%</span>`;
+function renderPareto(b) {
+  document.getElementById('pareto-title').textContent =
+    b ? `Downtime Reasons — ${b.label}` : 'Downtime Reasons';
+
+  const tbody = document.getElementById('pareto-tbody');
+  tbody.innerHTML = '';
+  if (!b || !b.top_reasons.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#999;">No reasons recorded for this period.</td></tr>';
+    return;
+  }
+  b.top_reasons.forEach(r => {
+    const cat = categorise(r.reason);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.reason}</td>
+      <td><span class="badge ${cat}">${cat.charAt(0).toUpperCase() + cat.slice(1)}</span></td>
+      <td>${r.events}</td>
+      <td>${h(r.hrs)}</td>
+      <td>${pct(r.pct_of_total)}</td>`;
+    tbody.appendChild(tr);
+  });
 }
 
-// Every bucket — daily, weekly, or monthly — now carries its own
-// correctly-aggregated 'per_machine' list directly (see
-// daily_trend.py's _oee_finalize), computed the same sum-raw-hours-
-// then-one-ratio way as every other OEE figure in this app, just
-// applied per machine name instead of to the fleet total. No more
-// special-casing daily via a separate lookup into DATA.raw — all
-// three granularities read the same way now.
-function renderMachines(b) {
-  const titleEl = document.getElementById('machines-title');
-  const hintEl = document.getElementById('machines-hint');
-  const tbody = document.getElementById('machines-tbody');
-
-  if (!b) { tbody.innerHTML = ''; return; }
-
-  const machines = b.per_machine || [];
-  titleEl.textContent = `OEE by Press — ${b.label}`;
-  hintEl.textContent = machines.length
-    ? (b.days > 1 ? `Each press's figures are summed across all ${b.days} days in this period, then computed as one ratio — the same principle behind every OEE number in this app, never an average of daily percentages.` : '')
-    : '';
-
-  const sorted = machines.slice().sort((a, c) => (c.oee_pct ?? -1) - (a.oee_pct ?? -1));
-  tbody.innerHTML = sorted.length ? sorted.map(m => `<tr>
-      <td>${m.machine}</td>
-      <td class="num">${oeePill(m.oee_pct)}</td>
-      <td class="num">${h(m.run_time_hrs)}</td>
-      <td class="num">${pct(m.availability_pct)}</td>
-      <td class="num">${pct(m.quality_pct)}</td>
-      <td class="num">${m.total_parts != null ? Math.round(m.total_parts).toLocaleString() : '–'}</td>
-    </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:#888;padding:20px">No machine data for this day</td></tr>';
-}
-
+// Same pattern as daily-trend.html — persisted per card (not per page),
+// since these three grow at different rates and collapsing one
+// shouldn't touch the others.
 function toggleCard(id) {
   const body = document.getElementById(id + '-body');
   const arrow = document.getElementById(id + '-arrow');
   const collapsed = body.classList.toggle('collapsed');
   arrow.classList.toggle('collapsed', collapsed);
-  localStorage.setItem('daily-oee-trend-collapsed-' + id, collapsed ? '1' : '0');
+  localStorage.setItem('production-sfc-trend-collapsed-' + id, collapsed ? '1' : '0');
 }
 
 function restoreCardState() {
-  for (const id of ['trend', 'detail', 'machines']) {
-    if (localStorage.getItem('daily-oee-trend-collapsed-' + id) === '1') {
+  for (const id of ['trend', 'detail', 'pareto']) {
+    if (localStorage.getItem('production-sfc-trend-collapsed-' + id) === '1') {
       document.getElementById(id + '-body').classList.add('collapsed');
       document.getElementById(id + '-arrow').classList.add('collapsed');
     }
