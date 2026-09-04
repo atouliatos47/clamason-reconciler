@@ -565,7 +565,7 @@ function renderPareto(b) {
   // is "Downtime Reasons" generally, not a Pareto or a Production-only
   // view; only which rows are shown changes here, not what the
   // percentages mean.
-  const TABLE_EXCLUDED = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED', 'LUNCH / BREAK / MEETING'];
+  const TABLE_EXCLUDED = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED', 'LUNCH / BREAK / MEETING', 'CHANGEOVER OFFLINE', 'IDLE', 'PARTS PRESET REACHED'];
   const visibleReasons = b.top_reasons.filter(r => !TABLE_EXCLUDED.includes(r.reason.toUpperCase().trim()));
   if (!visibleReasons.length) {
     tbody.innerHTML = '<tr><td colspan="5" style="color:#999;">No reasons recorded for this period.</td></tr>';
