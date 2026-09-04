@@ -88,6 +88,20 @@
 
   canvas { max-height: 320px; }
 
+  .reason-bars { display: flex; flex-direction: column; gap: 3px; }
+  .reason-bar-row { display: grid; grid-template-columns: 210px 1fr 70px; align-items: center; gap: 10px; font-size: 12px; }
+  .reason-bar-row .reason-name { color: #333; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reason-bar-row .reason-bar-track { background: #f0f2f5; border-radius: 3px; height: 16px; position: relative; }
+  .reason-bar-row .reason-bar-fill { background: #94a3b8; height: 100%; border-radius: 3px; }
+  .reason-bar-row .reason-hrs { color: #555; }
+
+  .dept-bar { color: #fff; padding: 10px 14px; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center; background: #3d6491; margin: -20px -20px 16px; }
+  .dept-bar span.name { font-size: 13px; font-weight: bold; letter-spacing: 0.7px; }
+  .dept-bar span.num { font-size: 9.5px; opacity: 0.75; font-family: monospace; }
+  .pareto-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .pareto-head h3 { font-size: 13px; font-weight: bold; color: #243547; }
+  .pareto-head .scope { font-size: 11px; color: #d97706; font-weight: bold; }
+
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
   td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
@@ -204,6 +218,18 @@ function toggleNavGroup(name) {
 
 <div class="container">
 
+  <div class="table-card" id="press-pareto-card" style="display:none;">
+    <div class="dept-bar">
+      <span class="name">PRODUCTION</span><span class="num">DEPT / 01</span>
+    </div>
+    <div class="pareto-head">
+      <h3>Downtime Pareto</h3>
+      <span class="scope">TOP 5 PRESSES</span>
+    </div>
+    <p class="hint">From the latest saved Monthly Check (<strong id="press-pareto-period"></strong>) — this doesn't move with the Daily/Weekly/Monthly selector below, since per-press data is only saved once a month, not daily.</p>
+    <div style="position:relative;height:280px;"><canvas id="press-pareto-chart"></canvas></div>
+  </div>
+
   <div class="error-box" id="error-box"></div>
   <div class="empty-note" id="empty-note">
     No saved SFC snapshots yet — head to <a href="/production-sfc-daily">SFC Daily</a>, run a check, and hit Save to start building history here.
@@ -271,6 +297,28 @@ function toggleNavGroup(name) {
           </thead>
           <tbody id="trend-tbody"></tbody>
         </table>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="card-header" onclick="toggleCard('reason-pareto')">
+        <h3 id="reason-pareto-title">Downtime Reason Pareto</h3>
+        <span class="collapse-arrow" id="reason-pareto-arrow">▼</span>
+      </div>
+      <div class="card-body" id="reason-pareto-body">
+        <p class="hint">Top 10 reasons for the selected period, all categories included — same idea as the Monthly Performance Review's press Pareto, but by reason, since this report has no per-press breakdown.</p>
+        <canvas id="reason-pareto-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="card-header" onclick="toggleCard('prod-reasons')">
+        <h3 id="prod-reasons-title">Production Reason Codes — Notes</h3>
+        <span class="collapse-arrow" id="prod-reasons-arrow">▼</span>
+      </div>
+      <div class="card-body" id="prod-reasons-body">
+        <p class="hint">Everything not owned by Maintenance or Toolroom, for the selected period.</p>
+        <div class="reason-bars" id="prod-reasons-bars"></div>
       </div>
     </div>
 
@@ -368,6 +416,8 @@ function render() {
   renderChart(list);
   renderTable(list);
   renderPareto(list[selectedIndex]);
+  renderReasonPareto(list[selectedIndex]);
+  renderProductionReasons(list[selectedIndex]);
 }
 
 function renderCards(b) {
@@ -484,6 +534,87 @@ function renderPareto(b) {
   });
 }
 
+let reasonParetoChart = null;
+
+// Same idea as the Monthly Performance Review's press Pareto (sorted
+// bars + cumulative % line), by reason instead of by press — this
+// report has no per-press breakdown, so reason is the only dimension
+// available. Unfiltered on purpose: it should show what's actually
+// biggest, planned time included, same as the press Pareto doesn't
+// filter either.
+function renderReasonPareto(b) {
+  document.getElementById('reason-pareto-title').textContent =
+    b ? `Downtime Reason Pareto — ${b.label}` : 'Downtime Reason Pareto';
+
+  const ctx = document.getElementById('reason-pareto-chart');
+  if (reasonParetoChart) { reasonParetoChart.destroy(); reasonParetoChart = null; }
+  if (!b || !b.top_reasons.length) return;
+
+  const sorted = b.top_reasons.slice().sort((a, c) => c.hrs - a.hrs).slice(0, 10);
+  const totalHrs = sorted.reduce((s, r) => s + r.hrs, 0) || 1;
+  let running = 0;
+  const cumPct = sorted.map(r => { running += r.hrs; return running / totalHrs * 100; });
+
+  reasonParetoChart = new Chart(ctx, {
+    data: {
+      labels: sorted.map(r => r.reason),
+      datasets: [
+        { type: 'bar', label: 'Hours', data: sorted.map(r => r.hrs),
+          backgroundColor: '#3d6491', order: 2, yAxisID: 'y' },
+        { type: 'line', label: 'Cumulative %', data: cumPct,
+          borderColor: '#dc2626', backgroundColor: '#dc2626',
+          borderWidth: 2, pointRadius: 3, yAxisID: 'y1', order: 1 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 45, font: { size: 10 } } },
+        y: { beginAtZero: true, title: { display: true, text: 'Hours' } },
+        y1: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false },
+              title: { display: true, text: 'Cumulative %' }, ticks: { callback: v => v + '%' } },
+      },
+      plugins: {
+        legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: (c) => c.dataset.yAxisID === 'y1'
+              ? `Cumulative: ${Number(c.parsed.y).toFixed(1)}%`
+              : `${Number(c.parsed.y).toFixed(2)}h`
+          }
+        }
+      }
+    }
+  });
+}
+
+// Same as the Monthly Performance Review's "Production Reason Codes"
+// panel — everything not Maintenance- or Toolroom-owned, sorted by
+// hours, drawn as a simple horizontal bar list. Planned Offline and
+// No Production Planned are included here (unlike the main trend
+// chart above), matching that panel's own behaviour.
+function renderProductionReasons(b) {
+  const container = document.getElementById('prod-reasons-bars');
+  container.innerHTML = '';
+  if (!b || !b.top_reasons.length) return;
+
+  const prodReasons = b.top_reasons
+    .filter(r => categorise(r.reason) !== 'maintenance' && categorise(r.reason) !== 'toolroom')
+    .sort((a, c) => c.hrs - a.hrs);
+  if (!prodReasons.length) return;
+
+  const maxHrs = prodReasons[0].hrs || 1;
+  prodReasons.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'reason-bar-row';
+    row.innerHTML = `
+      <div class="reason-name">${r.reason}</div>
+      <div class="reason-bar-track"><div class="reason-bar-fill" style="width:${(r.hrs / maxHrs * 100).toFixed(1)}%"></div></div>
+      <div class="reason-hrs">${h(r.hrs)}</div>`;
+    container.appendChild(row);
+  });
+}
+
 // Same pattern as daily-trend.html — persisted per card (not per page),
 // since these three grow at different rates and collapsing one
 // shouldn't touch the others.
@@ -496,7 +627,7 @@ function toggleCard(id) {
 }
 
 function restoreCardState() {
-  for (const id of ['trend', 'detail', 'pareto']) {
+  for (const id of ['trend', 'detail', 'reason-pareto', 'prod-reasons', 'pareto']) {
     if (localStorage.getItem('production-sfc-trend-collapsed-' + id) === '1') {
       document.getElementById(id + '-body').classList.add('collapsed');
       document.getElementById(id + '-arrow').classList.add('collapsed');
@@ -504,8 +635,67 @@ function restoreCardState() {
   }
 }
 
+let pressParetoChart = null;
+
+// Independent fetch from everything else on this page — /api/trend
+// reads monthly_runs, not production_sfc_daily_snapshots, so this has
+// its own loading/empty-state handling rather than sharing load()'s.
+// Always the LATEST saved Monthly Check, regardless of which SFC
+// period is selected below — see the on-page note explaining why.
+async function loadPressPareto() {
+  const card = document.getElementById('press-pareto-card');
+  try {
+    const res = await fetch('/api/trend');
+    const json = await res.json();
+    if (json.error || !json.runs || !json.runs.length) return;
+
+    const latest = json.runs[json.runs.length - 1];
+    const mb = (latest.machine_breakdown || [])
+      .slice()
+      .sort((a, b) => (b.production_hrs || 0) - (a.production_hrs || 0))
+      .slice(0, 5);
+    if (!mb.length) return;
+
+    document.getElementById('press-pareto-period').textContent = latest.period_label || latest.period;
+
+    const totalP = mb.reduce((s, m) => s + (m.production_hrs || 0), 0) || 1;
+    let running = 0;
+    const cumPct = mb.map(m => { running += (m.production_hrs || 0); return +(running / totalP * 100).toFixed(1); });
+
+    if (pressParetoChart) { pressParetoChart.destroy(); }
+    pressParetoChart = new Chart(document.getElementById('press-pareto-chart'), {
+      data: {
+        labels: mb.map(m => m.machine),
+        datasets: [
+          { type: 'bar', label: 'Hours', data: mb.map(m => m.production_hrs || 0),
+            backgroundColor: '#3d6491', order: 2, yAxisID: 'y' },
+          { type: 'line', label: 'Cumulative %', data: cumPct,
+            borderColor: '#dc2626', backgroundColor: '#dc2626',
+            borderWidth: 2, pointRadius: 3, yAxisID: 'y1', order: 1 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { font: { size: 10 } } },
+          y: { beginAtZero: true, title: { display: true, text: 'Hours' } },
+          y1: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false },
+                title: { display: true, text: 'Cumulative %' }, ticks: { callback: v => v + '%' } },
+        },
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+      },
+    });
+
+    card.style.display = 'block';
+  } catch (e) {
+    // Silent — this section is a bonus on top of the main SFC trend
+    // page, not something that should block or error the rest of it.
+  }
+}
+
 restoreCardState();
 load();
+loadPressPareto();
 </script>
 
 </body>
