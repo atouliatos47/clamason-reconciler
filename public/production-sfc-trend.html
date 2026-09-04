@@ -40,9 +40,10 @@
   .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
 
   .main { flex: 1; min-width: 0; }
-  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; display: flex; justify-content: space-between; align-items: flex-start; }
   .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
   .page-header p { color: #888; font-size: 11.5px; margin-top: 3px; }
+  #month-select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 12.5px; color: #243547; background: white; }
 
   @media (max-width: 768px) {
     body { flex-direction: column; }
@@ -212,8 +213,13 @@ function toggleNavGroup(name) {
 <div class="main">
 
 <div class="page-header">
-  <h1>Production SFC Trend</h1>
-  <p>Rolled up from the same saved SFC Daily Downtime snapshots — Production's angle on it</p>
+  <div>
+    <h1>Production SFC Trend</h1>
+    <p>Rolled up from the same saved SFC Daily Downtime snapshots — Production's angle on it</p>
+  </div>
+  <div>
+    <select id="month-select" onchange="selectMonth(this.value)"></select>
+  </div>
 </div>
 
 <div class="container">
@@ -271,7 +277,7 @@ function toggleNavGroup(name) {
         <div class="filter-tabs" id="granularity-tabs">
           <button class="filter-tab active" onclick="event.stopPropagation(); setGranularity('daily', this)">Daily</button>
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('weekly', this)">Weekly</button>
-          <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
+          <button class="filter-tab" id="tab-monthly" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
         </div>
         <p class="hint">
           Planned Offline and No Production Planned are excluded — they're the biggest numbers in the report
@@ -381,6 +387,7 @@ async function load() {
       document.getElementById('empty-note').style.display = 'block';
       return;
     }
+    populateMonthSelect();
     document.getElementById('content').style.display = 'block';
     render();
   } catch (e) {
@@ -392,6 +399,32 @@ function showError(msg) {
   const box = document.getElementById('error-box');
   box.textContent = msg;
   box.style.display = 'block';
+}
+
+// So Matt can jump straight to a specific month to present, without
+// clicking the Monthly tab and then hunting for the right row in the
+// Detail table below. This dropdown is local to this page's own
+// monthly rollup (DATA.monthly, built from production_sfc_daily_snapshots)
+// — deliberately NOT wired to the shared clamason-selected-period
+// localStorage key the other pages use, since that one picks a Monthly
+// Check period from a different table (monthly_runs) entirely; syncing
+// the two would silently show the wrong data whenever they don't
+// happen to have saved the same months.
+function populateMonthSelect() {
+  const sel = document.getElementById('month-select');
+  const months = DATA.monthly || [];
+  if (!months.length) { sel.style.display = 'none'; return; }
+  sel.innerHTML = months.slice().reverse()
+    .map((m, i) => `<option value="${months.length - 1 - i}">${m.label}</option>`).join('');
+  sel.value = months.length - 1;
+}
+
+function selectMonth(idxStr) {
+  granularity = 'monthly';
+  document.querySelectorAll('#granularity-tabs .filter-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-monthly').classList.add('active');
+  selectedIndex = Number(idxStr);
+  render();
 }
 
 function setGranularity(g, btn) {
@@ -411,6 +444,10 @@ function render() {
   // one you actually came here to look at.
   if (selectedIndex === null || selectedIndex >= list.length) {
     selectedIndex = list.length - 1;
+  }
+  if (granularity === 'monthly') {
+    const sel = document.getElementById('month-select');
+    if (sel && sel.value != String(selectedIndex)) sel.value = selectedIndex;
   }
   renderCards(list[selectedIndex]);
   renderChart(list);
