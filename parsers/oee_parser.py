@@ -69,10 +69,24 @@ def _hours(value):
 
     Hours can exceed 24 (a week is 168), so this can't use a time type —
     it's a duration written in H:M:S, not a clock reading.
+
+    SFC normally writes every duration cell this way, but has been seen
+    writing Run Time as a plain number instead (e.g. 18.5) with no colon
+    at all, on some Daily UK OEE By Machine exports — confirmed on real
+    files where Bruderer 2/3 and Kaiser 50T 1 came through as a bare
+    float rather than text. Before this fix, the missing ':' made this
+    function return 0.0 for that machine's Run Time, which silently
+    understated Run Time and Fleet OEE for the whole file (one real
+    file lost 43 of 97 site-wide Run Time hours this way). When there's
+    no colon, the value is already hours, not a fraction of a day, so
+    it's read directly rather than treated as unparseable.
     """
     s = str(value).strip()
     if ':' not in s:
-        return 0.0
+        try:
+            return round(float(s), 4)
+        except (ValueError, TypeError):
+            return 0.0
     parts = s.split(':')
     try:
         return round(int(parts[0]) + int(parts[1]) / 60 + int(parts[2]) / 3600, 4)
