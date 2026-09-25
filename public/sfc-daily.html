@@ -368,7 +368,7 @@ function showRestoredNote() {
     `<strong>Restored from your last check</strong> — run on ${when}` +
     (fileName ? ` from <strong>${fileName}</strong>` : '') + '.<br>' +
     'These figures are from that report, not from today. The PDF itself isn\'t kept, ' +
-    'so to Save this day you\'ll need to choose the file again and Run Check. ' +
+    'so to re-save this day, choose the file again and Run Check — it saves automatically. ' +
     'Press <strong>Clear / New Check</strong> to start fresh.';
   note.style.display = 'block';
 }
@@ -443,6 +443,24 @@ async function runCheck() {
     document.getElementById('save-status').textContent = '';
     document.getElementById('save-status').className = 'save-status';
     persist();
+
+    // Auto-save: a check that isn't saved never reaches SFC Trend, and
+    // forgetting the Save click is exactly how days went missing. Safe to
+    // do every time because save_sfc_daily_snapshot() upserts on date —
+    // re-running the same PDF overwrites that day, never duplicates it.
+    //
+    // Only when the PDF told us its own date, though. Without it the date
+    // field falls back to TODAY, but this morning's report is YESTERDAY's
+    // production day — auto-saving that would file the hours under the
+    // wrong date without anyone noticing. So in that case we stop and ask.
+    if (d.detected_date) {
+      await saveSfcDaily();
+    } else {
+      const statusEl = document.getElementById('save-status');
+      statusEl.textContent = '⚠ Not saved — couldn\'t read the date from the PDF. Check the date, then press Save.';
+      statusEl.className = 'save-status err';
+      persist();
+    }
   } catch (e) {
     const eb = document.getElementById('error-box');
     eb.style.display = 'block';
