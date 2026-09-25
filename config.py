@@ -152,11 +152,22 @@ TOOLROOM_CRAFTS = ('toolmaker',)
 # code NOT in here (a chiller, compressor, welder, etc.) can never be
 # treated as "covering" an SFC fault event, because SFC doesn't track
 # fault codes for anything outside this list.
+#
+# Bruderers and Heenan 3 corrected 25 Sept 2026 — checked three ways:
+# SFC's own machine list (Daily Downtime Summary, page 2), the Agility
+# asset register (AG3-001), and the plates on the presses themselves.
+# The old mapping had Bruderer 1/2/3 shuffled and Heenan 3 on 000048,
+# a code that doesn't exist in Agility at all — so no Heenan 3 WO could
+# ever match, and every Heenan 3 fault showed as a gap with no WO.
+#
+# Bruderer 1 and 2 are each a PAIR of presses that SFC tracks as one
+# line: a BSTA 250 plus a BSTA 30. A WO on either press in the pair is
+# work on that line, so both codes belong to it.
 SFC_TO_AGILITY = {
     'Bihler':               ['000074'],
-    'Bruderer 1':           ['00016'],
-    'Bruderer 2':           ['00031', '00046'],
-    'Bruderer 3':           ['00032', '00047'],
+    'Bruderer 1':           ['00031', '00032'],   # BSTA 250 ISI 37 + BSTA 30 ISI 38
+    'Bruderer 2':           ['00046', '00047'],   # BSTA 250 ISI 77 + BSTA 30 ISI 78
+    'Bruderer 3':           ['00016'],            # 25T UL ISI 10
     'Bruderer 60T ISI73':   ['00043'],
     'Chin Fong 110 ISI1':   ['00009'],
     'Chin Fong 110 ISI74':  ['00044'],
@@ -166,7 +177,7 @@ SFC_TO_AGILITY = {
     'Finzer Line 20':       ['00383'],
     'Heenan 1':             ['000038'],
     'Heenan 2':             ['000040'],
-    'Heenan 3':             ['000048'],
+    'Heenan 3':             ['000057'],
     'HME 20T A ISI23':      ['00025'],
     'HME 20T C ISI22':      ['00024'],
     'Kaiser 50T 1':         ['00029'],
