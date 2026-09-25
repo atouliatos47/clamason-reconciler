@@ -421,6 +421,14 @@ async function runCheck() {
     render(d);
     document.getElementById('results').style.display = 'block';
     persistProgress();
+
+    // Auto-save: a check that isn't saved never reaches Daily Trend, and
+    // forgetting the Save click is how days go missing. Safe to do every
+    // time because save_daily_snapshot() upserts on date — re-running
+    // overwrites that day, never duplicates it. Unlike the SFC PDF, the
+    // WO export doesn't say which day it covers, so this relies on the
+    // date box — which now defaults to yesterday (see defaultCheckDate).
+    await saveDaily();
   } catch (e) {
     const eb = document.getElementById('error-box');
     eb.style.display = 'block';
@@ -459,6 +467,11 @@ async function saveDaily() {
   try {
     const fd = new FormData();
     fd.append('agility_wo', files.wo);
+    // Down Time file too, when one was chosen — /api/save-daily already
+    // accepts it and computes real MTTR from it, exactly like the check
+    // does. Leaving it out is why every saved day had a blank MTTR on
+    // Daily Trend while the screen showed a real one.
+    if (files.dt) fd.append('agility_downtime', files.dt);
     fd.append('date', dateVal);
     const res = await fetch('/api/save-daily', { method: 'POST', body: fd });
     const d = await res.json();
@@ -493,11 +506,25 @@ function clearCheck() {
   document.getElementById('save-status').className = 'save-status';
 
   document.getElementById('results').style.display = 'none';
-  document.getElementById('save-date').valueAsDate = new Date();
+  document.getElementById('save-date').value = defaultCheckDate();
+}
+
+// The Daily Check is run the NEXT morning, for the previous day's WOs,
+// and Run Check now auto-saves against whatever this box says — so it
+// defaults to yesterday, not today. Built from local date parts on
+// purpose: valueAsDate = new Date() uses the UTC date, which is a day
+// behind for the first hour after midnight during British Summer Time.
+function defaultCheckDate() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('save-date').valueAsDate = new Date();
+  document.getElementById('save-date').value = defaultCheckDate();
   restorePersistedProgress();
 });
 
