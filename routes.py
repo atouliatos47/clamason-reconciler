@@ -28,7 +28,7 @@ from parsers.due_date_performance_parser import (
 )
 from parsers.efacs_scrap_parser import parse_efacs_scrap_file
 from reconciliation import reconcile, enrich_and_filter, compute_toolroom_gap, compute_toolroom_machine_breakdown
-from report_pdf import build_gap_pdf, build_personnel_pdf
+from report_pdf import build_gap_pdf, build_personnel_pdf, build_personnel_yearly_pdf
 from daily import compute_daily_summary
 from daily_trend import (
     weekly_rollup, monthly_rollup,
@@ -911,24 +911,63 @@ def save_personnel():
 
 @bp.route('/api/personnel-pdf')
 def personnel_pdf():
-    """Printable PPM performance PDF for one engineer — this month plus
-    their full trend history. Reads whatever's already saved (no file
-    upload here); /api/save-personnel is what puts data in reach of
-    this route in the first place."""
+    """Printable PPM performance PDF for one engineer. Reads whatever's
+    already saved (no file upload here); /api/save-personnel is what
+    puts data in reach of this route in the first place. Three shapes,
+    picked by which optional query param is present - mutually
+    exclusive, ?year takes priority if both are somehow sent:
+
+    - (neither) full trend history, headlined on the latest month -
+      the original behaviour, unchanged for anyone already using this
+      link (e.g. the "Printable PPM Performance Reports" list).
+    - ?year=2026 an annual review: one aggregated headline for the
+      year plus that year's own Monthly Trend rows. 404s with a clear
+      message if nothing was saved for that year.
+    - ?month=2026-06 the report AS IT STOOD at the end of that month -
+      trend history trimmed to everything up to and including it, so
+      the headline is that month rather than whatever's most recent
+      now. Requires that exact month to have been saved (no nearest-
+      month guessing, which could silently hand back the wrong
+      period); errors otherwise.
+    """
     try:
         employee = request.args.get('employee', '').strip()
         if not employee:
             return jsonify({'error': 'employee is required'})
 
+        year = request.args.get('year', '').strip()
+        month = request.args.get('month', '').strip()
+
         months = db.get_personnel_trend(employee)
         if not months:
             return jsonify({'error': f'No saved Personnel PPM data for {employee.title()} yet'})
 
-        pdf_buf = build_personnel_pdf(employee.title(), months)
         safe_name = re.sub(r'[^A-Za-z0-9]+', '_', employee.title()).strip('_')
+
+        if year:
+            if not re.match(r'^\d{4}$', year):
+                return jsonify({'error': "year must be 'YYYY'"})
+            year_months = [m for m in months if m['period'].startswith(year)]
+            if not year_months:
+                return jsonify({'error': f'No saved Personnel PPM data for {employee.title()} in {year}'})
+            pdf_buf = build_personnel_yearly_pdf(employee.title(), year, year_months)
+            download_name = f'{safe_name}_PPM_Performance_{year}.pdf'
+        elif month:
+            if not re.match(r'^\d{4}-\d{2}$', month):
+                return jsonify({'error': "month must be 'YYYY-MM'"})
+            if not any(m['period'] == month for m in months):
+                available = ', '.join(m['period_label'] for m in months)
+                return jsonify({'error': f'No saved data for {employee.title()} in {month}. Saved months: {available}'})
+            months_to_date = [m for m in months if m['period'] <= month]
+            pdf_buf = build_personnel_pdf(employee.title(), months_to_date)
+            download_name = f'{safe_name}_PPM_Performance_{month}.pdf'
+        else:
+            pdf_buf = build_personnel_pdf(employee.title(), months)
+            download_name = f'{safe_name}_PPM_Performance.pdf'
+
         return send_file(
             pdf_buf, mimetype='application/pdf', as_attachment=True,
-            download_name=f'{safe_name}_PPM_Performance.pdf',
+            download_name=download_name,
         )
     except Exception as e:
         import traceback

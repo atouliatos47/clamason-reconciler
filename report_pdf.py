@@ -390,7 +390,18 @@ def _build_personnel_headline(story, styles, latest):
     story.append(Spacer(1, 5 * mm))
 
 
-def _build_personnel_summary_table(story, styles, latest):
+def _build_personnel_summary_table(story, styles, latest, show_median=True):
+    """latest is either one real saved month (the usual case, dict from
+    db.get_personnel_trend) or a synthetic aggregate row built by
+    _aggregate_year() for an annual review — same keys either way, which
+    is what lets this function and _build_personnel_headline() serve
+    both without knowing which one they were handed.
+
+    show_median=False for the annual case: a "median of monthly
+    medians" isn't a real median of anything (medians don't average),
+    so reporting one would look precise while being statistically
+    meaningless. Left out entirely rather than shown and mislabelled.
+    """
     story.append(Paragraph(f"{latest['period_label']} Summary", styles['section']))
     story.append(HRFlowable(width='100%', thickness=2, color=LIME, spaceAfter=4))
 
@@ -400,9 +411,12 @@ def _build_personnel_summary_table(story, styles, latest):
         ['Completed on or before due date', f"{on_time_pct:.1f}%" if on_time_pct is not None else '—'],
         ['Completed late', f"{100 - on_time_pct:.1f}%" if on_time_pct is not None else '—'],
         ['Average delay when late', f"{latest['avg_delay_days']:.1f} days" if latest.get('avg_delay_days') is not None else '— (none late)'],
-        ['Median delay when late', f"{latest['median_delay_days']:.1f} days" if latest.get('median_delay_days') is not None else '— (none late)'],
-        ['Longest delay', f"{latest['longest_delay_days']:.0f} days" if latest.get('longest_delay_days') is not None else '— (none late)'],
     ]
+    if show_median:
+        rows.append(['Median delay when late', f"{latest['median_delay_days']:.1f} days" if latest.get('median_delay_days') is not None else '— (none late)'])
+    rows.append(['Longest delay', f"{latest['longest_delay_days']:.0f} days" if latest.get('longest_delay_days') is not None else '— (none late)'])
+    if latest.get('months_recorded'):
+        rows.append(['Months recorded', latest['months_recorded']])
     if latest.get('excluded_backlog_count'):
         rows.append(['Backlog jobs excluded (due before cutoff)', str(latest['excluded_backlog_count'])])
 
@@ -500,6 +514,99 @@ def build_personnel_pdf(employee, months):
     _build_personnel_headline(story, styles, latest)
     _build_personnel_summary_table(story, styles, latest)
     _build_personnel_trend_table(story, styles, months)
+    _build_personnel_footnote(story, styles)
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
+
+def _aggregate_year(year_months, year):
+    """Turns a list of monthly rows (already filtered to one calendar
+    year) into one synthetic row with the same keys a real month has -
+    that's what lets build_personnel_yearly_pdf reuse
+    _build_personnel_headline() and _build_personnel_summary_table()
+    unchanged instead of maintaining a second copy of them.
+
+    Jobs and on-time counts sum plainly (a straight count of a count is
+    still a count). Average delay is summed WEIGHTED by each month's
+    late-job count, not averaged month-to-month - a month with 1 late
+    job and a month with 20 late jobs shouldn't count equally toward
+    the year's average delay, and this is the one figure here where
+    that distinction is actually recoverable from monthly summaries
+    (median delay is not - see _build_personnel_summary_table's
+    show_median docstring for why the year skips it entirely).
+    """
+    total_jobs = sum(m['jobs_completed'] for m in year_months)
+    total_on_time = sum(m['on_time_count'] for m in year_months)
+
+    late_weighted = []  # (late_count_this_month, avg_delay_this_month)
+    for m in year_months:
+        late_count = m['jobs_completed'] - m['on_time_count']
+        if late_count > 0 and m.get('avg_delay_days') is not None:
+            late_weighted.append((late_count, m['avg_delay_days']))
+    total_late = sum(lc for lc, _ in late_weighted)
+    avg_delay = round(sum(lc * ad for lc, ad in late_weighted) / total_late, 1) if total_late else None
+
+    longest_candidates = [m['longest_delay_days'] for m in year_months if m.get('longest_delay_days') is not None]
+    longest = max(longest_candidates) if longest_candidates else None
+
+    job_types = sorted({jt for m in year_months for jt in (m.get('job_types') or [])})
+
+    return {
+        'period_label': str(year),
+        'jobs_completed': total_jobs,
+        'on_time_count': total_on_time,
+        'on_time_pct': round(total_on_time / total_jobs * 100, 1) if total_jobs else None,
+        'avg_delay_days': avg_delay,
+        'longest_delay_days': longest,
+        'excluded_backlog_count': sum(m.get('excluded_backlog_count') or 0 for m in year_months),
+        'job_types': job_types,
+        'months_recorded': f'{len(year_months)} of 12',
+    }
+
+
+def build_personnel_yearly_pdf(employee, year, year_months):
+    """employee is the display name to print; year_months is
+    db.get_personnel_trend(employee)'s result already filtered down to
+    one calendar year's rows (the route does the filtering - this
+    function trusts what it's handed, same as build_personnel_pdf does
+    with 'months'), at least one row.
+
+    Deliberately reuses _build_personnel_header/_headline/
+    _summary_table from the monthly report, fed a synthetic
+    year-aggregate row from _aggregate_year() instead of a real
+    month's row - same visual language as the monthly PDF (an
+    on-time% headline, a Metric/Value summary table) rather than a
+    differently-styled "annual report" that would need learning to
+    read on its own. What's genuinely different about a year is the
+    breakdown underneath, so that part - _build_personnel_trend_table
+    - is reused UNCHANGED too, just fed only this year's rows.
+    """
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=15 * mm, rightMargin=15 * mm, topMargin=15 * mm, bottomMargin=15 * mm,
+    )
+
+    styles = {
+        'title': _ps('yt', fontSize=15, textColor=colors.white, fontName='Helvetica-Bold'),
+        'sub': _ps('ys', fontSize=8, textColor=LIME, fontName='Helvetica'),
+        'section': _ps('ysc', fontSize=11, textColor=NAVY, fontName='Helvetica-Bold', spaceBefore=8, spaceAfter=3),
+        'body': _ps('yb', fontSize=9, textColor=colors.HexColor('#333333'), fontName='Helvetica', leading=13),
+        'footnote': _ps('yfn', fontSize=7.5, textColor=colors.HexColor('#777777'), fontName='Helvetica-Oblique', leading=10),
+        'footer': _ps('yf', fontSize=7, textColor=colors.HexColor('#999999'), fontName='Helvetica', alignment=TA_CENTER),
+        'headline_num': _ps('yhn', fontSize=34, textColor=colors.white, fontName='Helvetica-Bold', alignment=TA_CENTER, leading=40),
+        'headline_label': _ps('yhl', fontSize=10, textColor=colors.white, fontName='Helvetica-Bold', alignment=TA_CENTER),
+        'headline_text': _ps('yht', fontSize=11, textColor=colors.white, fontName='Helvetica', alignment=TA_CENTER, leading=15),
+    }
+
+    aggregate = _aggregate_year(year_months, year)
+    story = []
+    _build_personnel_header(story, styles, employee, f'{year} (Annual Review)')
+    _build_personnel_headline(story, styles, aggregate)
+    _build_personnel_summary_table(story, styles, aggregate, show_median=False)
+    _build_personnel_trend_table(story, styles, year_months)
     _build_personnel_footnote(story, styles)
 
     doc.build(story)

@@ -144,7 +144,8 @@
   @media print {
     .sidebar, .page-header, .upload-section > h2, .upload-section > p,
     .upload-card, .error-box, .run-btn, .results, .chart-card, #pdf-card,
-    .state-msg, footer, .tracker-card p, .tracker-card select, .tracker-print-btn {
+    #yearly-pdf-card, .state-msg, footer, .tracker-card p, .tracker-card select,
+    .tracker-print-btn, .no-print {
       display: none !important;
     }
     .tracker-card { border: none; padding: 0; max-width: none; }
@@ -314,8 +315,17 @@ function toggleNavGroup(name) {
   </div>
 
   <div class="table-card" id="pdf-card" style="display:none;">
-    <h3>Printable PPM Performance Reports</h3>
+    <h3>Printable PPM Performance Reports — Full History</h3>
     <div class="pdf-row" id="pdf-row"></div>
+  </div>
+
+  <div class="table-card" id="yearly-pdf-card" style="display:none;">
+    <h3>Annual Review</h3>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <label for="yearly-select" style="font-size:12px;color:#555;">Year:</label>
+      <select id="yearly-select" onchange="renderYearlyLinks()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;color:#243547;"></select>
+    </div>
+    <div class="pdf-row" id="yearly-pdf-row"></div>
   </div>
 
   <div class="state-msg" id="trend-state-msg">Loading trend history...</div>
@@ -588,7 +598,7 @@ function renderTrackerMonth() {
       <thead>
         <tr>
           <th>Engineer</th><th class="num">Jobs</th><th class="num">On Time</th>
-          <th class="num">On Time %</th><th class="num">Avg Delay (late)</th>
+          <th class="num">On Time %</th><th class="num">Avg Delay (late)</th><th class="num no-print">Report</th>
         </tr>
       </thead>
       <tbody>
@@ -599,6 +609,7 @@ function renderTrackerMonth() {
             <td class="num">${r.on_time_count}</td>
             <td class="num">${fmt(r.on_time_pct)}%</td>
             <td class="num">${r.avg_delay_days === null ? '—' : fmt(r.avg_delay_days) + 'd'}</td>
+            <td class="num no-print"><a href="/api/personnel-pdf?employee=${encodeURIComponent(r.employee)}&month=${period}" target="_blank">📄 PDF</a></td>
           </tr>`).join('')}
       </tbody>
     </table>
@@ -652,6 +663,43 @@ function renderTrend(rows) {
     `<a class="pdf-link" href="/api/personnel-pdf?employee=${encodeURIComponent(emp)}" target="_blank">📄 ${emp}</a>`
   ).join('');
   document.getElementById('pdf-card').style.display = 'block';
+
+  populateYearlySelect(rows);
+}
+
+function populateYearlySelect(rows) {
+  const select = document.getElementById('yearly-select');
+  const years = [...new Set(rows.map(r => r.period.slice(0, 4)))].sort().reverse();
+  if (years.length === 0) {
+    document.getElementById('yearly-pdf-card').style.display = 'none';
+    return;
+  }
+  // Keep whatever year was already picked, if it's still in range — this
+  // runs again every time loadTrend() refreshes (e.g. right after an
+  // auto-save), and losing the selection on every save would be an
+  // annoying reset for no reason.
+  const previous = select.value;
+  select.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  select.value = years.includes(previous) ? previous : years[0];
+  document.getElementById('yearly-pdf-card').style.display = 'block';
+  renderYearlyLinks();
+}
+
+function renderYearlyLinks() {
+  const year = document.getElementById('yearly-select').value;
+  const yearRow = document.getElementById('yearly-pdf-row');
+  if (!year) { yearRow.innerHTML = ''; return; }
+
+  // Only engineers who actually have a saved month in this year get a
+  // link — an engineer who only joined the data later shouldn't offer
+  // a 2025 annual review that would just 404.
+  const employees = [...new Set(
+    allTrendRows.filter(r => r.period.startsWith(year)).map(r => r.employee)
+  )].sort();
+
+  yearRow.innerHTML = employees.map(emp =>
+    `<a class="pdf-link" href="/api/personnel-pdf?employee=${encodeURIComponent(emp)}&year=${year}" target="_blank">📄 ${emp} — ${year}</a>`
+  ).join('');
 }
 
 loadTrend();
