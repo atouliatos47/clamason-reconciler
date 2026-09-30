@@ -63,11 +63,29 @@
   .upload-section { background: white; border-radius: 10px; padding: 28px; margin-bottom: 24px; }
   .upload-section h2 { font-size: 15px; color: #243547; margin-bottom:4px; }
   .upload-section p { font-size: 12px; color: #888; margin-bottom: 20px; }
-  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; max-width: 460px; transition: all 0.2s; }
+  .upload-row { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+
+  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; max-width: 460px; flex: 1 1 380px; transition: all 0.2s; }
   .upload-card.done { border-color: #95C11F; border-style: solid; background: #f9fdf0; }
   .upload-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
   .upload-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
   .upload-card input[type=file] { display: none; }
+
+  .tracker-card { border: 1px solid #e2e5ea; border-radius: 8px; padding: 20px; max-width: 460px; flex: 1 1 320px; }
+  .tracker-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
+  .tracker-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
+  .tracker-card select {
+    width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px;
+    font-size: 12px; color: #243547; background: white; margin-bottom: 10px;
+  }
+  .tracker-print-btn {
+    display: none; padding: 7px 14px; background: #243547; color: white; border: none;
+    border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; margin-bottom: 12px;
+  }
+  .tracker-print-btn:hover { background: #95C11F; color: #243547; }
+  .tracker-table-wrap table { font-size: 11.5px; }
+  .tracker-table-wrap th, .tracker-table-wrap td { padding: 7px 8px; }
+  .tracker-empty { font-size: 11.5px; color: #aaa; }
   .upload-btn { display: inline-block; padding: 8px 18px; background: #243547; color: white; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
   .upload-btn:hover { background: #95C11F; color: #243547; }
   .file-status { font-size: 11px; margin-top: 8px; color: #95C11F; font-weight: bold; min-height: 16px; white-space: pre-line; }
@@ -116,6 +134,22 @@
   .state-msg.error { color: #dc2626; }
 
   footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+
+  /* Printing a browsed-up past month: everything except that one table
+     is hidden, rather than sending the whole page (sidebar, upload
+     card, live trend chart) to the printer for what's meant to be a
+     one-month record. The tracker card's own border/padding are
+     dropped too, since a printed page doesn't need the on-screen card
+     styling. */
+  @media print {
+    .sidebar, .page-header, .upload-section > h2, .upload-section > p,
+    .upload-card, .error-box, .run-btn, .results, .chart-card, #pdf-card,
+    .state-msg, footer, .tracker-card p, .tracker-card select, .tracker-print-btn {
+      display: none !important;
+    }
+    .tracker-card { border: none; padding: 0; max-width: none; }
+    body { background: white; }
+  }
 </style>
 </head>
 <body>
@@ -220,12 +254,24 @@ function toggleNavGroup(name) {
   <div class="upload-section">
     <h2>Import This Month's Due Date Performance</h2>
     <p>Run Reports &gt; Work Orders &gt; Due Date Performance in Agility for the month, once per Craft/Labour group (e.g. Maintenance, Electrician), and select all the exports together below — whoever completed a planned PPM job in them is picked up automatically, so this isn't limited to two files or two people.</p>
-    <div class="upload-card" id="card-xlsx">
-      <h3>📊 Due Date Performance export(s)</h3>
-      <p>One or more .xlsx files, e.g. AG3-205-WO_DueDate.xlsx</p>
-      <label class="upload-btn" for="xlsx-files">Choose File(s)</label>
-      <input type="file" id="xlsx-files" accept=".xlsx" multiple onchange="handleFiles(this)">
-      <div class="file-status" id="xlsx-status"></div>
+    <div class="upload-row">
+      <div class="upload-card" id="card-xlsx">
+        <h3>📊 Due Date Performance export(s)</h3>
+        <p>One or more .xlsx files, e.g. AG3-205-WO_DueDate.xlsx</p>
+        <label class="upload-btn" for="xlsx-files">Choose File(s)</label>
+        <input type="file" id="xlsx-files" accept=".xlsx" multiple onchange="handleFiles(this)">
+        <div class="file-status" id="xlsx-status"></div>
+      </div>
+
+      <div class="tracker-card" id="tracker-card">
+        <h3>🗓️ Browse a Saved Month</h3>
+        <p>Pull up any month already saved, to view or print — no need to re-upload anything.</p>
+        <select id="tracker-period" onchange="renderTrackerMonth()">
+          <option value="">Loading saved months…</option>
+        </select>
+        <button class="tracker-print-btn" id="tracker-print-btn" onclick="window.print()">🖨️ Print This Month</button>
+        <div class="tracker-table-wrap" id="tracker-table-wrap"></div>
+      </div>
     </div>
     <div class="error-box" id="error-box"></div>
     <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Check</button>
@@ -457,6 +503,9 @@ function clearCheck() {
 }
 
 let trendChart = null;
+let allTrendRows = []; // every (period, employee) row on file — feeds both the
+                        // chart and the "Browse a Saved Month" tracker, so
+                        // browsing a past month never needs its own fetch.
 
 async function loadTrend() {
   const stateMsg = document.getElementById('trend-state-msg');
@@ -472,10 +521,14 @@ async function loadTrend() {
   } catch (e) {
     stateMsg.className = 'state-msg error';
     stateMsg.textContent = 'Could not load trend data: ' + e.message;
+    populateTracker([]);
     return;
   }
 
   const rows = data.rows || [];
+  allTrendRows = rows;
+  populateTracker(rows);
+
   if (rows.length === 0) {
     stateMsg.textContent = 'No months saved yet. Run a check above and save it to start building the trend.';
     document.getElementById('pdf-card').style.display = 'none';
@@ -484,6 +537,73 @@ async function loadTrend() {
   stateMsg.style.display = 'none';
 
   renderTrend(rows);
+}
+
+function populateTracker(rows) {
+  const select = document.getElementById('tracker-period');
+  const periods = [...new Set(rows.map(r => r.period))].sort().reverse(); // newest first
+  const labelFor = {};
+  rows.forEach(r => { labelFor[r.period] = r.period_label || r.period; });
+
+  if (periods.length === 0) {
+    select.innerHTML = '<option value="">No months saved yet</option>';
+    select.disabled = true;
+    document.getElementById('tracker-table-wrap').innerHTML = '';
+    document.getElementById('tracker-print-btn').style.display = 'none';
+    return;
+  }
+
+  select.disabled = false;
+  select.innerHTML =
+    '<option value="">Choose a month…</option>' +
+    periods.map(p => `<option value="${p}">${labelFor[p]}</option>`).join('');
+}
+
+function renderTrackerMonth() {
+  const period = document.getElementById('tracker-period').value;
+  const wrap = document.getElementById('tracker-table-wrap');
+  const printBtn = document.getElementById('tracker-print-btn');
+
+  if (!period) {
+    wrap.innerHTML = '';
+    printBtn.style.display = 'none';
+    return;
+  }
+
+  const rows = allTrendRows
+    .filter(r => r.period === period)
+    .sort((a, b) => a.employee.localeCompare(b.employee));
+
+  const periodLabel = rows[0] ? (rows[0].period_label || rows[0].period) : period;
+
+  if (rows.length === 0) {
+    wrap.innerHTML = '<p class="tracker-empty">Nothing found for this month.</p>';
+    printBtn.style.display = 'none';
+    return;
+  }
+
+  wrap.innerHTML = `
+    <h4 style="font-size:12px;color:#243547;margin-bottom:8px;">${periodLabel} — Planned PPM Performance</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>Engineer</th><th class="num">Jobs</th><th class="num">On Time</th>
+          <th class="num">On Time %</th><th class="num">Avg Delay (late)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${r.employee}</td>
+            <td class="num">${r.jobs_completed}</td>
+            <td class="num">${r.on_time_count}</td>
+            <td class="num">${fmt(r.on_time_pct)}%</td>
+            <td class="num">${r.avg_delay_days === null ? '—' : fmt(r.avg_delay_days) + 'd'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+  printBtn.style.display = 'inline-block';
 }
 
 function renderTrend(rows) {
