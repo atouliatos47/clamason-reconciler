@@ -335,6 +335,104 @@ def get_all_runs():
     return result
 
 
+def save_personnel_run(employee_rows, period, period_label):
+    """Store one month's per-engineer planned-PPM figures. employee_rows
+    is the list parsers.due_date_performance_parser.summarise_by_employee()
+    returns; period is 'YYYY-MM' (from the upload form's month picker,
+    not typed free text — see schema.sql's comment on why); period_label
+    is the display form, e.g. 'Aug 2026'.
+
+    Re-saving the same (period, employee) pair overwrites that row
+    rather than creating a duplicate — same ON CONFLICT pattern as
+    save_run() above, just on a two-column key instead of one, since a
+    month has many engineers rather than one board figure.
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            for r in employee_rows:
+                cur.execute("""
+                    INSERT INTO personnel_ppm_monthly
+                        (period, period_label, employee, craft, jobs_completed,
+                         on_time_count, on_time_pct, avg_delay_days, median_delay_days,
+                         longest_delay_days, excluded_backlog_count, job_types)
+                    VALUES
+                        (%(period)s, %(period_label)s, %(employee)s, %(craft)s, %(jobs_completed)s,
+                         %(on_time_count)s, %(on_time_pct)s, %(avg_delay_days)s, %(median_delay_days)s,
+                         %(longest_delay_days)s, %(excluded_backlog_count)s, %(job_types)s)
+                    ON CONFLICT (period, employee) DO UPDATE SET
+                        period_label = EXCLUDED.period_label,
+                        craft = EXCLUDED.craft,
+                        jobs_completed = EXCLUDED.jobs_completed,
+                        on_time_count = EXCLUDED.on_time_count,
+                        on_time_pct = EXCLUDED.on_time_pct,
+                        avg_delay_days = EXCLUDED.avg_delay_days,
+                        median_delay_days = EXCLUDED.median_delay_days,
+                        longest_delay_days = EXCLUDED.longest_delay_days,
+                        excluded_backlog_count = EXCLUDED.excluded_backlog_count,
+                        job_types = EXCLUDED.job_types
+                """, {
+                    'period': period,
+                    'period_label': period_label,
+                    'employee': r['employee'],
+                    'craft': r['craft'],
+                    'jobs_completed': r['jobs_completed'],
+                    'on_time_count': r['on_time_count'],
+                    'on_time_pct': r['on_time_pct'],
+                    'avg_delay_days': r['avg_delay_days'],
+                    'median_delay_days': r['median_delay_days'],
+                    'longest_delay_days': r['longest_delay_days'],
+                    'excluded_backlog_count': r['excluded_backlog_count'],
+                    'job_types': json.dumps(r['job_types']),
+                })
+        conn.commit()
+
+
+def get_personnel_trend(employee=None):
+    """All stored personnel-month rows, oldest first — what the
+    Personnel page's trend chart reads. Pass employee to scope to one
+    engineer (used for that engineer's PDF); omit it for everyone, e.g.
+    to build the roster on the upload page.
+
+    Same Decimal-to-string problem as get_all_runs() above: psycopg2
+    hands NUMERIC columns back as Decimal, which Flask's jsonify quietly
+    turns into strings, which would quietly break the chart's math — so
+    those columns are converted to float explicitly before returning.
+    """
+    query = "SELECT * FROM personnel_ppm_monthly"
+    params = ()
+    if employee:
+        query += " WHERE employee = %s"
+        params = (employee,)
+    query += " ORDER BY period ASC, employee ASC"
+
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+
+    numeric_fields = ['on_time_pct', 'avg_delay_days', 'median_delay_days', 'longest_delay_days']
+    result = []
+    for r in rows:
+        row = dict(r)
+        for field in numeric_fields:
+            if row.get(field) is not None:
+                row[field] = float(row[field])
+        if row.get('created_at') is not None:
+            row['created_at'] = row['created_at'].isoformat()
+        result.append(row)
+    return result
+
+
+def get_personnel_employees():
+    """Distinct engineer names with at least one stored month, oldest-
+    saved data first ignored — just an alphabetical roster for the
+    Personnel page and for iterating PDFs across everyone on file."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT employee FROM personnel_ppm_monthly ORDER BY employee ASC")
+            return [row[0] for row in cur.fetchall()]
+
+
 def save_daily_snapshot(summary, date):
     """Store one day's Daily View result. summary is the dict returned
     by daily.compute_daily_summary(); date is a 'YYYY-MM-DD' string (or

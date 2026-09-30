@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Clamason — Production Plan</title>
+<title>Clamason — Personnel Performance</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
@@ -62,14 +63,14 @@
   .upload-section { background: white; border-radius: 10px; padding: 28px; margin-bottom: 24px; }
   .upload-section h2 { font-size: 15px; color: #243547; margin-bottom:4px; }
   .upload-section p { font-size: 12px; color: #888; margin-bottom: 20px; }
-  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; max-width: 420px; transition: all 0.2s; }
+  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; max-width: 460px; transition: all 0.2s; }
   .upload-card.done { border-color: #95C11F; border-style: solid; background: #f9fdf0; }
   .upload-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
   .upload-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
   .upload-card input[type=file] { display: none; }
   .upload-btn { display: inline-block; padding: 8px 18px; background: #243547; color: white; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
   .upload-btn:hover { background: #95C11F; color: #243547; }
-  .file-status { font-size: 11px; margin-top: 8px; color: #95C11F; font-weight: bold; min-height: 16px; }
+  .file-status { font-size: 11px; margin-top: 8px; color: #95C11F; font-weight: bold; min-height: 16px; white-space: pre-line; }
 
   .run-btn { padding: 14px 28px; background: #95C11F; color: #243547; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; margin-top: 20px; transition: opacity 0.2s; }
   .run-btn:hover { opacity: 0.9; }
@@ -78,7 +79,7 @@
   .action-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
   .date-field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .date-field label { font-size: 12px; color: #555; }
-  .date-field input[type=date] { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; color: #243547; }
+  .date-field input[type=month] { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; color: #243547; }
   .save-btn { padding: 9px 18px; background: #243547; color: white; font-size: 12px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
   .save-btn:hover { background: #1a2735; }
   .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -88,32 +89,31 @@
   .save-status.ok { color: #16a34a; }
   .save-status.err { color: #dc2626; }
 
-  .refile-note {
-    display: none; background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b;
-    border-radius: 6px; padding: 11px 14px; margin-bottom: 16px; font-size: 12px; color: #92400e; line-height: 1.5;
-  }
-  .refile-note strong { color: #78350f; }
-
   .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; display: none; }
 
-  .results { display: none; }
+  .results { display: none; margin-bottom: 24px; }
 
-  .scope-badge { background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; }
-
-  .kpi-row { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 24px; }
-  .kpi { background: white; border-radius: 8px; padding: 18px 20px; border-top: 4px solid #ddd; }
-  .kpi.green { border-top-color: #95C11F; }
-  .kpi.navy { border-top-color: #243547; }
-  .kpi label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-  .kpi .val { font-size: 26px; font-weight: bold; color: #243547; margin: 4px 0; }
-  .kpi .sub { font-size: 11px; color: #aaa; }
-
-  .table-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
-  .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; }
+  .table-card { background: white; border-radius: 10px; padding: 20px 22px; margin-bottom: 24px; }
+  .table-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
   td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
+  td.num, th.num { text-align: right; }
   tr:hover td { background: #fafafa; }
+
+  .chart-card { background: white; border-radius: 10px; padding: 20px 22px; margin-bottom: 24px; }
+  .chart-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .canvas-wrap { position: relative; height: 340px; }
+
+  .pdf-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .pdf-link {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; background: #243547;
+    color: white; font-size: 12px; font-weight: bold; text-decoration: none; border-radius: 6px;
+  }
+  .pdf-link:hover { background: #95C11F; color: #243547; }
+
+  .state-msg { background: white; border-radius: 10px; padding: 40px; text-align: center; color: #888; font-size: 13px; }
+  .state-msg.error { color: #dc2626; }
 
   footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
 </style>
@@ -138,24 +138,24 @@
       </div>
     </div>
     <div class="nav-group">
-      <button type="button" class="nav-group-header open" id="nav-header-production" onclick="toggleNavGroup('production')">
+      <button type="button" class="nav-group-header" id="nav-header-production" onclick="toggleNavGroup('production')">
         <span>Production</span><span class="chevron">▸</span>
       </button>
-      <div class="nav-group-items open" id="nav-group-production">
+      <div class="nav-group-items" id="nav-group-production">
         <a class="nav-item" href="/production">Monthly Performance Review</a>
         <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
         <a class="nav-item" href="/daily-oee">Daily OEE</a>
         <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
-        <a class="nav-item active" href="/production-plan">Production Plan</a>
+        <a class="nav-item" href="/production-plan">Production Plan</a>
         <a class="nav-item" href="/production-sfc-daily">SFC Daily</a>
         <a class="nav-item" href="/production-sfc-trend">SFC Trend</a>
       </div>
     </div>
     <div class="nav-group">
-      <button type="button" class="nav-group-header" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
+      <button type="button" class="nav-group-header open" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
         <span>Maintenance</span><span class="chevron">▸</span>
       </button>
-      <div class="nav-group-items" id="nav-group-maintenance">
+      <div class="nav-group-items open" id="nav-group-maintenance">
         <a class="nav-item" href="/maintenance">Monthly Performance Review</a>
         <a class="nav-item" href="/maintenance-notes">Notes and Action Plan</a>
         <a class="nav-item" href="/maintenance-sfc-vs-agility">SFC vs Agility</a>
@@ -164,7 +164,7 @@
         <a class="nav-item" href="/sfc-daily">SFC Daily</a>
         <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
         <a class="nav-item" href="/tpm-schedule">TPM Schedule</a>
-        <a class="nav-item" href="/maintenance-personnel">Personnel Performance</a>
+        <a class="nav-item active" href="/maintenance-personnel">Personnel Performance</a>
       </div>
     </div>
     <div class="nav-group">
@@ -211,20 +211,20 @@ function toggleNavGroup(name) {
 <div class="main">
 
 <div class="page-header">
-  <h1>Production Plan</h1>
-  <p>Weekly Plan Quantity and Plan Hours from Matt's Production Plan workbook (WK30-style)</p>
+  <h1>Personnel Performance</h1>
+  <p>Per-engineer planned PPM on-time completion, from Agility's Due Date Performance export — for performance reviews and monthly trend</p>
 </div>
 
 <div class="container">
 
   <div class="upload-section">
-    <h2>Upload This Week's Production Plan</h2>
-    <p>The weekly Production Plan workbook — auto-detects the right sheet by its Machinery / Planned / Available Run Hrs headers, whatever the sheet is named this week.</p>
+    <h2>Import This Month's Due Date Performance</h2>
+    <p>Run Reports &gt; Work Orders &gt; Due Date Performance in Agility for the month, once per Craft/Labour group (e.g. Maintenance, Electrician), and select all the exports together below — whoever completed a planned PPM job in them is picked up automatically, so this isn't limited to two files or two people.</p>
     <div class="upload-card" id="card-xlsx">
-      <h3>📊 Production Plan Workbook</h3>
-      <p>.xlsx export, e.g. WK_30D_2026.xlsx</p>
-      <label class="upload-btn" for="xlsx-file">Choose File</label>
-      <input type="file" id="xlsx-file" accept=".xlsx" onchange="handleFile(this)">
+      <h3>📊 Due Date Performance export(s)</h3>
+      <p>One or more .xlsx files, e.g. AG3-205-WO_DueDate.xlsx</p>
+      <label class="upload-btn" for="xlsx-files">Choose File(s)</label>
+      <input type="file" id="xlsx-files" accept=".xlsx" multiple onchange="handleFiles(this)">
       <div class="file-status" id="xlsx-status"></div>
     </div>
     <div class="error-box" id="error-box"></div>
@@ -233,34 +233,46 @@ function toggleNavGroup(name) {
 
   <div class="results" id="results">
 
-    <div class="refile-note" id="refile-note">
-      <strong>File needed to save.</strong> This page never trusts numbers already shown on screen — saving always re-parses the uploaded workbook. Re-select the file above before saving if you've just restored this check or changed the week.
-    </div>
-
     <div class="action-row">
-      <div class="scope-badge" id="scope-badge"></div>
+      <div style="font-size:12px;color:#555;">
+        <strong id="employee-count">—</strong> engineer(s) found with planned PPM jobs
+      </div>
       <div class="date-field">
-        <label for="save-week">Week (any day in it):</label>
-        <input type="date" id="save-week">
-        <button class="save-btn" id="save-btn" onclick="savePlan()">💾 Save</button>
+        <label for="save-period">Month:</label>
+        <input type="month" id="save-period">
+        <button class="save-btn" id="save-btn" onclick="savePersonnel()">💾 Save</button>
         <button class="clear-btn" id="clear-btn" onclick="clearCheck()">↺ Clear / New Check</button>
         <span class="save-status" id="save-status"></span>
       </div>
     </div>
 
-    <div class="kpi-row">
-      <div class="kpi green"><label>Plan Quantity</label><div class="val" id="kpi-qty">—</div><div class="sub">Sum of Planned column</div></div>
-      <div class="kpi navy"><label>Plan Hours</label><div class="val" id="kpi-hours">—</div><div class="sub">Sum of Available Run Hrs</div></div>
-    </div>
-
     <div class="table-card">
-      <h3>Check Detail</h3>
+      <h3>This Month — Planned PPM Performance</h3>
       <table>
-        <tbody id="detail-tbody"></tbody>
+        <thead>
+          <tr>
+            <th>Engineer</th><th class="num">Jobs</th><th class="num">On Time</th>
+            <th class="num">On Time %</th><th class="num">Avg Delay (late)</th>
+            <th class="num">Median Delay (late)</th><th class="num">Longest Delay</th>
+          </tr>
+        </thead>
+        <tbody id="check-tbody"></tbody>
       </table>
     </div>
 
   </div>
+
+  <div class="chart-card">
+    <h3>On Time % — Trend by Engineer</h3>
+    <div class="canvas-wrap"><canvas id="trendChart"></canvas></div>
+  </div>
+
+  <div class="table-card" id="pdf-card" style="display:none;">
+    <h3>Printable PPM Performance Reports</h3>
+    <div class="pdf-row" id="pdf-row"></div>
+  </div>
+
+  <div class="state-msg" id="trend-state-msg">Loading trend history...</div>
 
 </div>
 
@@ -269,81 +281,36 @@ function toggleNavGroup(name) {
 </div>
 
 <script>
-let file = null;
-let lastResult = null;
-let fileName = null;
-let checkedAt = null;
-let fileReselected = true; // true right after a fresh upload+check; false after a restore
+const NAVY = '#243547', LIME = '#95C11F';
+// A small fixed palette so the same engineer keeps roughly the same
+// colour across page loads (Chart.js has no notion of "this dataset
+// belongs to Richard" — it just draws datasets in array order — so
+// this only stays visually stable while the sorted employee list
+// doesn't change, which is good enough for a handful of engineers).
+const CHART_COLOURS = ['#95C11F', '#243547', '#E65100', '#1565C0', '#8E24AA', '#00897B', '#C62828'];
 
-const STORAGE_KEY = 'clamason.productionPlan.lastCheck.v1';
+let files = [];
 
-function persist() {
-  if (!lastResult) return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      v: 1,
-      result: lastResult,
-      fileName: fileName,
-      checkedAt: checkedAt,
-      saveWeek: document.getElementById('save-week').value || '',
-      saveStatus: {
-        text: document.getElementById('save-status').textContent || '',
-        cls: document.getElementById('save-status').className || 'save-status',
-      },
-    }));
-  } catch (e) {
-    console.warn('Could not persist Production Plan check:', e);
-  }
+function fmt(n, d = 1) {
+  return (n === null || n === undefined) ? '—' : Number(n).toFixed(d);
 }
 
-function clearStored() {
-  try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* nothing to do */ }
-}
-
-function restore() {
-  let saved;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    saved = JSON.parse(raw);
-  } catch (e) { return; }
-  if (!saved || !saved.result) return;
-
-  lastResult = saved.result;
-  fileName = saved.fileName;
-  checkedAt = saved.checkedAt;
-  fileReselected = false;
-
-  renderResult(lastResult, fileName, checkedAt);
-
-  if (saved.saveWeek) document.getElementById('save-week').value = saved.saveWeek;
-  if (saved.saveStatus && saved.saveStatus.text) {
-    const s = document.getElementById('save-status');
-    s.textContent = saved.saveStatus.text;
-    s.className = saved.saveStatus.cls;
-  }
-
-  document.getElementById('refile-note').style.display = 'block';
-}
-
-function handleFile(input) {
-  file = input.files[0] || null;
-  fileReselected = true;
-  document.getElementById('refile-note').style.display = 'none';
+function handleFiles(input) {
+  files = Array.from(input.files || []);
   const status = document.getElementById('xlsx-status');
   const card = document.getElementById('card-xlsx');
-  if (file) {
-    status.textContent = '✓ ' + file.name;
+  if (files.length) {
+    status.textContent = files.map(f => '✓ ' + f.name).join('\n');
     card.classList.add('done');
   } else {
     status.textContent = '';
     card.classList.remove('done');
   }
-  document.getElementById('run-btn').disabled = !file;
+  document.getElementById('run-btn').disabled = files.length === 0;
 }
 
 async function runCheck() {
-  if (!file) return;
+  if (!files.length) return;
   const runBtn = document.getElementById('run-btn');
   const errorBox = document.getElementById('error-box');
   errorBox.style.display = 'none';
@@ -352,8 +319,8 @@ async function runCheck() {
 
   try {
     const fd = new FormData();
-    fd.append('production_plan', file);
-    const res = await fetch('/api/production-plan-check', { method: 'POST', body: fd });
+    files.forEach(f => fd.append('due_date_files', f));
+    const res = await fetch('/api/personnel-check', { method: 'POST', body: fd });
     const data = await res.json();
 
     if (data.error) {
@@ -363,20 +330,16 @@ async function runCheck() {
       return;
     }
 
-    lastResult = data;
-    fileName = data.filename || file.name;
-    checkedAt = new Date().toISOString();
+    renderCheck(data.employees || []);
 
-    renderResult(lastResult, fileName, checkedAt);
-
-    // Default the week picker to today so Save works with zero extra clicks
-    // for the common case of checking the current week's plan.
-    const weekInput = document.getElementById('save-week');
-    if (!weekInput.value) weekInput.value = new Date().toISOString().slice(0, 10);
+    // Default the month picker to the current month so Save works with
+    // zero extra clicks for the common case of checking last month's
+    // export at the start of a new month.
+    const periodInput = document.getElementById('save-period');
+    if (!periodInput.value) periodInput.value = new Date().toISOString().slice(0, 7);
 
     document.getElementById('save-status').textContent = '';
     document.getElementById('save-status').className = 'save-status';
-    persist();
   } catch (e) {
     errorBox.textContent = 'Request failed: ' + e.message;
     errorBox.style.display = 'block';
@@ -386,37 +349,37 @@ async function runCheck() {
   }
 }
 
-function renderResult(data, fname, checkedAtIso) {
-  document.getElementById('kpi-qty').textContent = Number(data.plan_quantity).toLocaleString();
-  document.getElementById('kpi-hours').textContent = Number(data.plan_hours).toLocaleString();
+function renderCheck(employees) {
+  document.getElementById('employee-count').textContent = employees.length;
 
-  document.getElementById('scope-badge').textContent = 'Sheet: ' + (data.sheet_name || '—');
-
-  const tbody = document.getElementById('detail-tbody');
-  const rows = [
-    ['Source file', fname || '—'],
-    ['Sheet found', data.sheet_name || '—'],
-    ['Checked at', checkedAtIso ? new Date(checkedAtIso).toLocaleString('en-GB') : '—'],
-  ];
-  tbody.innerHTML = rows.map(r => `<tr><td style="color:#888;">${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+  const tbody = document.getElementById('check-tbody');
+  tbody.innerHTML = employees.map(e => `
+    <tr>
+      <td>${e.employee}</td>
+      <td class="num">${e.jobs_completed}</td>
+      <td class="num">${e.on_time_count}</td>
+      <td class="num">${fmt(e.on_time_pct)}%</td>
+      <td class="num">${e.avg_delay_days === null ? '—' : fmt(e.avg_delay_days) + 'd'}</td>
+      <td class="num">${e.median_delay_days === null ? '—' : fmt(e.median_delay_days) + 'd'}</td>
+      <td class="num">${e.longest_delay_days === null ? '—' : e.longest_delay_days + 'd'}</td>
+    </tr>`).join('');
 
   document.getElementById('results').style.display = 'block';
 }
 
-async function savePlan() {
-  const weekInput = document.getElementById('save-week');
+async function savePersonnel() {
+  const periodInput = document.getElementById('save-period');
   const status = document.getElementById('save-status');
   const saveBtn = document.getElementById('save-btn');
 
-  if (!weekInput.value) {
-    status.textContent = 'Pick a date first';
+  if (!periodInput.value) {
+    status.textContent = 'Pick a month first';
     status.className = 'save-status err';
     return;
   }
-  if (!file || !fileReselected) {
-    status.textContent = 'Re-select the file above before saving';
+  if (!files.length) {
+    status.textContent = 'Re-select the file(s) above before saving';
     status.className = 'save-status err';
-    document.getElementById('refile-note').style.display = 'block';
     return;
   }
 
@@ -426,9 +389,9 @@ async function savePlan() {
 
   try {
     const fd = new FormData();
-    fd.append('production_plan', file);
-    fd.append('week_start', weekInput.value);
-    const res = await fetch('/api/save-production-plan', { method: 'POST', body: fd });
+    files.forEach(f => fd.append('due_date_files', f));
+    fd.append('period', periodInput.value);
+    const res = await fetch('/api/save-personnel', { method: 'POST', body: fd });
     const data = await res.json();
 
     if (data.error) {
@@ -437,9 +400,9 @@ async function savePlan() {
       return;
     }
 
-    status.textContent = '✓ Saved for week of ' + data.week_start;
+    status.textContent = '✓ Saved for ' + data.period_label;
     status.className = 'save-status ok';
-    persist();
+    loadTrend(); // pick up the just-saved month straight away
   } catch (e) {
     status.textContent = 'Save failed: ' + e.message;
     status.className = 'save-status err';
@@ -449,26 +412,96 @@ async function savePlan() {
 }
 
 function clearCheck() {
-  file = null;
-  lastResult = null;
-  fileName = null;
-  checkedAt = null;
-  fileReselected = true;
-  clearStored();
-
-  document.getElementById('xlsx-file').value = '';
+  files = [];
+  document.getElementById('xlsx-files').value = '';
   document.getElementById('xlsx-status').textContent = '';
   document.getElementById('card-xlsx').classList.remove('done');
   document.getElementById('run-btn').disabled = true;
-  document.getElementById('error-box').style.display = 'none';
   document.getElementById('results').style.display = 'none';
-  document.getElementById('refile-note').style.display = 'none';
-  document.getElementById('save-week').value = '';
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('save-period').value = '';
   document.getElementById('save-status').textContent = '';
-  document.getElementById('save-status').className = 'save-status';
 }
 
-restore();
+let trendChart = null;
+
+async function loadTrend() {
+  const stateMsg = document.getElementById('trend-state-msg');
+  stateMsg.style.display = 'block';
+  stateMsg.className = 'state-msg';
+  stateMsg.textContent = 'Loading trend history...';
+
+  let data;
+  try {
+    const res = await fetch('/api/personnel-trend');
+    data = await res.json();
+    if (data.error) throw new Error(data.error);
+  } catch (e) {
+    stateMsg.className = 'state-msg error';
+    stateMsg.textContent = 'Could not load trend data: ' + e.message;
+    return;
+  }
+
+  const rows = data.rows || [];
+  if (rows.length === 0) {
+    stateMsg.textContent = 'No months saved yet. Run a check above and save it to start building the trend.';
+    document.getElementById('pdf-card').style.display = 'none';
+    return;
+  }
+  stateMsg.style.display = 'none';
+
+  renderTrend(rows);
+}
+
+function renderTrend(rows) {
+  // rows is every (period, employee) saved, oldest period first — group
+  // into one series per employee, and collect every period label seen
+  // (in order) as the shared x-axis, so a month where only one engineer
+  // was uploaded still lines up correctly against a month with several.
+  const employees = [...new Set(rows.map(r => r.employee))].sort();
+  const periods = [...new Set(rows.map(r => r.period))].sort();
+  const labelFor = {};
+  rows.forEach(r => { labelFor[r.period] = r.period_label || r.period; });
+  const labels = periods.map(p => labelFor[p]);
+
+  const byEmployeePeriod = {};
+  rows.forEach(r => {
+    byEmployeePeriod[r.employee + '|' + r.period] = r;
+  });
+
+  const datasets = employees.map((emp, i) => {
+    const colour = CHART_COLOURS[i % CHART_COLOURS.length];
+    return {
+      label: emp,
+      data: periods.map(p => {
+        const r = byEmployeePeriod[emp + '|' + p];
+        return r ? r.on_time_pct : null;
+      }),
+      borderColor: colour, backgroundColor: colour + '15',
+      spanGaps: true, tension: 0.25,
+      pointBackgroundColor: colour, pointRadius: 4,
+    };
+  });
+
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'bottom' } },
+      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+    },
+  });
+
+  const pdfRow = document.getElementById('pdf-row');
+  pdfRow.innerHTML = employees.map(emp =>
+    `<a class="pdf-link" href="/api/personnel-pdf?employee=${encodeURIComponent(emp)}" target="_blank">📄 ${emp}</a>`
+  ).join('');
+  document.getElementById('pdf-card').style.display = 'block';
+}
+
+loadTrend();
 </script>
 
 </body>

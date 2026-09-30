@@ -230,6 +230,54 @@ ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_intended_configured_count 
 
 
 -- ---------------------------------------------------------------------------
+-- personnel_ppm_monthly — one row per (engineer, month): the planned-PPM
+-- on-time performance behind the Personnel section. Built the same way as
+-- the manual monthly check-in — see parsers/due_date_performance_parser.py's
+-- summarise_by_employee() for the methodology (Planned Service & Maintenance
+-- + Tool Preventative Maintenance only, due dates from 1 Jan 2026 on, delay
+-- stats computed only across the late jobs).
+--
+-- employee is free text exactly as Agility prints it (e.g. "RICHARD
+-- HICKMAN"), not a foreign key into a roster table — there is no employee
+-- table in this app, and Agility's own Craft/Labour filter doesn't reliably
+-- isolate one person (it returns a whole craft, e.g. every Maintenance-craft
+-- job, not just one engineer's — confirmed from a real August 2026 export
+-- that also contained Jamie Halford's jobs). So this table is additive:
+-- whoever has completed planned PPM jobs in a given month's export gets a
+-- row, with no fixed roster maintained here to fall out of date.
+--
+-- period is 'YYYY-MM' (from an HTML month input on the upload form, not
+-- free-typed) so it sorts correctly for the trend chart without parsing —
+-- monthly_runs' period/period_label pair learned that lesson the hard way
+-- (see its save_run() docstring); period_label is the display form ('Aug
+-- 2026'), derived from period, never typed separately.
+--
+-- UNIQUE on (period, employee): re-uploading a corrected export for a month
+-- already saved overwrites that engineer's row instead of duplicating it,
+-- same ON CONFLICT ... DO UPDATE pattern as monthly_runs.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS personnel_ppm_monthly (
+    id                    SERIAL PRIMARY KEY,
+    period                TEXT NOT NULL,   -- 'YYYY-MM', e.g. '2026-08'
+    period_label          TEXT NOT NULL,   -- 'Aug 2026'
+    employee              TEXT NOT NULL,   -- as Agility prints it, e.g. 'RICHARD HICKMAN'
+    craft                 TEXT,            -- Agility Craft/Labour group the export was run under, e.g. 'Maintenance'
+    jobs_completed        INTEGER,         -- planned PPM jobs only (see methodology above)
+    on_time_count         INTEGER,
+    on_time_pct           NUMERIC,
+    avg_delay_days        NUMERIC,         -- across late jobs only
+    median_delay_days     NUMERIC,         -- across late jobs only
+    longest_delay_days    NUMERIC,
+    excluded_backlog_count INTEGER,        -- jobs skipped for a due date before 1 Jan 2026
+    job_types             JSONB,           -- which planned job types this person actually had this month
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_personnel_ppm_monthly_period_employee
+    ON personnel_ppm_monthly (period, employee);
+
+
+-- ---------------------------------------------------------------------------
 -- daily_snapshots — one row per day of the Agility-side Daily View
 -- (daily.compute_daily_summary output). Written by db.save_daily_snapshot(),
 -- read by db.get_daily_snapshots() for the Daily Trend rollups.

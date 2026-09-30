@@ -23,7 +23,7 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, PageBreak
 )
 
-from config import BLAME_FAULT_CODES
+from config import BLAME_FAULT_CODES, PERSONNEL_PPM_BACKLOG_CUTOFF
 
 NAVY = colors.HexColor('#243547')
 LIME = colors.HexColor('#95C11F')
@@ -319,6 +319,188 @@ def build_gap_pdf(result):
     _build_sfc_reasons_table(story, styles, sfc_summary)
     _build_wo_table(story, styles, matched_wos)
     _build_recommendations(story, styles, gap_hrs, gap_pct)
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
+
+# ---------------------------------------------------------------------------
+# Personnel PPM performance — one PDF per engineer, this month plus their
+# full trend history, built for a performance-review file (Andreas's own
+# framing when this feature was scoped). Deliberately separate build_*
+# helpers from the ones above even where the shape is similar (a header
+# banner, a headline number, a Metric/Value table) rather than generalising
+# both into one shared set — the gap report and a personnel report answer
+# different questions, and a "flexible" shared helper trying to serve both
+# is more likely to break one while changing the other than to save real
+# duplication.
+# ---------------------------------------------------------------------------
+
+def _build_personnel_header(story, styles, employee_display, period_label):
+    hdr = Table(
+        [[Paragraph(f'{employee_display} — PPM Performance', styles['title']),
+          Paragraph(f'As of: {period_label}', styles['sub'])]],
+        colWidths=[120 * mm, 65 * mm],
+    )
+    hdr.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), NAVY),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6 * mm),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4 * mm),
+        ('TOPPADDING', (0, 0), (-1, -1), 5 * mm),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5 * mm),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+    ]))
+    story.append(hdr)
+    story.append(Spacer(1, 6 * mm))
+
+
+def _build_personnel_headline(story, styles, latest):
+    """No red/amber/green verdict band, unlike the gap report's headline
+    — that would mean picking an on-time% threshold for "good" that
+    nobody has actually agreed, on a document meant for a performance
+    review. The number speaks for itself; judgement is the reviewer's."""
+    job_types = latest.get('job_types') or []
+    types_desc = ' and '.join(job_types) if job_types else 'planned PPM'
+    on_time_pct = latest.get('on_time_pct')
+    plain = (
+        f"<b>{latest['jobs_completed']}</b> {types_desc} job"
+        f"{'s' if latest['jobs_completed'] != 1 else ''} completed in {latest['period_label']}, "
+        f"<b>{latest['on_time_count']}</b> on or before the due date."
+    )
+    headline = Table([
+        [Paragraph('ON-TIME COMPLETION', styles['headline_label'])],
+        [Spacer(1, 3 * mm)],
+        [Paragraph(f"{on_time_pct:.1f}%" if on_time_pct is not None else '—', styles['headline_num'])],
+        [Spacer(1, 4 * mm)],
+        [Paragraph(plain, styles['headline_text'])],
+    ], colWidths=[185 * mm])
+    headline.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), NAVY),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (0, 0), 5 * mm),
+        ('BOTTOMPADDING', (0, 0), (0, -1), 0),
+        ('TOPPADDING', (0, 1), (0, -1), 0),
+        ('BOTTOMPADDING', (0, -1), (0, -1), 5 * mm),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8 * mm),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8 * mm),
+    ]))
+    story.append(headline)
+    story.append(Spacer(1, 5 * mm))
+
+
+def _build_personnel_summary_table(story, styles, latest):
+    story.append(Paragraph(f"{latest['period_label']} Summary", styles['section']))
+    story.append(HRFlowable(width='100%', thickness=2, color=LIME, spaceAfter=4))
+
+    on_time_pct = latest.get('on_time_pct')
+    rows = [
+        ['Planned PPM jobs completed', str(latest['jobs_completed'])],
+        ['Completed on or before due date', f"{on_time_pct:.1f}%" if on_time_pct is not None else '—'],
+        ['Completed late', f"{100 - on_time_pct:.1f}%" if on_time_pct is not None else '—'],
+        ['Average delay when late', f"{latest['avg_delay_days']:.1f} days" if latest.get('avg_delay_days') is not None else '— (none late)'],
+        ['Median delay when late', f"{latest['median_delay_days']:.1f} days" if latest.get('median_delay_days') is not None else '— (none late)'],
+        ['Longest delay', f"{latest['longest_delay_days']:.0f} days" if latest.get('longest_delay_days') is not None else '— (none late)'],
+    ]
+    if latest.get('excluded_backlog_count'):
+        rows.append(['Backlog jobs excluded (due before cutoff)', str(latest['excluded_backlog_count'])])
+
+    t = Table(rows, colWidths=[120 * mm, 65 * mm])
+    t.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [LIGHT_GREY, colors.white]),
+        ('GRID', (0, 0), (-1, -1), 0.5, MID_GREY),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4 * mm),
+        ('TOPPADDING', (0, 0), (-1, -1), 2.5 * mm),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5 * mm),
+        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (1, 0), (1, -1), NAVY),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 5 * mm))
+
+
+def _build_personnel_trend_table(story, styles, months):
+    """months is every stored row for this engineer, oldest first (as
+    db.get_personnel_trend returns it) — printed newest first, since a
+    reviewer reading a printed page wants this month before last year."""
+    story.append(Paragraph('Monthly Trend', styles['section']))
+    story.append(HRFlowable(width='100%', thickness=2, color=LIME, spaceAfter=4))
+
+    header = [Paragraph(t, _ps(f'mh{i}', fontSize=9, textColor=colors.white, fontName='Helvetica-Bold'))
+              for i, t in enumerate(['Month', 'Jobs completed', 'On-time %', 'Avg delay when late (days)'])]
+    rows = [header]
+    for m in reversed(months):
+        on_time_pct = m.get('on_time_pct')
+        avg_delay = m.get('avg_delay_days')
+        rows.append([
+            m['period_label'],
+            str(m['jobs_completed']),
+            f"{on_time_pct:.1f}%" if on_time_pct is not None else '—',
+            f"{avg_delay:.1f}" if avg_delay is not None else '—',
+        ])
+
+    t = Table(rows, colWidths=[40 * mm, 45 * mm, 40 * mm, 60 * mm])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), NAVY),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [LIGHT_GREY, colors.white]),
+        ('GRID', (0, 0), (-1, -1), 0.5, MID_GREY),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3 * mm),
+        ('TOPPADDING', (0, 0), (-1, -1), 2.5 * mm),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5 * mm),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 3 * mm))
+
+
+def _build_personnel_footnote(story, styles):
+    story.append(Paragraph(
+        'Source: Agility CMMS – Due Date Performance report. Restricted to Planned Service '
+        '&amp; Maintenance and Tool Preventative Maintenance job types. Jobs with due dates '
+        f'before {PERSONNEL_PPM_BACKLOG_CUTOFF} are excluded — a one-off historical backlog '
+        'cleanup, not representative of ongoing performance. On-time completion is measured by '
+        'calendar date, not time of day.', styles['footnote']))
+    story.append(Spacer(1, 3 * mm))
+    story.append(Paragraph(
+        'Generated by Clamason Performance Hub  |  Prepared by Andreas Touliatos', styles['footer']))
+
+
+def build_personnel_pdf(employee, months):
+    """employee is the display name to print (title-cased by the
+    caller); months is db.get_personnel_trend(employee)'s result —
+    every stored month for this one engineer, oldest first, at least
+    one row (the route checks before calling this)."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=15 * mm, rightMargin=15 * mm, topMargin=15 * mm, bottomMargin=15 * mm,
+    )
+
+    styles = {
+        'title': _ps('pt', fontSize=15, textColor=colors.white, fontName='Helvetica-Bold'),
+        'sub': _ps('ps', fontSize=8, textColor=LIME, fontName='Helvetica'),
+        'section': _ps('psc', fontSize=11, textColor=NAVY, fontName='Helvetica-Bold', spaceBefore=8, spaceAfter=3),
+        'body': _ps('pb', fontSize=9, textColor=colors.HexColor('#333333'), fontName='Helvetica', leading=13),
+        'footnote': _ps('pfn', fontSize=7.5, textColor=colors.HexColor('#777777'), fontName='Helvetica-Oblique', leading=10),
+        'footer': _ps('pf', fontSize=7, textColor=colors.HexColor('#999999'), fontName='Helvetica', alignment=TA_CENTER),
+        'headline_num': _ps('phn', fontSize=34, textColor=colors.white, fontName='Helvetica-Bold', alignment=TA_CENTER, leading=40),
+        'headline_label': _ps('phl', fontSize=10, textColor=colors.white, fontName='Helvetica-Bold', alignment=TA_CENTER),
+        'headline_text': _ps('pht', fontSize=11, textColor=colors.white, fontName='Helvetica', alignment=TA_CENTER, leading=15),
+    }
+
+    latest = months[-1]
+    story = []
+    _build_personnel_header(story, styles, employee, latest['period_label'])
+    _build_personnel_headline(story, styles, latest)
+    _build_personnel_summary_table(story, styles, latest)
+    _build_personnel_trend_table(story, styles, months)
+    _build_personnel_footnote(story, styles)
 
     doc.build(story)
     buf.seek(0)

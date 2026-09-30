@@ -211,6 +211,40 @@ PROJECT_JOB_TYPES_DAILY = {
     'efficiency improvement',
 }
 
+# --- Personnel PPM performance (per-engineer, monthly) ----------------------
+# A THIRD, deliberately narrower set from both of the above — this is what
+# counts as "planned PPM" for an individual engineer's on-time performance,
+# not the Daily View's broader bucket (PLANNED_JOB_TYPES_DAILY also includes
+# Routine Minor Service) and not the board's single company-wide TPM figure
+# (due_date_performance_parser.summarise_due_date_performance, which only
+# ever looked at Planned Service & Maintenance). Set by Andreas when this
+# feature was scoped: Planned Service & Maintenance and Tool Preventative
+# Maintenance only, nothing else, however small.
+PERSONNEL_PPM_JOB_TYPES = {
+    'Planned Service & Maintenance',
+    'Tool Preventative Maintenance',
+}
+
+# Jobs due before this date are excluded from Personnel PPM performance —
+# a one-off historical backlog cleanup, not representative of ongoing
+# on-time performance. Not a moving window: this is a fixed date agreed
+# once, the same cutoff already in use in the Richard Hickman and George
+# Boyle PPM Performance Claude Docs reports.
+PERSONNEL_PPM_BACKLOG_CUTOFF = '2026-01-01'
+
+# Names to drop from Personnel PPM performance regardless of what an
+# export contains — people who no longer work at Clamason (Jamie
+# Halford, confirmed by Andreas September 2026), so a leaver's old jobs
+# don't keep showing up on a performance report just because Agility's
+# Craft/Labour filter happened to include them again. Auto-detection
+# (summarise_by_employee) still means nobody needs adding here when a
+# new engineer joins — this list only ever needs a name added when
+# someone leaves, never removed for someone arriving. Match against the
+# exact uppercase form Agility's Employee column prints.
+PERSONNEL_PPM_EXCLUDED_EMPLOYEES = {
+    'JAMIE HALFORD',
+}
+
 # Deliberately excluded from every bucket above — confirmed to be used
 # inconsistently for both planned and reactive work in practice, so it
 # can't be trusted either way until logging discipline improves (see the

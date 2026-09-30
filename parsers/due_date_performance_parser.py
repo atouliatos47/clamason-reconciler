@@ -33,14 +33,38 @@ Dates scattered across 2020. That's a backlog being cleared in one
 administrative sweep, not ordinary lateness, and it single-handedly
 drags July's on-time% down by roughly 15 points. Worth knowing before
 reading a low month as a sudden performance drop.
+
+PER-ENGINEER PERSONNEL FIGURES (summarise_by_employee, added later)
+---------------------------------------------------------------------
+Same export, same file, a different cut: instead of one company-wide
+on-time % this groups by the Employee column to answer "how is Richard
+doing, how is George doing." Confirmed from a real August 2026 pair of
+exports that Agility's Craft/Labour filter does NOT isolate one person
+— running it for Craft = Maintenance returned Richard Hickman's,
+George Boyle's AND Jamie Halford's jobs together (plus some rows with
+no employee at all, or a bare numeric code instead of a name — payroll
+IDs for a leaver or an unassigned job, never resolved to a name by
+Agility's export). So this function is deliberately tolerant of extra
+people showing up in an export and deliberately drops rows with no
+usable employee name, rather than assuming the file contains only the
+one person Andreas meant to filter for.
 """
+import statistics
 import pandas as pd
+
+import config
 
 
 def parse_due_date_performance(filepath):
     """Returns a list of dicts: asset, job_type, status, due_date,
-    comp_date (both as pandas Timestamps), for every row with valid
-    dates on both sides.
+    comp_date, employee, crafts (both as pandas Timestamps for the
+    dates), for every row with valid dates on both sides.
+
+    employee and crafts are '' when the export has no such column (an
+    older or differently-configured report) rather than raising —
+    summarise_due_date_performance doesn't touch them at all, and
+    summarise_by_employee treats a blank employee as "not a real
+    person" and drops the row (see its own docstring).
 
     Raises ValueError if the expected header row isn't found — better
     than silently reading the wrong columns as data.
@@ -61,7 +85,7 @@ def parse_due_date_performance(filepath):
 
     header = [str(c).strip().lower() if pd.notna(c) else '' for c in df.iloc[header_row]]
     col = {name: header.index(name) for name in
-           ('asset', 'job type', 'status', 'due date')
+           ('asset', 'job type', 'status', 'due date', 'employee', 'crafts')
            if name in header}
     comp_col = header.index('comp date') if 'comp date' in header else header.index('completion date')
 
@@ -78,6 +102,8 @@ def parse_due_date_performance(filepath):
             'status': str(row[col['status']]).strip() if 'status' in col else '',
             'due_date': due,
             'comp_date': comp,
+            'employee': str(row[col['employee']]).strip() if 'employee' in col and pd.notna(row[col['employee']]) else '',
+            'crafts': str(row[col['crafts']]).strip() if 'crafts' in col and pd.notna(row[col['crafts']]) else '',
         })
     return records
 
@@ -100,3 +126,97 @@ def summarise_due_date_performance(records):
         'completed': on_time,
         'pct': round(on_time / total * 100, 1) if total else None,
     }
+
+
+def _is_real_employee(name):
+    """True for something that looks like an actual person's name, not
+    a blank cell or a bare payroll number. Agility exports both: some
+    rows have no Employee at all, and some have a numeric code (e.g.
+    '22', '130') instead of a name — neither can be shown on a
+    performance report, so both are dropped rather than guessed at.
+
+    Also filters out config.PERSONNEL_PPM_EXCLUDED_EMPLOYEES — people
+    who no longer work at Clamason. Confirmed real case: Jamie Halford
+    still turns up in a Maintenance-craft export months after leaving,
+    because Agility's Craft/Labour filter returns the whole craft
+    group, not one current employee (see this module's docstring)."""
+    if not name or name.isdigit():
+        return False
+    if name.strip().upper() in config.PERSONNEL_PPM_EXCLUDED_EMPLOYEES:
+        return False
+    return True
+
+
+def summarise_by_employee(all_records):
+    """Per-engineer planned-PPM performance for one period, across
+    however many exports were uploaded together (e.g. a Maintenance-
+    craft file and an Electrician-craft file) — pass in the combined
+    list of parse_due_date_performance() records from all of them.
+
+    Scope, same as the Richard Hickman / George Boyle Claude Docs
+    reports this is built to match:
+      - Job Type in config.PERSONNEL_PPM_JOB_TYPES (Planned Service &
+        Maintenance + Tool Preventative Maintenance) — a narrower set
+        than either of the other two job-type buckets in config.py;
+        see its comment for why this one is kept separate.
+      - due_date on or after config.PERSONNEL_PPM_BACKLOG_CUTOFF.
+        Earlier due dates are counted separately as excluded_backlog
+        rather than silently dropped, so a month that clears old
+        backlog doesn't read as a mysteriously smaller job count.
+      - Rows with no usable employee name are dropped entirely
+        (_is_real_employee) — they can't be attributed to anyone's
+        performance review.
+
+    Delay is measured in whole calendar days (comp_date.date() -
+    due_date.date()), the same date-not-timestamp comparison
+    summarise_due_date_performance uses above, and only over the LATE
+    jobs — a job finished early has no "lateness" to average in.
+
+    Returns a list of dicts, one per employee, unsorted (the caller
+    decides display order):
+        employee, craft, jobs_completed, on_time_count, on_time_pct,
+        avg_delay_days, median_delay_days, longest_delay_days,
+        excluded_backlog_count, job_types
+    """
+    cutoff = pd.Timestamp(config.PERSONNEL_PPM_BACKLOG_CUTOFF)
+
+    by_employee = {}
+    for r in all_records:
+        if r['job_type'] not in config.PERSONNEL_PPM_JOB_TYPES:
+            continue
+        if not _is_real_employee(r['employee']):
+            continue
+        by_employee.setdefault(r['employee'], []).append(r)
+
+    results = []
+    for employee, rows in by_employee.items():
+        in_scope = [r for r in rows if r['due_date'] >= cutoff]
+        excluded_backlog = [r for r in rows if r['due_date'] < cutoff]
+
+        late_delays = []
+        on_time_count = 0
+        for r in in_scope:
+            delay_days = (r['comp_date'].date() - r['due_date'].date()).days
+            if delay_days <= 0:
+                on_time_count += 1
+            else:
+                late_delays.append(delay_days)
+
+        total = len(in_scope)
+        crafts = sorted({r['crafts'] for r in rows if r['crafts']})
+        job_types = sorted({r['job_type'] for r in in_scope})
+
+        results.append({
+            'employee': employee,
+            'craft': ', '.join(crafts) if crafts else None,
+            'jobs_completed': total,
+            'on_time_count': on_time_count,
+            'on_time_pct': round(on_time_count / total * 100, 1) if total else None,
+            'avg_delay_days': round(statistics.mean(late_delays), 1) if late_delays else None,
+            'median_delay_days': round(statistics.median(late_delays), 1) if late_delays else None,
+            'longest_delay_days': max(late_delays) if late_delays else None,
+            'excluded_backlog_count': len(excluded_backlog),
+            'job_types': job_types,
+        })
+
+    return results

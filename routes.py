@@ -6,6 +6,7 @@ belongs in reconciliation.py instead, so every route (and the future
 dashboard) stays consistent by construction.
 """
 import re
+from datetime import datetime
 
 from flask import Blueprint, request, jsonify, send_file, send_from_directory
 
@@ -23,10 +24,11 @@ from parsers.wo_parser import (
 )
 from parsers.due_date_performance_parser import (
     parse_due_date_performance, summarise_due_date_performance,
+    summarise_by_employee,
 )
 from parsers.efacs_scrap_parser import parse_efacs_scrap_file
 from reconciliation import reconcile, enrich_and_filter, compute_toolroom_gap, compute_toolroom_machine_breakdown
-from report_pdf import build_gap_pdf
+from report_pdf import build_gap_pdf, build_personnel_pdf
 from daily import compute_daily_summary
 from daily_trend import (
     weekly_rollup, monthly_rollup,
@@ -664,6 +666,11 @@ def tpm_schedule_view():
     return send_from_directory('public', 'tpm-schedule.html')
 
 
+@bp.route('/maintenance-personnel')
+def maintenance_personnel_view():
+    return send_from_directory('public', 'maintenance-personnel.html')
+
+
 @bp.route('/splash')
 def splash_view():
     return send_from_directory('public', 'splash.html')
@@ -823,6 +830,122 @@ def trend():
     try:
         runs = db.get_all_runs()
         return jsonify({'runs': runs})
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+
+def _parse_personnel_uploads():
+    """Shared by /api/personnel-check and /api/save-personnel: pools
+    however many Agility Due Date Performance exports were uploaded
+    under the 'due_date_files' field (today that's a Maintenance-craft
+    file and an Electrician-craft file, but nothing here assumes
+    exactly two) and groups the result by employee.
+
+    Deliberately re-parses the files every time rather than being
+    handed a previously-computed result — see /api/save-personnel's
+    docstring for why that matters."""
+    files = request.files.getlist('due_date_files')
+    if not files:
+        raise ValueError('At least one Due Date Performance export is required')
+
+    all_records = []
+    for f in files:
+        if not f or not f.filename:
+            continue
+        with saved_upload(f, 'due_date_performance_personnel') as path:
+            all_records.extend(parse_due_date_performance(path))
+
+    employees = summarise_by_employee(all_records)
+    employees.sort(key=lambda e: e['employee'])
+    return employees
+
+
+@bp.route('/api/personnel-check', methods=['POST'])
+def personnel_check():
+    """Personnel PPM performance — same shape as /api/production-plan-check:
+    parses and returns a preview, never saves. /api/save-personnel below
+    is the only route that writes."""
+    try:
+        employees = _parse_personnel_uploads()
+        return jsonify({'employees': employees})
+    except ValueError as e:
+        return jsonify({'error': str(e)})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/api/save-personnel', methods=['POST'])
+def save_personnel():
+    """Deliberately separate from /api/personnel-check, same reasoning
+    as every other save-* route here: never auto-saves, and recomputes
+    from the uploaded files rather than trusting whatever the browser
+    already has, so the saved rows can never drift from a fresh check.
+
+    period is 'YYYY-MM' from the upload form's month picker, not typed
+    free text (see schema.sql's comment on personnel_ppm_monthly for
+    why that matters); period_label ('Aug 2026') is derived from it
+    here rather than being a second form field, so the two can never
+    disagree."""
+    try:
+        period = request.form.get('period', '').strip()
+        if not re.match(r'^\d{4}-\d{2}$', period):
+            return jsonify({'error': "period is required, as 'YYYY-MM' (e.g. from a month picker)"})
+
+        employees = _parse_personnel_uploads()
+        period_label = datetime.strptime(period, '%Y-%m').strftime('%b %Y')
+        db.save_personnel_run(employees, period, period_label)
+
+        return jsonify({
+            'saved': True,
+            'period': period,
+            'period_label': period_label,
+            'employees': employees,
+        })
+    except ValueError as e:
+        return jsonify({'error': str(e)})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/api/personnel-pdf')
+def personnel_pdf():
+    """Printable PPM performance PDF for one engineer — this month plus
+    their full trend history. Reads whatever's already saved (no file
+    upload here); /api/save-personnel is what puts data in reach of
+    this route in the first place."""
+    try:
+        employee = request.args.get('employee', '').strip()
+        if not employee:
+            return jsonify({'error': 'employee is required'})
+
+        months = db.get_personnel_trend(employee)
+        if not months:
+            return jsonify({'error': f'No saved Personnel PPM data for {employee.title()} yet'})
+
+        pdf_buf = build_personnel_pdf(employee.title(), months)
+        safe_name = re.sub(r'[^A-Za-z0-9]+', '_', employee.title()).strip('_')
+        return send_file(
+            pdf_buf, mimetype='application/pdf', as_attachment=True,
+            download_name=f'{safe_name}_PPM_Performance.pdf',
+        )
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/api/personnel-trend')
+def personnel_trend():
+    """All saved personnel-months, for the Personnel page's trend
+    chart. Read-only — never touched by the routes above, only by
+    /api/save-personnel writing and this route reading. Optional
+    ?employee= scopes to one engineer (unused by the page today, which
+    charts everyone at once, but kept for the PDF route to reuse)."""
+    try:
+        employee = request.args.get('employee')
+        rows = db.get_personnel_trend(employee)
+        return jsonify({'rows': rows})
     except Exception as e:
         return jsonify({'error': str(e)})
 
