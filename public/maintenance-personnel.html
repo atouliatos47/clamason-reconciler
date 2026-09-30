@@ -360,12 +360,19 @@ async function runCheck() {
     // is always checking a month that's already finished (uploaded in
     // September, covers August), same as the Daily Check page defaults
     // its date to yesterday rather than today. Getting this wrong would
-    // silently file August's numbers under September on Save.
+    // silently file August's numbers under the wrong month on save.
     const periodInput = document.getElementById('save-period');
     if (!periodInput.value) periodInput.value = defaultPeriod();
 
-    document.getElementById('save-status').textContent = '';
-    document.getElementById('save-status').className = 'save-status';
+    // Auto-save: same reasoning as Daily Check/SFC Daily's auto-save — a
+    // check that isn't saved never reaches the trend chart or the PDFs,
+    // and forgetting a separate Save click is how a month quietly goes
+    // missing. Safe to run every time: save_personnel_run() upserts on
+    // (period, employee), so re-running a check just overwrites that
+    // month's rows rather than duplicating them. The Save button stays
+    // available too, for re-saving under a different month (e.g.
+    // back-filling one you missed) without re-running the check.
+    await savePersonnel();
   } catch (e) {
     errorBox.textContent = 'Request failed: ' + e.message;
     errorBox.style.display = 'block';
