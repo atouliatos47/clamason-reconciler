@@ -995,8 +995,16 @@ def personnel_pdf():
             pdf_buf = build_personnel_pdf(employee.title(), months)
             download_name = f'{safe_name}_PPM_Performance.pdf'
 
+        # as_attachment=False (not the True every other PDF route here
+        # uses): opens inline in the browser's own PDF viewer first,
+        # rather than forcing an immediate download. Andreas asked for
+        # this specifically for Personnel reports - view first, save
+        # only if you decide to, using the browser's own Save/Download
+        # control inside its PDF viewer. download_name still sets what
+        # that save defaults to, so choosing to save still gets the
+        # right filename.
         return send_file(
-            pdf_buf, mimetype='application/pdf', as_attachment=True,
+            pdf_buf, mimetype='application/pdf', as_attachment=False,
             download_name=download_name,
         )
     except Exception as e:
