@@ -6,7 +6,6 @@ belongs in reconciliation.py instead, so every route (and the future
 dashboard) stays consistent by construction.
 """
 import re
-from datetime import datetime
 
 from flask import Blueprint, request, jsonify, send_file, send_from_directory
 
@@ -24,7 +23,7 @@ from parsers.wo_parser import (
 )
 from parsers.due_date_performance_parser import (
     parse_due_date_performance, summarise_due_date_performance,
-    summarise_by_employee,
+    summarise_by_employee, detect_report_period,
 )
 from parsers.efacs_scrap_parser import parse_efacs_scrap_file
 from reconciliation import reconcile, enrich_and_filter, compute_toolroom_gap, compute_toolroom_machine_breakdown
@@ -839,7 +838,25 @@ def _parse_personnel_uploads():
     however many Agility Due Date Performance exports were uploaded
     under the 'due_date_files' field (today that's a Maintenance-craft
     file and an Electrician-craft file, but nothing here assumes
-    exactly two) and groups the result by employee.
+    exactly two), groups the result by employee, and determines which
+    month it all belongs to by reading each file's own "From Completion
+    Date / To Completion Date" header (detect_report_period) rather
+    than asking the person to pick a month by hand.
+
+    That used to be a month picker on the upload form, defaulting to
+    "last calendar month" relative to today. It looked right in the
+    ordinary case and was silently wrong the moment that assumption
+    didn't hold — Andreas hit this for real, uploading a July export
+    once "last month" had already rolled over to August, and it saved
+    as August with nothing to show the mistake. Reading the month out
+    of the file itself removes the guess entirely: whatever month the
+    export says it covers is the month it gets saved under, uploaded
+    on time, late, or backfilled in any order.
+
+    Raises ValueError (never silently picks one) if the uploaded files
+    disagree on what month they cover — that means either two
+    different months got selected together by mistake, or one file
+    is not a normal single-month export.
 
     Deliberately re-parses the files every time rather than being
     handed a previously-computed result — see /api/save-personnel's
@@ -849,25 +866,43 @@ def _parse_personnel_uploads():
         raise ValueError('At least one Due Date Performance export is required')
 
     all_records = []
+    periods_seen = {}  # period -> {'label': ..., 'filenames': [...]}
     for f in files:
         if not f or not f.filename:
             continue
         with saved_upload(f, 'due_date_performance_personnel') as path:
             all_records.extend(parse_due_date_performance(path))
+            info = detect_report_period(path)
+        periods_seen.setdefault(info['period'], {'label': info['period_label'], 'filenames': []})
+        periods_seen[info['period']]['filenames'].append(f.filename)
 
+    if not periods_seen:
+        raise ValueError('At least one Due Date Performance export is required')
+
+    if len(periods_seen) > 1:
+        parts = [f"{data['label']} ({', '.join(data['filenames'])})"
+                 for period, data in sorted(periods_seen.items())]
+        raise ValueError(
+            "These exports cover different months — " + '; '.join(parts) +
+            ". Upload one month's files together, not several months at once."
+        )
+
+    period, period_data = next(iter(periods_seen.items()))
     employees = summarise_by_employee(all_records)
     employees.sort(key=lambda e: e['employee'])
-    return employees
+    return employees, period, period_data['label']
 
 
 @bp.route('/api/personnel-check', methods=['POST'])
 def personnel_check():
     """Personnel PPM performance — same shape as /api/production-plan-check:
     parses and returns a preview, never saves. /api/save-personnel below
-    is the only route that writes."""
+    is the only route that writes. period/period_label come back too,
+    read from the file itself, so the page can show which month this
+    is BEFORE saving rather than after."""
     try:
-        employees = _parse_personnel_uploads()
-        return jsonify({'employees': employees})
+        employees, period, period_label = _parse_personnel_uploads()
+        return jsonify({'employees': employees, 'period': period, 'period_label': period_label})
     except ValueError as e:
         return jsonify({'error': str(e)})
     except Exception as e:
@@ -882,18 +917,13 @@ def save_personnel():
     from the uploaded files rather than trusting whatever the browser
     already has, so the saved rows can never drift from a fresh check.
 
-    period is 'YYYY-MM' from the upload form's month picker, not typed
-    free text (see schema.sql's comment on personnel_ppm_monthly for
-    why that matters); period_label ('Aug 2026') is derived from it
-    here rather than being a second form field, so the two can never
-    disagree."""
+    No 'period' form field any more — see _parse_personnel_uploads for
+    why that was the wrong thing to be trusting in the first place.
+    period and period_label now come from the same file-reading
+    _parse_personnel_uploads does for the check above, so a save can
+    never land under a different month than what the check just showed."""
     try:
-        period = request.form.get('period', '').strip()
-        if not re.match(r'^\d{4}-\d{2}$', period):
-            return jsonify({'error': "period is required, as 'YYYY-MM' (e.g. from a month picker)"})
-
-        employees = _parse_personnel_uploads()
-        period_label = datetime.strptime(period, '%Y-%m').strftime('%b %Y')
+        employees, period, period_label = _parse_personnel_uploads()
         db.save_personnel_run(employees, period, period_label)
 
         return jsonify({

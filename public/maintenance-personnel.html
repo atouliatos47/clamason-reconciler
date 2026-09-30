@@ -97,6 +97,7 @@
   .action-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
   .date-field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .date-field label { font-size: 12px; color: #555; }
+  .period-badge { font-weight: bold; color: #243547; }
   .date-field input[type=month] { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; color: #243547; }
   .save-btn { padding: 9px 18px; background: #243547; color: white; font-size: 12px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
   .save-btn:hover { background: #1a2735; }
@@ -283,10 +284,10 @@ function toggleNavGroup(name) {
     <div class="action-row">
       <div style="font-size:12px;color:#555;">
         <strong id="employee-count">—</strong> engineer(s) found with planned PPM jobs
+        for <span class="period-badge" id="detected-period-badge">—</span>
+        <span style="color:#aaa;">(read from the export's own date range, not guessed)</span>
       </div>
       <div class="date-field">
-        <label for="save-period">Month:</label>
-        <input type="month" id="save-period">
         <button class="save-btn" id="save-btn" onclick="savePersonnel()">💾 Save</button>
         <button class="clear-btn" id="clear-btn" onclick="clearCheck()">↺ Clear / New Check</button>
         <span class="save-status" id="save-status"></span>
@@ -294,7 +295,7 @@ function toggleNavGroup(name) {
     </div>
 
     <div class="table-card">
-      <h3>This Month — Planned PPM Performance</h3>
+      <h3 id="check-table-heading">Planned PPM Performance</h3>
       <table>
         <thead>
           <tr>
@@ -356,24 +357,14 @@ function fmt(n, d = 1) {
 // date, which during British Summer Time can already be into the next
 // day for the first hour after midnight local time.
 //
-// setDate(1) BEFORE setMonth(-1) matters: on the 29th-31st of a month,
-// subtracting a month from the full date directly can overshoot into the
-// month after the one intended, because JS clamps an out-of-range day by
-// rolling forward rather than refusing it. Checked on 31 March 2026: going
-// straight to setMonth(month-1) targets "31 February", which doesn't
-// exist, so JS quietly rolls it forward to 3 March — i.e. the WRONG
-// month, and the one place this bug can't be allowed to hide is a
-// function whose entire job is picking the right month. Zeroing the day
-// first removes the day-length question entirely — the 1st of any month
-// minus one month is always a real date.
-function defaultPeriod() {
-  const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() - 1);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
-}
+// There used to be a defaultPeriod() here that guessed "last calendar
+// month" for the Save month, the same way daily.html's defaultCheckDate
+// defaults to yesterday. Removed: unlike a daily check, this report can
+// legitimately be uploaded for any month, in any order, and a guess
+// from today's date is exactly what filed a real July export under
+// August. The backend now reads the month out of the file itself
+// (detect_report_period, in the parser) — nothing here needs to guess
+// it, so nothing here should.
 
 function handleFiles(input) {
   files = Array.from(input.files || []);
@@ -410,15 +401,7 @@ async function runCheck() {
       return;
     }
 
-    renderCheck(data.employees || []);
-
-    // Default the month picker to LAST month, not this one — this report
-    // is always checking a month that's already finished (uploaded in
-    // September, covers August), same as the Daily Check page defaults
-    // its date to yesterday rather than today. Getting this wrong would
-    // silently file August's numbers under the wrong month on save.
-    const periodInput = document.getElementById('save-period');
-    if (!periodInput.value) periodInput.value = defaultPeriod();
+    renderCheck(data.employees || [], data.period_label || '—');
 
     // Auto-save: same reasoning as Daily Check/SFC Daily's auto-save — a
     // check that isn't saved never reaches the trend chart or the PDFs,
@@ -438,8 +421,10 @@ async function runCheck() {
   }
 }
 
-function renderCheck(employees) {
+function renderCheck(employees, periodLabel) {
   document.getElementById('employee-count').textContent = employees.length;
+  document.getElementById('detected-period-badge').textContent = periodLabel;
+  document.getElementById('check-table-heading').textContent = periodLabel + ' — Planned PPM Performance';
 
   const tbody = document.getElementById('check-tbody');
   tbody.innerHTML = employees.map(e => `
@@ -457,15 +442,9 @@ function renderCheck(employees) {
 }
 
 async function savePersonnel() {
-  const periodInput = document.getElementById('save-period');
   const status = document.getElementById('save-status');
   const saveBtn = document.getElementById('save-btn');
 
-  if (!periodInput.value) {
-    status.textContent = 'Pick a month first';
-    status.className = 'save-status err';
-    return;
-  }
   if (!files.length) {
     status.textContent = 'Re-select the file(s) above before saving';
     status.className = 'save-status err';
@@ -477,9 +456,13 @@ async function savePersonnel() {
   status.className = 'save-status';
 
   try {
+    // No period sent — the backend reads it from the file(s) itself
+    // (detect_report_period), independently, every time. That's what
+    // makes this safe to call from runCheck() as an auto-save AND from
+    // the manual Save button without the two ever being able to save
+    // under a different month than what was just previewed.
     const fd = new FormData();
     files.forEach(f => fd.append('due_date_files', f));
-    fd.append('period', periodInput.value);
     const res = await fetch('/api/save-personnel', { method: 'POST', body: fd });
     const data = await res.json();
 
@@ -491,6 +474,13 @@ async function savePersonnel() {
 
     status.textContent = '✓ Saved for ' + data.period_label;
     status.className = 'save-status ok';
+    // The check may have run before the save (auto-save) or the person
+    // may be re-clicking Save on its own — either way, resync the badge
+    // and table heading to whatever the save just confirmed, in case
+    // they somehow differ (they shouldn't, but showing the save's own
+    // answer is more honest than trusting the earlier check's).
+    document.getElementById('detected-period-badge').textContent = data.period_label;
+    document.getElementById('check-table-heading').textContent = data.period_label + ' — Planned PPM Performance';
     loadTrend(); // pick up the just-saved month straight away
   } catch (e) {
     status.textContent = 'Save failed: ' + e.message;
@@ -508,7 +498,8 @@ function clearCheck() {
   document.getElementById('run-btn').disabled = true;
   document.getElementById('results').style.display = 'none';
   document.getElementById('error-box').style.display = 'none';
-  document.getElementById('save-period').value = '';
+  document.getElementById('detected-period-badge').textContent = '—';
+  document.getElementById('check-table-heading').textContent = 'Planned PPM Performance';
   document.getElementById('save-status').textContent = '';
 }
 
