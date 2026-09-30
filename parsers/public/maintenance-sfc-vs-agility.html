@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Maintenance SFC vs Agility</title>
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar { width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh; display: flex; flex-direction: column; padding: 24px 0; border-right: 3px solid #95C11F; position: sticky; top: 0; align-self: flex-start; }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-group-header { display: flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: none; color: #cfd8e3; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 24px; cursor: pointer; }
+  .nav-group-header:hover { color: white; }
+  .nav-group-header .chevron { transition: transform 0.15s; font-size: 10px; }
+  .nav-group-header.open .chevron { transform: rotate(90deg); }
+  .nav-group-items { display: none; flex-direction: column; }
+  .nav-group-items.open { display: flex; }
+  .nav-item { color: #b7c2d0; text-decoration: none; font-size: 13px; padding: 8px 24px 8px 36px; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.15); color: #95C11F; border-right: 3px solid #95C11F; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; padding: 28px 32px; min-width: 0; }
+  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; }
+  .page-header h1 { font-size: 20px; color: #243547; }
+  .page-header p { font-size: 12px; color: #666; margin-top: 4px; }
+  select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 12.5px; }
+
+  .container { max-width: 1100px; }
+  .dept-bar { color: #fff; padding: 10px 14px; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center; background: #2e6b4f; }
+  .dept-bar span.name { font-size: 13px; font-weight: bold; letter-spacing: 0.7px; }
+  .dept-bar span.num { font-size: 9.5px; opacity: 0.75; font-family: monospace; }
+  .panel { background: #f7f8fa; border-radius: 0 0 8px 8px; padding: 22px; }
+
+  .machine-card { background: white; border-radius: 10px; padding: 20px 22px; }
+  .machine-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .canvas-wrap { position: relative; height: 460px; }
+
+  .chart-card { background: white; border-radius: 10px; padding: 20px 22px; margin-top: 18px; }
+  .chart-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .chart-card p { font-size: 11.5px; color: #888; margin-bottom: 14px; }
+  .canvas-wrap.short { height: 240px; }
+
+  .state-msg { font-size: 13px; color: #888; padding: 20px; text-align: center; }
+  .state-msg.error { color: #c0392b; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Performance Hub</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-board-review" onclick="toggleNavGroup('board-review')">
+        <span>Board Review</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-board-review">
+        <a class="nav-item" href="/board-review">Total Monthly Performance Review</a>
+        <a class="nav-item" href="/">Monthly Check</a>
+        <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+        <a class="nav-item" href="/teep">TEEP</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-production" onclick="toggleNavGroup('production')">
+        <span>Production</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-production">
+        <a class="nav-item" href="/production">Monthly Performance Review</a>
+        <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/daily-oee">Daily OEE</a>
+        <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
+        <a class="nav-item" href="/production-plan">Production Plan</a>
+        <a class="nav-item" href="/production-sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/production-sfc-trend">SFC Trend</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header open" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
+        <span>Maintenance</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items open" id="nav-group-maintenance">
+        <a class="nav-item" href="/maintenance">Monthly Performance Review</a>
+        <a class="nav-item" href="/maintenance-notes">Notes and Action Plan</a>
+        <a class="nav-item active" href="/maintenance-sfc-vs-agility">SFC vs Agility</a>
+        <a class="nav-item" href="/daily">Daily Check</a>
+        <a class="nav-item" href="/daily-trend">Daily Trend</a>
+        <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+        <a class="nav-item" href="/tpm-schedule">TPM Schedule</a>
+        <a class="nav-item" href="/maintenance-personnel">Personnel Performance</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-toolroom" onclick="toggleNavGroup('toolroom')">
+        <span>Toolroom</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-toolroom">
+        <a class="nav-item" href="/toolroom">Monthly Performance Review</a>
+        <a class="nav-item" href="/toolroom-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/toolroom-sfc-vs-agility">SFC vs Agility</a>
+      </div>
+    </div>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<script>
+function toggleNavGroup(name) {
+  var header = document.getElementById('nav-header-' + name);
+  var items = document.getElementById('nav-group-' + name);
+  var isOpen = items.classList.toggle('open');
+  header.classList.toggle('open', isOpen);
+}
+
+(function() {
+  var IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+  var idleTimer;
+  function goIdle() { window.location.href = '/splash'; }
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(goIdle, IDLE_TIMEOUT_MS);
+  }
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function(evt) {
+    document.addEventListener(evt, resetIdleTimer, { passive: true });
+  });
+  resetIdleTimer();
+})();
+</script>
+
+<div class="main">
+
+<div class="page-header">
+  <div>
+    <h1>SFC vs Agility</h1>
+    <p>Maintenance — how many SFC fault events per press actually got an Agility breakdown work order</p>
+  </div>
+  <div>
+    <select id="period-select" onchange="selectPeriod(this.value)"></select>
+  </div>
+</div>
+
+<div class="container">
+  <div class="dept-bar">
+    <span class="name">MAINTENANCE</span><span class="num">DEPT / 03</span>
+  </div>
+  <div class="panel">
+    <div id="state-msg" class="state-msg"></div>
+    <div class="machine-card" id="machine-card" style="display:none;">
+      <h3 id="machine-card-title">Fault Events vs Breakdown WOs by Machine</h3>
+      <div class="canvas-wrap"><canvas id="machineChart"></canvas></div>
+    </div>
+    <div class="chart-card" id="gap-card" style="display:none;">
+      <h3>WO Coverage Gap % — Trend</h3>
+      <p>Share of SFC fault hours with no matching Agility breakdown WO — lower is better. Every saved month shown, not just the one selected above.</p>
+      <div class="canvas-wrap short"><canvas id="gapChart"></canvas></div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+const NAVY = '#243547', LIME = '#95C11F';
+let RUNS = [];
+let machineChartInstance = null;
+
+const barValueLabels = {
+  id: 'barValueLabels',
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    chart.data.datasets.forEach((dataset, di) => {
+      const meta = chart.getDatasetMeta(di);
+      meta.data.forEach((bar, i) => {
+        const value = dataset.data[i];
+        if (value === null || value === undefined) return;
+        ctx.save();
+        ctx.fillStyle = '#243547';
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(value), bar.x + 6, bar.y);
+        ctx.restore();
+      });
+    });
+  },
+};
+
+async function load() {
+  const stateEl = document.getElementById('state-msg');
+  let data;
+  try {
+    const res = await fetch('/api/trend');
+    data = await res.json();
+    if (data.error) throw new Error(data.error);
+  } catch (e) {
+    stateEl.className = 'state-msg error';
+    stateEl.textContent = 'Could not load trend data: ' + e.message;
+    return;
+  }
+
+  RUNS = data.runs || [];
+  if (RUNS.length === 0) {
+    stateEl.textContent = 'No saved runs yet. Go run a maintenance check and click "Save to Trend Dashboard" to see this chart.';
+    return;
+  }
+
+  const sel = document.getElementById('period-select');
+  sel.innerHTML = RUNS.slice().reverse()
+    .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
+  const savedLabel = localStorage.getItem('clamason-selected-period');
+  const savedIdx = savedLabel ? RUNS.findIndex(r => (r.period_label || r.period) === savedLabel) : -1;
+  const startIdx = savedIdx !== -1 ? savedIdx : RUNS.length - 1;
+  sel.value = startIdx;
+  selectPeriod(startIdx);
+  renderGapTrend();
+}
+
+let gapChartInstance = null;
+
+// Independent of the month selector above — this shows every saved
+// month at once, on purpose. "Did the toolbox talks help" is a
+// question about the trend over time, not about any one month, so it
+// stays fixed to full history rather than following the selection.
+function renderGapTrend() {
+  const card = document.getElementById('gap-card');
+  if (RUNS.length < 2) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  const labels = RUNS.map(r => r.period_label || r.period);
+
+  if (gapChartInstance) { gapChartInstance.destroy(); }
+  gapChartInstance = new Chart(document.getElementById('gapChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Gap %', data: RUNS.map(r => r.gap_pct),
+        borderColor: NAVY, backgroundColor: NAVY + '15', fill: true, tension: 0.25,
+        pointBackgroundColor: NAVY, pointRadius: 5,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+    },
+  });
+}
+
+function selectPeriod(i) {
+  const idx = Number(i);
+  const run = RUNS[idx];
+  localStorage.setItem('clamason-selected-period', run.period_label || run.period);
+  renderChart(run);
+}
+
+function renderChart(run) {
+  const stateEl = document.getElementById('state-msg');
+  const card = document.getElementById('machine-card');
+  const mb = (run.machine_breakdown || []).slice().sort((a, b) => b.fault_hrs - a.fault_hrs);
+
+  if (!mb.length) {
+    card.style.display = 'none';
+    stateEl.textContent = `No per-machine breakdown saved for ${run.period_label || run.period}.`;
+    return;
+  }
+
+  stateEl.textContent = '';
+  card.style.display = 'block';
+  document.getElementById('machine-card-title').textContent =
+    `${run.period_label || run.period} — Fault Events vs Breakdown WOs by Machine`;
+
+  if (machineChartInstance) { machineChartInstance.destroy(); }
+  machineChartInstance = new Chart(document.getElementById('machineChart'), {
+    type: 'bar',
+    data: {
+      labels: mb.map(m => m.machine),
+      datasets: [
+        { label: 'SFC fault events', data: mb.map(m => m.fault_events), backgroundColor: NAVY, borderRadius: 3 },
+        { label: 'Agility breakdown WOs', data: mb.map(m => m.wo_count), backgroundColor: LIME, borderRadius: 3 },
+      ],
+    },
+    plugins: [barValueLabels],
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 24 } },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: { x: { beginAtZero: true } },
+    },
+  });
+}
+
+load();
+</script>
+
+</body>
+</html>

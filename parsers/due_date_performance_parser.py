@@ -49,10 +49,69 @@ people showing up in an export and deliberately drops rows with no
 usable employee name, rather than assuming the file contains only the
 one person Andreas meant to filter for.
 """
+import re
 import statistics
+from datetime import datetime
+
 import pandas as pd
 
 import config
+
+# Matches the export's own header band, a single merged cell reading e.g.
+# "Site: CLUK : Clamason UK\nCraft: Maintenance:Maintenance\nFrom
+# Completion Date: 01/08/2026\xa0\xa0\xa0\xa0\xa0To Completion Date:
+# 31/08/2026" (confirmed verbatim, non-breaking spaces and all, from a
+# real export — not guessed at). DOTALL so '.*?' can cross the \n
+# between "Craft: ..." and "From Completion Date: ...".
+_PERIOD_HEADER_RE = re.compile(
+    r'From Completion Date:\s*(\d{2}/\d{2}/\d{4}).*?'
+    r'To Completion Date:\s*(\d{2}/\d{2}/\d{4})',
+    re.DOTALL,
+)
+
+
+def detect_report_period(filepath):
+    """Reads the export's own "From Completion Date: X To Completion
+    Date: Y" header and returns the calendar month it covers — so the
+    app reads which month a file is for from the file itself, instead
+    of guessing from today's date (which is wrong the moment a month
+    is uploaded late, early, or out of order; Andreas hit exactly this
+    uploading a July export after today's date had already rolled into
+    a month where "last month" meant August).
+
+    Returns {'period': 'YYYY-MM', 'period_label': 'Jul 2026',
+    'from_date': date, 'to_date': date, 'spans_months': bool}. period
+    is taken from the FROM date — spans_months is True when TO falls in
+    a different calendar month, which callers can surface as a caution
+    (an unusual custom date range) without it being fatal on its own.
+
+    Raises ValueError if the header can't be found in the first 10 rows
+    or doesn't parse as two dates — refusing beats guessing here, since
+    a wrong guess files a real month's figures under the wrong period
+    with nothing to show it happened.
+    """
+    df = pd.read_excel(filepath, sheet_name=0, header=None, nrows=10)
+    for i in range(len(df)):
+        for cell in df.iloc[i]:
+            if not isinstance(cell, str):
+                continue
+            m = _PERIOD_HEADER_RE.search(cell)
+            if not m:
+                continue
+            from_date = datetime.strptime(m.group(1), '%d/%m/%Y').date()
+            to_date = datetime.strptime(m.group(2), '%d/%m/%Y').date()
+            return {
+                'period': f'{from_date.year:04d}-{from_date.month:02d}',
+                'period_label': from_date.strftime('%b %Y'),
+                'from_date': from_date,
+                'to_date': to_date,
+                'spans_months': (from_date.year, from_date.month) != (to_date.year, to_date.month),
+            }
+    raise ValueError(
+        "Couldn't find this export's date range (the 'From Completion Date: "
+        "... To Completion Date: ...' header) in its first 10 rows — this "
+        "doesn't look like a standard Agility Due Date Performance export."
+    )
 
 
 def parse_due_date_performance(filepath):

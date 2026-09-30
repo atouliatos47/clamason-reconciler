@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Daily Trend</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh;
+    display: flex; flex-direction: column; padding: 24px 0;
+    border-right: 3px solid #95C11F;
+    position: sticky; top: 0; align-self: flex-start;
+  }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-item { color: #C7CFD6; font-size: 13px; text-decoration: none; padding: 11px 24px; border-left: 3px solid transparent; display: block; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.14); color: #95C11F; border-left-color: #95C11F; font-weight: bold; }
+  .nav-group-header {
+    width: 100%; background: none; border: none; text-align: left; cursor: pointer;
+    color: #C7CFD6; font-size: 13px; padding: 11px 24px; border-left: 3px solid transparent;
+    display: flex; align-items: center; justify-content: space-between; font-family: inherit;
+  }
+  .nav-group-header:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-group-header .chevron { font-size: 9px; transition: transform 0.15s; }
+  .nav-group-header.open .chevron { transform: rotate(90deg); }
+  .nav-group-items { display: none; flex-direction: column; }
+  .nav-group-items.open { display: flex; }
+  .nav-group-items .nav-item { padding-left: 42px; font-size: 12.5px; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; min-width: 0; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; }
+  .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
+  .page-header p { color: #888; font-size: 11.5px; margin-top: 3px; }
+
+  @media (max-width: 768px) {
+    body { flex-direction: column; }
+    .sidebar { width: 100%; min-height: auto; flex-direction: row; align-items: center; padding: 12px 16px; overflow-x: auto; border-right: none; border-bottom: 3px solid #95C11F; }
+    .sidebar-brand { border-bottom: none; padding: 0 16px 0 0; margin-bottom: 0; white-space: nowrap; width: 140px; }
+    .sidebar-nav { flex-direction: row; }
+    .nav-item { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-item.active { border-left: none; border-bottom-color: #95C11F; }
+    .nav-group-header { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-group-header.open { border-bottom-color: #95C11F; }
+    .nav-group-items { flex-direction: row; }
+    .nav-group-items .nav-item { padding-left: 14px; }
+    .sidebar-footer { display: none; }
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+
+  .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; display: none; }
+  .empty-note { background: white; border-radius: 10px; padding: 24px; text-align: center; color: #888; font-size: 13px; margin-bottom: 24px; display: none; }
+
+  .table-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
+  .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin: 0; }
+  .card-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; user-select: none; }
+  .collapse-arrow { color: #95C11F; font-size: 12px; transition: transform 0.15s ease; }
+  .collapse-arrow.collapsed { transform: rotate(-90deg); }
+  .card-body.collapsed { display: none; }
+
+  .filter-tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .filter-tab { padding: 6px 14px; border-radius: 14px; font-size: 11px; font-weight: bold; cursor: pointer; background: #f3f4f6; color: #555; border: none; }
+  .filter-tab.active { background: #243547; color: white; }
+
+  canvas { max-height: 320px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
+  tr:hover td { background: #fafafa; }
+
+  footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Performance Hub</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-board-review" onclick="toggleNavGroup('board-review')">
+        <span>Board Review</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-board-review">
+        <a class="nav-item" href="/board-review">Total Monthly Performance Review</a>
+        <a class="nav-item" href="/">Monthly Check</a>
+        <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+        <a class="nav-item" href="/teep">TEEP</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-production" onclick="toggleNavGroup('production')">
+        <span>Production</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-production">
+        <a class="nav-item" href="/production">Monthly Performance Review</a>
+        <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/daily-oee">Daily OEE</a>
+        <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
+        <a class="nav-item" href="/production-plan">Production Plan</a>
+        <a class="nav-item" href="/production-sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/production-sfc-trend">SFC Trend</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header open" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
+        <span>Maintenance</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items open" id="nav-group-maintenance">
+        <a class="nav-item" href="/maintenance">Monthly Performance Review</a>
+        <a class="nav-item" href="/maintenance-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/maintenance-sfc-vs-agility">SFC vs Agility</a>
+        <a class="nav-item" href="/daily">Daily Check</a>
+        <a class="nav-item active" href="/daily-trend">Daily Trend</a>
+        <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+        <a class="nav-item" href="/tpm-schedule">TPM Schedule</a>
+        <a class="nav-item" href="/maintenance-personnel">Personnel Performance</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-toolroom" onclick="toggleNavGroup('toolroom')">
+        <span>Toolroom</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-toolroom">
+        <a class="nav-item" href="/toolroom">Monthly Performance Review</a>
+        <a class="nav-item" href="/toolroom-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/toolroom-sfc-vs-agility">SFC vs Agility</a>
+      </div>
+    </div>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<script>
+function toggleNavGroup(name) {
+  var header = document.getElementById('nav-header-' + name);
+  var items = document.getElementById('nav-group-' + name);
+  var isOpen = items.classList.toggle('open');
+  header.classList.toggle('open', isOpen);
+}
+
+// Idle timeout — after 2 minutes with no mouse/keyboard/touch activity,
+// send everyone back to the splash/landing screen. Any of these events
+// firing resets the clock, so it only fires after a genuine 2-minute
+// gap with nobody touching the app at all.
+(function() {
+  var IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+  var idleTimer;
+  function goIdle() { window.location.href = '/splash'; }
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(goIdle, IDLE_TIMEOUT_MS);
+  }
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function(evt) {
+    document.addEventListener(evt, resetIdleTimer, { passive: true });
+  });
+  resetIdleTimer();
+})();
+</script>
+
+<div class="main">
+
+<div class="page-header">
+  <h1>Daily Trend</h1>
+  <p>Rolled up from saved Daily Check snapshots</p>
+</div>
+
+<div class="container">
+
+  <div class="error-box" id="error-box"></div>
+  <div class="empty-note" id="empty-note">No saved snapshots yet — head to <a href="/daily">Daily Check</a>, run a check, and hit Save to start building history here.</div>
+
+  <div class="table-card">
+    <div class="card-header" onclick="toggleCard('trend')">
+      <h3>Trend</h3>
+      <span class="collapse-arrow" id="trend-arrow">▼</span>
+    </div>
+    <div class="card-body" id="trend-body">
+      <div class="filter-tabs" id="granularity-tabs">
+        <button class="filter-tab active" onclick="event.stopPropagation(); setGranularity('daily', this)">Daily</button>
+        <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('weekly', this)">Weekly</button>
+        <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
+      </div>
+      <canvas id="trend-chart"></canvas>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="card-header" onclick="toggleCard('detail')">
+      <h3 id="table-title">Daily Detail</h3>
+      <span class="collapse-arrow" id="detail-arrow">▼</span>
+    </div>
+    <div class="card-body" id="detail-body">
+      <table>
+        <thead>
+          <tr><th>Period</th><th>Total WOs</th><th>Breakdowns</th><th>Planned Completion</th><th>MTTR</th><th>Project/CI Open</th></tr>
+        </thead>
+        <tbody id="trend-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<footer>Clamason Maintenance — Internal Tool</footer>
+
+</div>
+
+<script>
+let trendData = null;
+let granularity = 'daily';
+let chart = null;
+
+async function loadTrend() {
+  try {
+    const res = await fetch('/api/daily-trend');
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    trendData = d;
+    if (!d.daily.length) {
+      document.getElementById('empty-note').style.display = 'block';
+      return;
+    }
+    renderAll();
+  } catch (e) {
+    const eb = document.getElementById('error-box');
+    eb.style.display = 'block';
+    eb.textContent = 'Error loading trend data: ' + e.message;
+  }
+}
+
+function setGranularity(g, btn) {
+  granularity = g;
+  document.querySelectorAll('#granularity-tabs .filter-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderAll();
+}
+
+function formatUKDate(isoDate) {
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function rowLabel(row) {
+  // Daily rows carry a raw ISO date (row.date) that genuinely needs
+  // reformatting. Weekly and monthly rows carry an already-built display
+  // string (row.label, e.g. "Week 36 (31 Aug)" or "July 2026") — running
+  // either through formatUKDate() would split on hyphens that aren't
+  // there, producing "undefined/undefined/<label>" instead of the label.
+  if (granularity === 'daily') return formatUKDate(row.date);
+  return row.label;
+}
+
+function rowPlannedPct(row) {
+  if (granularity === 'daily') {
+    return row.planned_total ? Math.round(row.planned_completed / row.planned_total * 100) : null;
+  }
+  return row.planned_pct;
+}
+
+function renderAll() {
+  if (!trendData) return;
+  const rows = trendData[granularity] || [];
+  renderChart(rows);
+  renderTable(rows);
+}
+
+function renderChart(rows) {
+  const ctx = document.getElementById('trend-chart').getContext('2d');
+  const labels = rows.map(rowLabel);
+  const totalWos = rows.map(r => r.total_wos);
+  const breakdowns = rows.map(r => r.breakdowns_total);
+  const pct = rows.map(rowPlannedPct);
+
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Total WOs', data: totalWos, borderColor: '#243547', backgroundColor: '#243547', yAxisID: 'y', tension: 0.25 },
+        { label: 'Breakdowns', data: breakdowns, borderColor: '#dc2626', backgroundColor: '#dc2626', yAxisID: 'y', tension: 0.25 },
+        { label: 'Planned Completion %', data: pct, borderColor: '#95C11F', backgroundColor: '#95C11F', yAxisID: 'y1', tension: 0.25, borderDash: [4, 3] },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { beginAtZero: true, position: 'left', title: { display: true, text: 'WOs' } },
+        y1: { beginAtZero: true, max: 100, position: 'right', title: { display: true, text: '%' }, grid: { drawOnChartArea: false } },
+      },
+    },
+  });
+}
+
+function renderTable(rows) {
+  document.getElementById('table-title').textContent =
+    granularity === 'daily' ? 'Daily Detail' : granularity === 'weekly' ? 'Weekly Detail' : 'Monthly Detail';
+
+  document.getElementById('trend-tbody').innerHTML = rows.length ? rows.slice().reverse().map(r => {
+    const pct = rowPlannedPct(r);
+    const projectOpen = r.project_ci_total - (r.project_ci_completed || 0);
+    return `<tr>
+      <td>${rowLabel(r)}</td>
+      <td>${r.total_wos}</td>
+      <td>${r.breakdowns_total}</td>
+      <td>${pct !== null ? pct + '%' : '—'}</td>
+      <td>${r.mttr_hrs !== null && r.mttr_hrs !== undefined ? r.mttr_hrs + 'h' : '—'}</td>
+      <td>${projectOpen}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:#888;padding:20px">No data for this view</td></tr>';
+}
+
+// Persisted per-card, not per-page — collapsing Daily Detail shouldn't
+// also collapse Trend, and the choice should survive a reload rather
+// than reset every time (this table's whole reason for existing here
+// is that it grows every day, so "collapsed" is a real standing
+// preference, not a one-off click).
+function toggleCard(id) {
+  const body = document.getElementById(id + '-body');
+  const arrow = document.getElementById(id + '-arrow');
+  const collapsed = body.classList.toggle('collapsed');
+  arrow.classList.toggle('collapsed', collapsed);
+  localStorage.setItem('daily-trend-collapsed-' + id, collapsed ? '1' : '0');
+}
+
+function restoreCardState() {
+  for (const id of ['trend', 'detail']) {
+    if (localStorage.getItem('daily-trend-collapsed-' + id) === '1') {
+      document.getElementById(id + '-body').classList.add('collapsed');
+      document.getElementById(id + '-arrow').classList.add('collapsed');
+    }
+  }
+}
+
+restoreCardState();
+loadTrend();
+</script>
+</body>
+</html>

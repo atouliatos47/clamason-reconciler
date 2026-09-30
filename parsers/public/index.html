@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Maintenance-Only Downtime Check</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh;
+    display: flex; flex-direction: column; padding: 24px 0;
+    border-right: 3px solid #95C11F;
+    position: sticky; top: 0; align-self: flex-start;
+  }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-item { color: #C7CFD6; font-size: 13px; text-decoration: none; padding: 11px 24px; border-left: 3px solid transparent; display: block; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.14); color: #95C11F; border-left-color: #95C11F; font-weight: bold; }
+  .nav-group-header {
+    width: 100%; background: none; border: none; text-align: left; cursor: pointer;
+    color: #C7CFD6; font-size: 13px; padding: 11px 24px; border-left: 3px solid transparent;
+    display: flex; align-items: center; justify-content: space-between; font-family: inherit;
+  }
+  .nav-group-header:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-group-header .chevron { font-size: 9px; transition: transform 0.15s; }
+  .nav-group-header.open .chevron { transform: rotate(90deg); }
+  .nav-group-items { display: none; flex-direction: column; }
+  .nav-group-items.open { display: flex; }
+  .nav-group-items .nav-item { padding-left: 42px; font-size: 12.5px; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; min-width: 0; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; }
+  .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
+  .page-header p { color: #888; font-size: 11.5px; margin-top: 3px; }
+
+  @media (max-width: 768px) {
+    body { flex-direction: column; }
+    .sidebar { width: 100%; min-height: auto; flex-direction: row; align-items: center; padding: 12px 16px; overflow-x: auto; border-right: none; border-bottom: 3px solid #95C11F; }
+    .sidebar-brand { border-bottom: none; padding: 0 16px 0 0; margin-bottom: 0; white-space: nowrap; width: 140px; }
+    .sidebar-nav { flex-direction: row; }
+    .nav-item { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-item.active { border-left: none; border-bottom-color: #95C11F; }
+    .nav-group-header { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-group-header.open { border-bottom-color: #95C11F; }
+    .nav-group-items { flex-direction: row; }
+    .nav-group-items .nav-item { padding-left: 14px; }
+    .sidebar-footer { display: none; }
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+
+  .upload-section { background: white; border-radius: 10px; padding: 28px; margin-bottom: 24px; }
+  .upload-section h2 { font-size: 15px; color: #243547; margin-bottom:4px; }
+  .upload-section p { font-size: 12px; color: #888; margin-bottom: 20px; }
+  .upload-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 20px; }
+  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; transition: all 0.2s; }
+  .upload-card.done { border-color: #95C11F; border-style: solid; background: #f9fdf0; }
+  .upload-card.optional { opacity: 0.85; }
+  .upload-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
+  .upload-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
+  .upload-card input[type=file] { display: none; }
+  .file-list { margin-top: 8px; font-size: 10.5px; color: #666; text-align: left; max-height: 76px; overflow-y: auto; }
+  .file-list div { padding: 1px 0; }
+  .upload-card .hint { font-size: 10px; color: #aaa; margin-top: 6px; }
+  .upload-btn { display: inline-block; padding: 8px 18px; background: #243547; color: white; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
+  .upload-btn:hover { background: #95C11F; color: #243547; }
+  .file-status { font-size: 11px; margin-top: 8px; color: #95C11F; font-weight: bold; min-height: 16px; }
+
+  .action-row { display: flex; gap: 10px; align-items: stretch; }
+  .run-btn { flex: 1; padding: 14px; background: #95C11F; color: #243547; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: opacity 0.2s; }
+  .run-btn:hover { opacity: 0.9; }
+  .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .clear-btn { padding: 0 20px; background: white; color: #243547; font-size: 13px; font-weight: bold; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+  .clear-btn:hover { border-color: #243547; }
+
+  .results { display: none; }
+
+  .statement-box {
+    background: #243547; border-radius: 10px; padding: 24px; margin-bottom: 24px;
+    border-left: 5px solid #95C11F;
+  }
+  .statement-box .label { color: #95C11F; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+  .statement-box p { color: white; font-size: 14px; line-height: 1.9; white-space: pre-line; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+  .sched-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi { background: white; border-radius: 8px; padding: 18px 20px; border-top: 4px solid #ddd; }
+  .kpi.red { border-top-color: #dc2626; }
+  .kpi.green { border-top-color: #95C11F; }
+  .kpi label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi .val { font-size: 26px; font-weight: bold; color: #243547; margin: 4px 0; }
+  .kpi .sub { font-size: 11px; color: #aaa; }
+
+  .table-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
+  .table-card h3 { font-size: 13px; font-weight: bold; color: #243547; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #95C11F; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; }
+  tr:hover td { background: #fafafa; }
+  .pill { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; display: inline-block; }
+  .pill-amber { background: #fef3c7; color: #b45309; }
+  .pill-green { background: #dcfce7; color: #16a34a; }
+
+  .loading { text-align: center; padding: 40px; display: none; }
+  .loading.show { display: block; }
+  .spinner { width: 36px; height: 36px; border: 4px solid #ddd; border-top-color: #95C11F; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 14px; color: #dc2626; font-size: 13px; margin-bottom: 16px; display: none; }
+
+  footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+
+  .report-btn { width: 100%; padding: 14px; background: #243547; color: #95C11F; font-size: 15px; font-weight: bold; border: 2px solid #95C11F; border-radius: 8px; cursor: pointer; transition: all 0.2s; margin-top: 8px; display: none; }
+  .report-btn:hover { background: #95C11F; color: #243547; }
+  .report-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Performance Hub</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-group">
+      <button type="button" class="nav-group-header open" id="nav-header-board-review" onclick="toggleNavGroup('board-review')">
+        <span>Board Review</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items open" id="nav-group-board-review">
+        <a class="nav-item" href="/board-review">Total Monthly Performance Review</a>
+        <a class="nav-item active" href="/">Monthly Check</a>
+        <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+        <a class="nav-item" href="/teep">TEEP</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-production" onclick="toggleNavGroup('production')">
+        <span>Production</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-production">
+        <a class="nav-item" href="/production">Monthly Performance Review</a>
+        <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/daily-oee">Daily OEE</a>
+        <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
+        <a class="nav-item" href="/production-plan">Production Plan</a>
+        <a class="nav-item" href="/production-sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/production-sfc-trend">SFC Trend</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
+        <span>Maintenance</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-maintenance">
+        <a class="nav-item" href="/maintenance">Monthly Performance Review</a>
+        <a class="nav-item" href="/maintenance-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/maintenance-sfc-vs-agility">SFC vs Agility</a>
+        <a class="nav-item" href="/daily">Daily Check</a>
+        <a class="nav-item" href="/daily-trend">Daily Trend</a>
+        <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+        <a class="nav-item" href="/tpm-schedule">TPM Schedule</a>
+        <a class="nav-item" href="/maintenance-personnel">Personnel Performance</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-toolroom" onclick="toggleNavGroup('toolroom')">
+        <span>Toolroom</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-toolroom">
+        <a class="nav-item" href="/toolroom">Monthly Performance Review</a>
+        <a class="nav-item" href="/toolroom-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/toolroom-sfc-vs-agility">SFC vs Agility</a>
+      </div>
+    </div>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<script>
+function toggleNavGroup(name) {
+  var header = document.getElementById('nav-header-' + name);
+  var items = document.getElementById('nav-group-' + name);
+  var isOpen = items.classList.toggle('open');
+  header.classList.toggle('open', isOpen);
+}
+
+// Idle timeout — after 2 minutes with no mouse/keyboard/touch activity,
+// send everyone back to the splash/landing screen. Any of these events
+// firing resets the clock, so it only fires after a genuine 2-minute
+// gap with nobody touching the app at all.
+(function() {
+  var IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+  var idleTimer;
+  function goIdle() { window.location.href = '/splash'; }
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(goIdle, IDLE_TIMEOUT_MS);
+  }
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function(evt) {
+    document.addEventListener(evt, resetIdleTimer, { passive: true });
+  });
+  resetIdleTimer();
+})();
+</script>
+
+<div class="main">
+
+<div class="page-header">
+  <h1>Maintenance-Only Downtime Check</h1>
+  <p>SFC daily summary vs Agility breakdown work orders — maintenance hours only</p>
+</div>
+
+<div class="container">
+
+  <div class="upload-section">
+    <h2>Upload Monthly Files</h2>
+    <p>Every file below is optional — upload whatever you have and the check runs on that. Add the rest as they come in; nothing needs to be re-uploaded to get a fuller result later.</p>
+    <div class="upload-grid">
+      <div class="upload-card optional" id="card-ds">
+        <h3>📄 SFC Monthly Downtime Summary</h3>
+        <p>UK Monthly Downtime Summary xlsx</p>
+        <label class="upload-btn" for="ds-file">Choose File</label>
+        <input type="file" id="ds-file" accept=".xlsx,.xls" onchange="handleFile(this,'ds','card-ds','ds-status')">
+        <div class="file-status" id="ds-status"></div>
+      </div>
+      <div class="upload-card optional" id="card-dt">
+        <h3>⏱️ Agility Down Time</h3>
+        <p>Down Time Analysis export (AG3-205) for the same period</p>
+        <label class="upload-btn" for="dt-file">Choose File</label>
+        <input type="file" id="dt-file" accept=".xlsx,.xls" onchange="handleFile(this,'dt','card-dt','dt-status')">
+        <div class="file-status" id="dt-status"></div>
+      </div>
+      <div class="upload-card optional" id="card-wo">
+        <h3>🔧 Agility Work Orders</h3>
+        <p>Selective Work Orders export — required for an accurate gap figure</p>
+        <label class="upload-btn" for="wo-file">Choose File</label>
+        <input type="file" id="wo-file" accept=".xlsx,.xls" onchange="handleFile(this,'wo','card-wo','wo-status')">
+        <div class="file-status" id="wo-status"></div>
+      </div>
+      <div class="upload-card optional" id="card-oee">
+        <h3>📈 SFC Monthly OEE</h3>
+        <p>Monthly UK OEE By Machine Tabular (Hours)</p>
+        <label class="upload-btn" for="oee-file">Choose File</label>
+        <input type="file" id="oee-file" accept=".xls" onchange="handleFile(this,'oee','card-oee','oee-status')">
+        <div class="file-status" id="oee-status"></div>
+      </div>
+      <div class="upload-card optional" id="card-mtbf">
+        <h3>📉 Agility MTBF</h3>
+        <p>Mean Time Between Failure export for the same period</p>
+        <label class="upload-btn" for="mtbf-file">Choose File</label>
+        <input type="file" id="mtbf-file" accept=".xlsx,.xls" onchange="handleFile(this,'mtbf','card-mtbf','mtbf-status')">
+        <div class="file-status" id="mtbf-status"></div>
+      </div>
+      <div class="upload-card optional" id="card-efacs">
+        <h3>♻️ EFACS Cost of Scrap</h3>
+        <p>Corrects OEE Quality % — SFC's own scrap count is badly under-populated</p>
+        <label class="upload-btn" for="efacs-file">Choose File</label>
+        <input type="file" id="efacs-file" accept=".xlsx,.xls" onchange="handleFile(this,'efacs','card-efacs','efacs-status')">
+        <div class="file-status" id="efacs-status"></div>
+      </div>
+      <div class="upload-card optional" id="card-ppm">
+        <h3>📅 Due Date Performance</h3>
+        <p>Agility export (AG3-205, Due Date view) — powers TPM Schedule Completion</p>
+        <label class="upload-btn" for="ppm-file">Choose File</label>
+        <input type="file" id="ppm-file" accept=".xlsx,.xls" onchange="handleFile(this,'ppm','card-ppm','ppm-status')">
+        <div class="file-status" id="ppm-status"></div>
+      </div>
+    </div>
+    <div class="error-box" id="error-box"></div>
+    <div class="error-box" id="warning-box" style="background:#fef3c7;border-color:#d97706;color:#92400e;"></div>
+    <div class="action-row">
+      <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Maintenance Check</button>
+      <button class="clear-btn" id="clear-btn" onclick="clearCheck()">↺ Clear / New Check</button>
+    </div>
+    <button class="report-btn" id="report-btn" onclick="generateReport()">📄 Generate PDF Report</button>
+    <div id="save-row" style="display:none;margin-top:10px;gap:8px;align-items:center;">
+      <input type="text" id="period-label" placeholder="e.g. June 2026" style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+      <button class="report-btn" style="display:inline-block;margin-top:0;width:auto;white-space:nowrap;padding:10px 18px;" id="save-btn" onclick="saveRun()">💾 Save to Trend Dashboard</button>
+    </div>
+    <div id="save-status" style="font-size:12px;margin-top:6px;color:#95C11F;font-weight:bold;"></div>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p style="color:#888;font-size:13px">Processing files...</p>
+  </div>
+
+  <div class="results" id="results">
+
+    <div class="statement-box">
+      <div class="label">📋 Summary</div>
+      <p id="statement-text"></p>
+    </div>
+
+    <div class="kpi-row" id="kpi-row"></div>
+
+    <div class="table-card" id="oee-box" style="display:none;"></div>
+    <div class="table-card" id="mtbf-box" style="display:none;"></div>
+
+    <div class="table-card" style="padding:16px 20px 8px">
+      <h3>Scheduled vs Actual Hours</h3>
+    </div>
+    <div class="sched-row" id="sched-row" style="margin-top:-8px"></div>
+
+    <div class="table-card">
+      <h3>Agility Breakdown Work Orders</h3>
+      <table>
+        <thead>
+          <tr><th>WO</th><th>Asset Code</th><th>Asset Name</th><th>Job Type / Desc</th><th>Downtime</th></tr>
+        </thead>
+        <tbody id="wo-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="table-card">
+      <h3>SFC Maintenance-Attributable Reasons</h3>
+      <table>
+        <thead><tr><th>Reason</th><th>Duration</th></tr></thead>
+        <tbody id="reason-tbody"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+</div>
+
+<footer>Clamason Maintenance — Internal Tool</footer>
+
+</div>
+
+<script>
+const files = {};
+let lastResult = null;
+
+const STORAGE_KEY = 'monthly-check-progress';
+const FILE_UI = {
+  ds: { cardId: 'card-ds', statusId: 'ds-status' },
+  dt: { cardId: 'card-dt', statusId: 'dt-status' },
+  wo: { cardId: 'card-wo', statusId: 'wo-status' },
+  mtbf: { cardId: 'card-mtbf', statusId: 'mtbf-status' },
+  oee: { cardId: 'card-oee', statusId: 'oee-status' },
+  efacs: { cardId: 'card-efacs', statusId: 'efacs-status' },
+  ppm: { cardId: 'card-ppm', statusId: 'ppm-status' },
+};
+
+// Same reasoning as the Daily Check page: persist in-progress work to
+// sessionStorage so switching to another browser tab and back doesn't lose
+// everything when the browser discards the background tab to save memory.
+// Cleared explicitly by Clear / New Check — not time-based.
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function dataURLToFile(dataUrl, filename) {
+  const [header, base64] = dataUrl.split(',');
+  const mime = (header.match(/data:(.*?);base64/) || [])[1] || 'application/octet-stream';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], filename, { type: mime });
+}
+
+async function persistProgress() {
+  try {
+    const fileData = {};
+    for (const key of Object.keys(FILE_UI)) {
+      if (files[key]) fileData[key] = { name: files[key].name, data: await fileToDataURL(files[key]) };
+    }
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+      fileData,
+      result: lastResult,
+      periodLabel: document.getElementById('period-label').value,
+      warning: document.getElementById('warning-box').textContent,
+    }));
+  } catch (e) {
+    console.warn('Could not save progress for tab-switch recovery:', e);
+  }
+}
+
+function clearPersistedProgress() {
+  sessionStorage.removeItem(STORAGE_KEY);
+}
+
+function restorePersistedProgress() {
+  const raw = sessionStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const state = JSON.parse(raw);
+    for (const key of Object.keys(FILE_UI)) {
+      const fd = state.fileData && state.fileData[key];
+      if (!fd) continue;
+      files[key] = dataURLToFile(fd.data, fd.name);
+      document.getElementById(FILE_UI[key].cardId).classList.add('done');
+      document.getElementById(FILE_UI[key].statusId).textContent = '✓ ' + fd.name;
+    }
+    document.getElementById('run-btn').disabled = Object.keys(files).length === 0;
+    if (state.periodLabel) document.getElementById('period-label').value = state.periodLabel;
+    if (state.warning) {
+      const wb = document.getElementById('warning-box');
+      wb.style.display = 'block';
+      wb.textContent = state.warning;
+    }
+    if (state.result) {
+      lastResult = state.result;
+      render(lastResult);
+      document.getElementById('results').style.display = 'block';
+      document.getElementById('report-btn').style.display = 'block';
+      document.getElementById('save-row').style.display = 'flex';
+    }
+  } catch (e) {
+    console.warn('Could not restore saved progress:', e);
+    clearPersistedProgress();
+  }
+}
+
+function clearCheck() {
+  for (const key of Object.keys(files)) delete files[key];
+  lastResult = null;
+  clearPersistedProgress();
+
+  for (const key of Object.keys(FILE_UI)) {
+    document.getElementById(key + '-file').value = '';
+    document.getElementById(FILE_UI[key].cardId).classList.remove('done');
+    document.getElementById(FILE_UI[key].statusId).textContent = '';
+  }
+
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('warning-box').style.display = 'none';
+  document.getElementById('warning-box').textContent = '';
+  document.getElementById('period-label').value = '';
+  document.getElementById('save-status').textContent = '';
+  document.getElementById('report-btn').style.display = 'none';
+  document.getElementById('save-row').style.display = 'none';
+  document.getElementById('results').style.display = 'none';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  restorePersistedProgress();
+});
+
+function handleFile(input, key, cardId, statusId) {
+  const f = input.files[0];
+  if (!f) return;
+  files[key] = f;
+  document.getElementById(cardId).classList.add('done');
+  document.getElementById(statusId).textContent = '✓ ' + f.name;
+  document.getElementById('run-btn').disabled = Object.keys(files).length === 0;
+  persistProgress();
+}
+
+async function runCheck() {
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('warning-box').style.display = 'none';
+  document.getElementById('run-btn').disabled = true;
+
+  try {
+    const fd = new FormData();
+    if (files.ds) fd.append('daily_summary', files.ds);
+    if (files.dt) fd.append('agility_downtime', files.dt);
+    if (files.wo) fd.append('agility_wo', files.wo);
+    if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
+    if (files.oee) fd.append('oee_monthly', files.oee);
+    if (files.efacs) fd.append('efacs_scrap', files.efacs);
+    if (files.ppm) fd.append('due_date_performance', files.ppm);
+
+    const res = await fetch('/api/maintenance-check', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+
+    if (d.warning) {
+      const wb = document.getElementById('warning-box');
+      wb.style.display = 'block';
+      wb.textContent = '⚠️ ' + d.warning;
+    }
+
+    lastResult = d;
+    render(d);
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('report-btn').style.display = 'block';
+    document.getElementById('save-row').style.display = 'flex';
+    document.getElementById('save-status').textContent = '';
+    persistProgress();
+  } catch (e) {
+    const eb = document.getElementById('error-box');
+    eb.style.display = 'block';
+    eb.textContent = 'Error: ' + e.message;
+  }
+
+  document.getElementById('loading').classList.remove('show');
+  document.getElementById('run-btn').disabled = false;
+}
+
+function renderOee(d) {
+  const box = document.getElementById('oee-box');
+  if (!d.oee) { box.style.display = 'none'; return; }
+  const f = d.oee.fleet;
+  const worst = d.oee.per_machine.slice(0, 3);
+  const ranges = d.oee.week_ranges.map(w => `${w.file} — ${w.range}`).join('<br>');
+
+  // Anomalies are surfaced rather than quietly corrected. Performance
+  // above 100% means SFC's ideal-parts or cycle-time setting is wrong
+  // for that machine, which understates the fleet figure — a data
+  // problem worth someone's attention, not a rounding detail.
+  const anomalyNote = f.anomaly_machines.length
+    ? `<div style="margin-top:10px;padding:8px 10px;background:#fef3c7;border-radius:6px;font-size:11px;color:#92400e;">
+         <strong>${f.anomaly_machines.length} machine${f.anomaly_machines.length === 1 ? '' : 's'} with suspect source data:</strong>
+         ${f.anomaly_machines.join(', ')}. Parts produced exceed SFC's ideal, or scrap exceeds parts made.
+         Performance is capped at 100% for the OEE figure.</div>`
+    : '';
+
+  box.innerHTML = `
+    <h3>OEE — ${f.machine_count} machines</h3>
+    <div class="kpi-row">
+      <div class="kpi"><label>Availability</label><div class="val">${f.availability_pct}%</div><div class="sub">${f.run_time_hrs.toLocaleString()}h run / ${f.net_avail_hrs.toLocaleString()}h net</div></div>
+      <div class="kpi"><label>Performance</label><div class="val">${f.performance_pct}%</div><div class="sub">${f.performance_pct_raw > 100 ? 'raw ' + f.performance_pct_raw + '%, capped' : 'parts vs ideal'}</div></div>
+      <div class="kpi"><label>Quality</label><div class="val">${f.quality_pct === null ? 'n/a' : f.quality_pct + '%'}</div><div class="sub">${f.quality_source === 'efacs' ? f.efacs_scrap_parts.toLocaleString() + ' scrap (EFACS)' : f.scrap_parts.toLocaleString() + ' scrap logged'}</div></div>
+      <div class="kpi green"><label>OEE</label><div class="val">${f.oee_pct}%</div><div class="sub">A × P × Q</div></div>
+    </div>
+    <div style="font-size:11px;color:#888;margin-top:10px;line-height:1.6;">
+      <strong>Weeks included:</strong><br>${ranges}
+    </div>
+    <div style="font-size:11.5px;color:#555;margin-top:10px;">
+      <strong>Lowest OEE:</strong> ${worst.map(m => `${m.machine} ${m.oee_pct}%`).join(' · ')}
+    </div>
+    ${anomalyNote}`;
+  box.style.display = 'block';
+}
+
+function renderMtbf(d) {
+  const box = document.getElementById('mtbf-box');
+  if (!d.mtbf) { box.style.display = 'none'; return; }
+  const m = d.mtbf;
+  const row = (label, s, note) => `
+    <tr><td>${label}</td><td>${s.asset_count}</td><td>${s.jobs}</td>
+    <td>${s.downtime_hrs.toLocaleString()}h</td><td>${s.mttr_hrs === null ? '–' : s.mttr_hrs + 'h'}</td>
+    <td>${s.wait_hrs === null ? '–' : s.wait_hrs + 'h'}</td>
+    <td>${s.mtbf_days === null ? '–' : s.mtbf_days + 'd'}<span style="color:#999;font-size:10px;"> (${s.mtbf_assets}/${s.asset_count})</span></td>
+    <td style="color:#888;font-size:10.5px;">${note}</td></tr>`;
+
+  box.innerHTML = `
+    <h3>Reliability — Agility MTBF ${m.breakdown_range ? '· ' + m.breakdown_range : ''}</h3>
+    <table>
+      <thead><tr><th>Scope</th><th>Assets</th><th>Jobs</th><th>Downtime</th><th>MTTR</th><th>Wait</th><th>MTBF</th><th></th></tr></thead>
+      <tbody>
+        ${row('Plant only', m.plant, 'presses and equipment')}
+        ${row('Tools', m.tools, 'toolroom assets')}
+        ${row('All assets', m.all, 'unfiltered — mixes both')}
+      </tbody>
+    </table>
+    <div style="font-size:11px;color:#888;margin-top:10px;line-height:1.6;">
+      This export has no craft column, so plant and tools are split by asset code.
+      Use the plant row for a maintenance figure — the unfiltered row is dominated by toolroom work.
+      MTBF counts in brackets are the assets Agility could calculate it for; the rest had too few
+      jobs to measure an interval between failures.
+    </div>`;
+  box.style.display = 'block';
+}
+
+function render(d) {
+  const s = d.sfc_summary || {};
+  // sfc_summary is {} (not present in the object at all) when that file
+  // wasn't uploaded this run — Object.keys length is the cheapest way
+  // to tell "genuinely empty" apart from "uploaded but reported zeros".
+  const hasSfc = Object.keys(s).length > 0;
+
+  // Both are no-ops when their file wasn't uploaded — they hide their
+  // own box rather than leaving a stale one from a previous run visible.
+  renderOee(d);
+  renderMtbf(d);
+
+  const statement = hasSfc
+    ? `SFC logged ${s.total_hrs}h of downtime in total for this period (${s.period || 'period not detected'}).\n\nOf that, ${s.maintenance_hrs}h is attributable to maintenance fault codes (press faults, feeder/decoiler faults, lubrication). Agility shows ${d.agility_maintenance_hrs}h logged against breakdown work orders for the same window.\n\nGap: ${d.gap_hrs}h (${d.gap_pct}%) of maintenance-attributable SFC downtime has no matching breakdown WO in Agility.`
+    : `No SFC Monthly Downtime Summary uploaded this run, so there's no gap % or reason-code breakdown yet — showing what the other files give us. Agility shows ${d.agility_maintenance_hrs}h logged against breakdown work orders on SFC-monitored presses. Add the SFC file when you have it for the full picture.`;
+  document.getElementById('statement-text').innerText = statement;
+
+  document.getElementById('kpi-row').innerHTML = hasSfc ? `
+    <div class="kpi red"><label>SFC Maintenance Hours</label><div class="val">${s.maintenance_hrs}h</div><div class="sub">From daily summary PDF</div></div>
+    <div class="kpi green"><label>Agility Breakdown Hours</label><div class="val">${d.agility_maintenance_hrs}h</div><div class="sub">From Down Time Analysis</div></div>
+    <div class="kpi"><label>Gap</label><div class="val">${d.gap_hrs}h</div><div class="sub">${d.gap_pct}% unaccounted for</div></div>
+  ` : `
+    <div class="kpi green"><label>Agility Breakdown Hours</label><div class="val">${d.agility_maintenance_hrs}h</div><div class="sub">From Down Time Analysis</div></div>
+    <div class="kpi"><label>Gap</label><div class="val">n/a</div><div class="sub">Needs the SFC file to compute</div></div>
+  `;
+
+  const sch = s.scheduled_hrs || 0;
+  const mph = s.max_possible_hrs || 0;
+  const poh = s.planned_offline_hrs || 0;
+  const mc  = s.machine_count || 0;
+  const actualRun = Math.max(0, sch - (s.maintenance_hrs || 0) - (s.toolroom_hrs || 0)).toFixed(2);
+  document.getElementById('sched-row').innerHTML = hasSfc ? `
+    <div class="kpi"><label>Machines Monitored</label><div class="val">${mc}</div><div class="sub">Period: ${s.period_hrs || 24}h</div></div>
+    <div class="kpi"><label>Max Possible Hours</label><div class="val">${mph}h</div><div class="sub">${mc} machines × ${s.period_hrs || 24}h</div></div>
+    <div class="kpi"><label>Planned Offline</label><div class="val">${poh}h</div><div class="sub">Removed from schedule</div></div>
+    <div class="kpi green"><label>Scheduled to Run</label><div class="val">${sch}h</div><div class="sub">Max − planned offline</div></div>
+    <div class="kpi red"><label>Lost to Maintenance</label><div class="val">${s.maintenance_hrs}h</div><div class="sub">Press faults, feeders, lubrication</div></div>
+    <div class="kpi"><label>Net Available</label><div class="val">${actualRun}h</div><div class="sub">After all losses</div></div>
+  ` : '<div style="grid-column:1/-1;text-align:center;color:#888;padding:16px;font-size:13px">Needs the SFC Monthly Downtime Summary file — not uploaded this run</div>';
+
+  document.getElementById('wo-tbody').innerHTML = d.matched_wos.length
+    ? d.matched_wos.map(r => `<tr>
+        <td>${r.wo}</td>
+        <td style="color:#888;font-size:11px">${r.asset}</td>
+        <td>${r.asset_name || '—'}</td>
+        <td>${r.job_type || r.desc || '—'}</td>
+        <td><b>${r.downtime_raw || r.downtime_hrs + 'h'}</b></td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px">No breakdown work orders found for this period</td></tr>';
+
+  document.getElementById('reason-tbody').innerHTML = hasSfc
+    ? (Object.entries(s.reasons || {})
+        .filter(([k]) => ['FAULT - PRESS','FAULT-FEEDER/DECOILER/STR','FAULT-SHAKER/CONVEYOR','FAULT-FEEDER/DECOILER/STRAIGHTENER','LUBRICATION/OIL REFILL','MA-FAULT PRESS','MA-FAULT-FEEDER/DECOILER/','MA-FAULT SHAKER/CONVEYOR'].includes(k.toUpperCase()))
+        .map(([k, v]) => `<tr><td>${k}</td><td>${v}h</td></tr>`).join('') || '<tr><td colspan="2" style="text-align:center;color:#888;padding:20px">No maintenance-coded reasons found</td></tr>')
+    : '<tr><td colspan="2" style="text-align:center;color:#888;padding:20px">SFC Monthly Downtime Summary not uploaded this run</td></tr>';
+}
+async function generateReport() {
+  const btn = document.getElementById('report-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating PDF...';
+  try {
+    const fd = new FormData();
+    if (files.ds) fd.append('daily_summary', files.ds);
+    if (files.dt) fd.append('agility_downtime', files.dt);
+    if (files.wo) fd.append('agility_wo', files.wo);
+    if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
+    if (files.oee) fd.append('oee_monthly', files.oee);
+    if (files.efacs) fd.append('efacs_scrap', files.efacs);
+    if (files.ppm) fd.append('due_date_performance', files.ppm);
+
+    const res = await fetch('/api/generate-report', { method: 'POST', body: fd });
+
+    // The server returns its errors as JSON with status 200, not 4xx, so
+    // res.ok is true even when generation failed. Checking the content
+    // type is the only reliable signal — without it, an error payload
+    // gets treated as a PDF and the user is handed a blank window.
+    const type = res.headers.get('Content-Type') || '';
+    if (type.includes('application/json')) {
+      const err = await res.json();
+      throw new Error(err.error || 'Unknown error generating PDF');
+    }
+    if (!res.ok) throw new Error('Server error generating PDF (' + res.status + ')');
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+
+    // A synthetic <a download> click rather than window.open(): popup
+    // blockers silently swallow window.open on a response that arrives
+    // after an await, which looks exactly like the button doing nothing.
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Maintenance_WO_Gap_Report.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    // Give the browser a moment to start the download before revoking.
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch (e) {
+    const eb = document.getElementById('error-box');
+    eb.style.display = 'block';
+    eb.textContent = 'PDF Error: ' + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = '📄 Generate PDF Report';
+}
+
+async function saveRun() {
+  const label = document.getElementById('period-label').value.trim();
+  if (!label) {
+    alert('Enter a period label first, e.g. "June 2026"');
+    return;
+  }
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Saving...';
+  const statusEl = document.getElementById('save-status');
+  statusEl.style.color = '#95C11F';
+  statusEl.textContent = '';
+
+  try {
+    const fd = new FormData();
+    if (files.ds) fd.append('daily_summary', files.ds);
+    if (files.dt) fd.append('agility_downtime', files.dt);
+    if (files.wo) fd.append('agility_wo', files.wo);
+    if (files.mtbf) fd.append('agility_mtbf', files.mtbf);
+    if (files.oee) fd.append('oee_monthly', files.oee);
+    if (files.efacs) fd.append('efacs_scrap', files.efacs);
+    if (files.ppm) fd.append('due_date_performance', files.ppm);
+    fd.append('period_label', label);
+
+    const res = await fetch('/api/save-run', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    statusEl.textContent = `✓ Saved "${d.period_label}" to the trend dashboard (gap: ${d.gap_pct}%)`;
+  } catch (e) {
+    statusEl.style.color = '#dc2626';
+    statusEl.textContent = 'Save failed: ' + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = '💾 Save to Trend Dashboard';
+}
+</script>
+</body>
+</html>
