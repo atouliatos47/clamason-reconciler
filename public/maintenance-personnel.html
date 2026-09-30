@@ -295,6 +295,30 @@ function fmt(n, d = 1) {
   return (n === null || n === undefined) ? '—' : Number(n).toFixed(d);
 }
 
+// Built from local date parts, not new Date().toISOString(), for the same
+// reason daily.html's defaultCheckDate() is: toISOString() uses the UTC
+// date, which during British Summer Time can already be into the next
+// day for the first hour after midnight local time.
+//
+// setDate(1) BEFORE setMonth(-1) matters: on the 29th-31st of a month,
+// subtracting a month from the full date directly can overshoot into the
+// month after the one intended, because JS clamps an out-of-range day by
+// rolling forward rather than refusing it. Checked on 31 March 2026: going
+// straight to setMonth(month-1) targets "31 February", which doesn't
+// exist, so JS quietly rolls it forward to 3 March — i.e. the WRONG
+// month, and the one place this bug can't be allowed to hide is a
+// function whose entire job is picking the right month. Zeroing the day
+// first removes the day-length question entirely — the 1st of any month
+// minus one month is always a real date.
+function defaultPeriod() {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
 function handleFiles(input) {
   files = Array.from(input.files || []);
   const status = document.getElementById('xlsx-status');
@@ -332,11 +356,13 @@ async function runCheck() {
 
     renderCheck(data.employees || []);
 
-    // Default the month picker to the current month so Save works with
-    // zero extra clicks for the common case of checking last month's
-    // export at the start of a new month.
+    // Default the month picker to LAST month, not this one — this report
+    // is always checking a month that's already finished (uploaded in
+    // September, covers August), same as the Daily Check page defaults
+    // its date to yesterday rather than today. Getting this wrong would
+    // silently file August's numbers under September on Save.
     const periodInput = document.getElementById('save-period');
-    if (!periodInput.value) periodInput.value = new Date().toISOString().slice(0, 7);
+    if (!periodInput.value) periodInput.value = defaultPeriod();
 
     document.getElementById('save-status').textContent = '';
     document.getElementById('save-status').className = 'save-status';
