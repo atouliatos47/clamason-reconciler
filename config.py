@@ -6,6 +6,7 @@ Everything here is data, not logic — pulled out of server.py so the
 through parser code. If a reason code or job type needs to be added or
 reclassified, this is the only file that should need to change.
 """
+import re
 
 # --- SFC downtime reason codes -------------------------------------------
 
@@ -255,6 +256,52 @@ PERSONNEL_PPM_EXCLUDED_EMPLOYEES = {
 def is_known_machine(asset_code):
     """True if this Agility asset code maps to an SFC-monitored press."""
     return any(asset_code in codes for codes in SFC_TO_AGILITY.values())
+
+
+# Reverse of SFC_TO_AGILITY: asset code -> canonical SFC machine name.
+_ASSET_TO_MACHINE = {
+    code: machine
+    for machine, codes in SFC_TO_AGILITY.items()
+    for code in codes
+}
+
+# SFC started appending the Agility asset code to machine names from the
+# September 2026 export onward, e.g. 'Bruderer 1' -> 'Bruderer 1 - 00031'.
+# Matches a trailing ' - <digits>' of 5 or 6 digits (Agility's two asset
+# code lengths — see the codes above).
+_ASSET_CODE_SUFFIX_RE = re.compile(r'-\s*(\d{5,6})\s*$')
+
+
+def normalize_machine_name(raw_name):
+    """Map whatever name SFC prints for a machine back to the canonical
+    name this file uses as a key (SFC_TO_AGILITY, SHIFT_HOURS_PER_WEEK),
+    so a cosmetic change to SFC's export doesn't split one machine's
+    history into two names on the trend pages.
+
+    Matches by the trailing Agility asset code rather than by stripping
+    the suffix text, on purpose: several canonical names already carry
+    their own suffix (ISI73, ISI1, ISI23...) that doesn't appear
+    anywhere in the new SFC name, so simply chopping off ' - 00043'
+    from 'Bruderer 60T - 00043' gives 'Bruderer 60T', which still
+    doesn't match the canonical 'Bruderer 60T ISI73' — exactly the
+    machines most likely to collide (the two Chin Fong 110s, the two
+    HMEs) are the ones a text-suffix strip would get wrong.
+
+    Returns the raw name unchanged if it's already canonical, or if no
+    asset code can be matched — a genuinely new or renamed machine
+    should surface under its own name rather than silently vanish, the
+    same way an unrecognised downtime reason code lands in the
+    'production' residual bucket instead of being dropped.
+    """
+    name = raw_name.strip()
+    if name in SFC_TO_AGILITY:
+        return name
+    m = _ASSET_CODE_SUFFIX_RE.search(name)
+    if m:
+        canonical = _ASSET_TO_MACHINE.get(m.group(1))
+        if canonical:
+            return canonical
+    return name
 
 
 # --- Intended shift pattern, for TEEP against a realistic baseline --------

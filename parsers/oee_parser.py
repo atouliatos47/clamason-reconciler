@@ -39,7 +39,7 @@ import io
 
 import xlrd
 
-from config import SHIFT_HOURS_PER_WEEK, NON_MACHINE_SHEETS
+from config import SHIFT_HOURS_PER_WEEK, NON_MACHINE_SHEETS, normalize_machine_name
 
 
 # Fixed column positions in the Sub Totals row. SFC emits merged/blank
@@ -136,7 +136,12 @@ def parse_oee_file(filepath):
             # the Sub Totals guard below already discards any row with no
             # current machine, so an excluded name just rides that same
             # check instead of needing its own.
-            machine = None if name.lower() in NON_MACHINE_SHEETS else name
+            # Normalized the same way sfc_monthly_xlsx.py normalizes its
+            # sheet names — see config.normalize_machine_name — so this
+            # report and the Downtime Summary agree on one name per
+            # press even after SFC starts appending the asset code, and
+            # the TEEP lookup into SHIFT_HOURS_PER_WEEK below still hits.
+            machine = None if name.lower() in NON_MACHINE_SHEETS else normalize_machine_name(name)
             continue
 
         if not date_range:

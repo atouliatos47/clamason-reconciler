@@ -8,7 +8,22 @@ import re
 import pandas as pd
 
 from time_utils import hms_to_hours
-from config import BLAME_FAULT_CODES, FAULT_CODES, TOOLROOM_CODES, PLANNED_CODES, NON_MACHINE_SHEETS
+from config import (
+    BLAME_FAULT_CODES, FAULT_CODES, TOOLROOM_CODES, PLANNED_CODES,
+    NON_MACHINE_SHEETS, normalize_machine_name,
+)
+
+# Marks the site-wide "All Selected Machines" export — every machine's
+# downtime added into ONE sheet, with no per-machine split at all. SFC
+# names that sheet's tab after whichever machine happens to be first in
+# the selection, so the tab name alone can look exactly like a genuine
+# one-machine sheet (e.g. 'Bruderer 1 - 00031'); this phrase, which SFC
+# always prints near the top of the sheet itself, is the real signal.
+# Uploading this file here silently produced a 1-machine, 0-hour result
+# (the per-machine Paretos all read 0.0h) because this format also ends
+# its table in a row called 'Grand Totals' rather than the 'Totals'
+# _read_reason_rows looks for below — so catch it explicitly instead.
+SITE_WIDE_MARKER = 'all selected machines'
 
 
 def _find_report_period(df):
@@ -37,6 +52,17 @@ def _find_report_period(df):
                         period_hrs = None
                     return period, period_hrs
     return '', None
+
+
+def _is_site_wide_export(df):
+    """True if this sheet carries the SITE_WIDE_MARKER text — see the
+    module-level comment on why the tab name alone can't be trusted."""
+    for i in range(min(10, len(df))):
+        for j in range(df.shape[1]):
+            v = df.iat[i, j]
+            if isinstance(v, str) and v.strip().lower() == SITE_WIDE_MARKER:
+                return True
+    return False
 
 
 def _find_header_row(df):
@@ -160,6 +186,16 @@ def parse_monthly_summary_xlsx(filepath):
 
             df = pd.read_excel(xls, sheet_name=sheet, header=None)
 
+            if _is_site_wide_export(df):
+                raise ValueError(
+                    "This UK Monthly Downtime Summary has all presses added "
+                    "together into one sheet — it looks like a one-machine "
+                    "file because SFC names the tab after whichever machine "
+                    "is first in the list, but it isn't split by machine. "
+                    "Re-export it from SFC split by machine (about 19 tabs, "
+                    "one per press) and upload that file instead."
+                )
+
             header_row = _find_header_row(df)
             if header_row is None:
                 continue
@@ -173,7 +209,7 @@ def parse_monthly_summary_xlsx(filepath):
             )
             grand_total_hrs += sheet_hrs
             grand_total_events += sheet_events
-            by_machine[sheet] = machine_row
+            by_machine[normalize_machine_name(sheet)] = machine_row
 
     if period_hrs is None:
         period_hrs = 24
