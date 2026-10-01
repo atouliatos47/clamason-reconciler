@@ -84,6 +84,9 @@
   .chart-card { background: white; border-radius: 10px; padding: 20px 22px; }
   .chart-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
   .chart-card canvas { display: block; }
+  /* Sits between an h3 and its canvas — pulled up against the heading's
+     own margin-bottom rather than stacking a second gap under it. */
+  .chart-sub-note { font-size: 10.5px; color: #999; margin: -10px 0 12px; }
 
   .machine-card { background: white; border-radius: 10px; padding: 20px 22px; margin-bottom: 24px; }
   .machine-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
@@ -103,13 +106,12 @@
   </div>
   <nav class="sidebar-nav">
     <div class="nav-group">
-      <button type="button" class="nav-group-header open" id="nav-header-board-review" onclick="toggleNavGroup('board-review')">
+      <button type="button" class="nav-group-header" id="nav-header-board-review" onclick="toggleNavGroup('board-review')">
         <span>Board Review</span><span class="chevron">▸</span>
       </button>
-      <div class="nav-group-items open" id="nav-group-board-review">
+      <div class="nav-group-items" id="nav-group-board-review">
         <a class="nav-item" href="/board-review">Total Monthly Performance Review</a>
         <a class="nav-item" href="/">Monthly Check</a>
-        <a class="nav-item active" href="/dashboard">Trend Dashboard</a>
         <a class="nav-item" href="/teep">TEEP</a>
       </div>
     </div>
@@ -128,11 +130,12 @@
       </div>
     </div>
     <div class="nav-group">
-      <button type="button" class="nav-group-header" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
+      <button type="button" class="nav-group-header open" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
         <span>Maintenance</span><span class="chevron">▸</span>
       </button>
-      <div class="nav-group-items" id="nav-group-maintenance">
+      <div class="nav-group-items open" id="nav-group-maintenance">
         <a class="nav-item" href="/maintenance">Monthly Performance Review</a>
+        <a class="nav-item active" href="/dashboard">Trend Dashboard</a>
         <a class="nav-item" href="/maintenance-notes">Notes and Action Plan</a>
         <a class="nav-item" href="/maintenance-sfc-vs-agility">SFC vs Agility</a>
         <a class="nav-item" href="/daily">Daily Check</a>
@@ -189,7 +192,7 @@ function toggleNavGroup(name) {
 <div class="page-header">
   <div>
     <h1>Maintenance Trend Dashboard</h1>
-    <p>SFC fault downtime vs Agility work order coverage — month over month</p>
+    <p>SFC downtime, Agility coverage, reliability and TPM — month over month</p>
   </div>
   <div>
     <select id="period-select" onchange="selectPeriod(this.value)"></select>
@@ -206,7 +209,178 @@ function toggleNavGroup(name) {
 
 <script>
 const NAVY = '#243547', LIME = '#95C11F', RED = '#dc2626', AMBER = '#d97706';
+// Maintenance's house colour everywhere else in this app (board-review.html,
+// maintenance.html) — used here for the Pareto bars and reason-code bars so
+// this page reads as the same department rather than introducing a new one.
+const MAINTENANCE = '#2e6b4f';
 let RUNS = [];
+
+// --- Downtime Pareto / reason-codes — ported from maintenance.html -------
+// Same functions, same look, so a director who's seen the Monthly
+// Performance Review slide recognises this chart immediately. Trimmed down
+// from that page's versions: no "Other" bucket or cross-department overlay,
+// since Maintenance's own fault codes have only ever run to 2-3 distinct
+// reasons (per that page's own comment) — nowhere near where an "Other"
+// bucket would start to matter.
+
+// Kept in step with config.py / maintenance.html. Display-only: it decides
+// which reason rows appear in the chart below.
+const MAINTENANCE_FAULT_CODES = ['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR',
+  'FAULT-FEEDER/DECOILER/STRAIGHTENER', 'FAULT-SHAKER/CONVEYOR',
+  'MA-FAULT PRESS', 'MA-FAULT-FEEDER/DECOILER/', 'MA-FAULT SHAKER/CONVEYOR'];
+
+function faultReasonTotals(mb) {
+  const totals = {};
+  mb.forEach(m => Object.entries(m.reasons || {}).forEach(([reason, h]) => {
+    if (MAINTENANCE_FAULT_CODES.includes((reason || '').toUpperCase().trim())) {
+      totals[reason] = (totals[reason] || 0) + h;
+    }
+  }));
+  return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+}
+
+// Darker than Chart.js's default grey tick colour so it survives a
+// projector or a printed page — same reasoning as maintenance.html.
+const TICK = '#555';
+// The Pareto's cumulative-% line colour — deliberately not RED (= '#dc2626'
+// above, already meaning something specific elsewhere on this page); this
+// is maintenance.html's own Pareto line colour, kept as its own constant
+// so the two reds are never confused with each other.
+const PARETO_LINE = '#c0392b';
+
+// Tick labels are drawn at an angle inside a narrow column (Pareto) or
+// read horizontally with a whole column of width (reason bars) — two
+// different budgets for the same truncation logic.
+const MAX_TICK = 13;
+const MAX_TICK_H = 24;
+
+function shortLabel(text, max) {
+  const limit = max || MAX_TICK;
+  const t = String(text);
+  return t.length > limit ? t.slice(0, limit - 1) + '…' : t;
+}
+
+function commonPrefixLength(names) {
+  if (names.length < 2) return 0;
+  let i = 0;
+  while (i < names[0].length && names.every(n => n[i] === names[0][i])) i += 1;
+  return i;
+}
+
+// Shortens a set of labels without making any two of them identical —
+// where two names collide after truncation, shows what's DIFFERENT about
+// them (the text after their shared prefix) instead of the same head
+// twice. See maintenance.html's own copy of this function for the full
+// reasoning and examples.
+function uniqueShortLabels(names, max) {
+  const limit = max || MAX_TICK;
+  const full = names.map(String);
+  const short = full.map(n => shortLabel(n, limit));
+  const counts = {};
+  short.forEach(l => { counts[l] = (counts[l] || 0) + 1; });
+
+  return short.map((l, i) => {
+    if (counts[l] === 1) return l;
+    const clashing = full.filter((_, j) => short[j] === l);
+    const cut = commonPrefixLength(clashing);
+    const tail = full[i].slice(cut) || full[i];
+    if (tail.length <= 4) {
+      const head = limit - 1 - tail.length;
+      return head > 0 ? full[i].slice(0, head) + '…' + tail : '…' + tail;
+    }
+    return tail.length > limit - 1 ? '…' + tail.slice(-(limit - 1)) : '…' + tail;
+  });
+}
+
+// Prints each bar's value on the bar, so a number can be read off without
+// hovering. Handles both orientations (above the bar on the vertical
+// Pareto, beside it on the horizontal reason chart) and skips line
+// datasets — the Pareto's cumulative line is already labelled by its own
+// right-hand axis.
+const barValues = {
+  id: 'barValues',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    const horizontal = chart.options.indexAxis === 'y';
+    chart.data.datasets.forEach((ds, di) => {
+      const meta = chart.getDatasetMeta(di);
+      if (ds.type === 'line' || meta.type === 'line') return;
+      meta.data.forEach((el, i) => {
+        const v = ds.data[i];
+        if (v === null || v === undefined) return;
+        const text = (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + 'h';
+        ctx.save();
+        ctx.fillStyle = '#243547';
+        ctx.font = '600 10px Arial';
+        if (horizontal) {
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, el.x + 5, el.y);
+        } else {
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(text, el.x, el.y - 3);
+        }
+        ctx.restore();
+      });
+    });
+  },
+};
+
+function pareto(id, rows, key, colour) {
+  const data = rows.map(r => r[key] || 0);
+  const total = data.reduce((a, b) => a + b, 0);
+  let run = 0;
+  const cum = data.map(v => { run += v; return total ? Math.round(run / total * 1000) / 10 : 0; });
+  new Chart(document.getElementById(id), {
+    data: {
+      labels: uniqueShortLabels(rows.map(r => r.machine)),
+      datasets: [
+        { type: 'bar', data, backgroundColor: colour, borderRadius: 2, maxBarThickness: 34, order: 2 },
+        { type: 'line', data: cum, borderColor: PARETO_LINE, borderWidth: 1.4, pointRadius: 2,
+          pointBackgroundColor: PARETO_LINE, yAxisID: 'y1', order: 1 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 14, bottom: 6, left: 2, right: 2 } },
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: c => c.dataset.type === 'line'
+          ? 'cumulative ' + c.parsed.y.toFixed(1) + '%' : c.parsed.y.toFixed(1) + 'h' } } },
+      scales: {
+        x: { ticks: { color: TICK, font: { size: 8 }, maxRotation: 40, minRotation: 40, autoSkip: false },
+             grid: { display: false } },
+        y: { ticks: { color: TICK, font: { size: 8 }, callback: v => v + 'h', maxTicksLimit: 6 },
+             grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true, grace: '12%' },
+        y1: { position: 'right', min: 0, max: 100, grid: { display: false },
+              ticks: { color: TICK, font: { size: 8 }, stepSize: 50, callback: v => v + '%' } },
+      },
+    },
+    plugins: [barValues],
+  });
+}
+
+function reasonBarsSimple(id, entries, colour) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: {
+      labels: uniqueShortLabels(entries.map(e => e[0]), MAX_TICK_H),
+      datasets: [{ data: entries.map(e => e[1]), backgroundColor: colour, borderRadius: 3, maxBarThickness: 28 }],
+    },
+    plugins: [barValues],
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 36 } },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { display: false },
+        y: { grid: { display: false }, ticks: { color: TICK, font: { size: 10.5 } } },
+      },
+    },
+  });
+}
+// ---------------------------------------------------------------------
 
 function fmt(n, d=1) { return (n === null || n === undefined) ? '—' : Number(n).toFixed(d); }
 
@@ -277,6 +451,21 @@ function hasPpm(runs) {
   return runs.some(r => r.ppm_completion_pct !== null && r.ppm_completion_pct !== undefined);
 }
 
+// MTTF isn't stored as its own column — maintenance.html's own gauge
+// derives it the same way (MTBF in hours, minus MTTR) for its headline
+// ring, so this repeats that exact formula rather than introducing a
+// second definition of the same number. One function, called from both
+// the KPI tile and the trend chart below, so they can't quietly drift
+// apart from each other.
+function mttfOf(r) {
+  if (r.mtbf_days == null || r.mtbf_mttr_hrs == null) return null;
+  return (r.mtbf_days * 24) - r.mtbf_mttr_hrs;
+}
+
+function hasMtbf(runs) {
+  return runs.some(r => mttfOf(r) !== null);
+}
+
 function oeeSection(latest, prev) {
   if (latest.oee_pct === null || latest.oee_pct === undefined) return '';
   // oee_week_count is a leftover from the old weekly-upload workflow —
@@ -329,10 +518,21 @@ function reliabilitySection(latest, prev) {
   // reading as fleet-wide.
   const cover = (latest.mtbf_assets != null && latest.mtbf_asset_count != null)
     ? `${latest.mtbf_assets} of ${latest.mtbf_asset_count} assets` : '';
+  // MTTF leads the row — it's the number maintenance.html's own gauge
+  // treats as the headline (with a confirmed 400h target), MTBF/MTTR are
+  // kept alongside as the two figures it's built from, same as that
+  // page's gauge note does.
+  const mttf = mttfOf(latest);
+  const prevMttf = prev ? mttfOf(prev) : null;
   return `
     <div class="machine-card">
       <h3>Reliability — plant only, tools excluded</h3>
-      <div class="kpi-row" style="margin-bottom:0;">
+      <div class="kpi-row" style="margin-bottom:0; grid-template-columns: repeat(5,1fr);">
+        <div class="kpi green">
+          <label>MTTF</label>
+          <div class="val">${mttf == null ? '—' : fmt(mttf, 0) + 'h'}</div>
+          ${prevMttf != null && mttf != null ? deltaBadge(mttf, prevMttf, false) : '<span class="sub">target 400h</span>'}
+        </div>
         <div class="kpi green">
           <label>MTTR</label>
           <div class="val">${fmt(latest.mtbf_mttr_hrs, 2)}h</div>
@@ -420,9 +620,17 @@ function render(runs, idx) {
     ${reliabilitySection(latest, prev)}
     ${ppmSection(latest, prev)}
 
-    <div class="machine-card">
-      <h3>${latest.period_label || latest.period} — Fault Events vs Breakdown WOs by Machine</h3>
-      <div class="canvas-wrap"><canvas id="machineChart"></canvas></div>
+    <div class="chart-grid">
+      <div class="chart-card">
+        <h3>Downtime Pareto — Top 5 Presses</h3>
+        <div class="chart-sub-note">${latest.period_label || latest.period} · same chart as the Monthly Performance Review slide</div>
+        <div class="canvas-wrap short"><canvas id="paretoChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Fault Downtime — Reason Codes</h3>
+        <div class="chart-sub-note">${latest.period_label || latest.period} · ${fmt(latest.maintenance_hrs)}h total</div>
+        <div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>
+      </div>
     </div>
 
     <div class="chart-grid">
@@ -445,6 +653,15 @@ function render(runs, idx) {
       <div class="chart-card">
         <h3>MTTR &amp; Response Time — Trend</h3>
         <div class="canvas-wrap short"><canvas id="mttrChart"></canvas></div>
+      </div>
+    </div>` : ''}
+
+    ${hasMtbf(runs) ? `
+    <div class="chart-grid">
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h3>MTTF — Trend</h3>
+        <div class="chart-sub-note">Dashed line is the 400h target · same formula as the Monthly Performance Review gauge</div>
+        <div class="canvas-wrap short"><canvas id="mttfChart"></canvas></div>
       </div>
     </div>` : ''}
 
@@ -556,49 +773,32 @@ function render(runs, idx) {
     },
   });
 
-  // Small inline plugin: draws the count value at the end of each horizontal
-  // bar (like the earlier presentation chart). No extra CDN dependency —
-  // just a Chart.js plugin hook drawing text after each bar renders.
-  const barValueLabels = {
-    id: 'barValueLabels',
-    afterDatasetsDraw(chart) {
-      const { ctx } = chart;
-      chart.data.datasets.forEach((dataset, di) => {
-        const meta = chart.getDatasetMeta(di);
-        meta.data.forEach((bar, i) => {
-          const value = dataset.data[i];
-          if (value === null || value === undefined) return;
-          ctx.save();
-          ctx.fillStyle = '#243547';
-          ctx.font = 'bold 11px Arial';
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(String(value), bar.x + 6, bar.y);
-          ctx.restore();
-        });
-      });
-    },
-  };
+  const mb = latest.machine_breakdown || [];
+  const top5Fault = mb.slice().sort((a, b) => (b.fault_hrs || 0) - (a.fault_hrs || 0)).slice(0, 5);
+  pareto('paretoChart', top5Fault, 'fault_hrs', MAINTENANCE);
+  reasonBarsSimple('reasonChart', faultReasonTotals(mb), MAINTENANCE);
 
-  const mb = (latest.machine_breakdown || []).slice().sort((a, b) => b.fault_hrs - a.fault_hrs);
-  new Chart(document.getElementById('machineChart'), {
-    type: 'bar',
-    data: {
-      labels: mb.map(m => m.machine),
-      datasets: [
-        { label: 'SFC fault events', data: mb.map(m => m.fault_events), backgroundColor: NAVY, borderRadius: 3 },
-        { label: 'Agility breakdown WOs', data: mb.map(m => m.wo_count), backgroundColor: LIME, borderRadius: 3 },
-      ],
-    },
-    plugins: [barValueLabels],
-    options: {
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false,
-      layout: { padding: { right: 24 } },
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
-      scales: { x: { beginAtZero: true } },
-    },
-  });
+  if (hasMtbf(runs)) {
+    new Chart(document.getElementById('mttfChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'MTTF (h)', data: runs.map(mttfOf), borderColor: MAINTENANCE,
+            backgroundColor: MAINTENANCE + '15', fill: true, tension: 0.25,
+            pointBackgroundColor: MAINTENANCE, pointRadius: 5, spanGaps: true },
+          { label: 'Target', data: Array(runs.length).fill(400), borderColor: '#999',
+            borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, order: 0, fill: false },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+                   tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(0)}h` } } },
+        scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
+      },
+    });
+  }
 }
 
 load();
