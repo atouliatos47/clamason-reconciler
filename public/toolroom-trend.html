@@ -433,6 +433,24 @@ function hasWoBacklog(runs) {
 
 const TOOLROOM_BACKLOG_TARGET = 25;
 
+// toolroom.html's "Downtime (SFC)" gauge, trended — same broad definition
+// as the Pareto/reason-code charts above (machine_breakdown's own tool_hrs
+// / tool_events, TOOLROOM_CODES-scoped), NOT the narrower toolroom_sfc_hrs
+// used in the KPI row (that one is Scott's 3-code gap figure). Two
+// different numbers on toolroom.html itself — this keeps them just as
+// distinct here rather than quietly merging them into one.
+function siteToolHrs(r) {
+  if (!r.machine_breakdown) return null;
+  return r.machine_breakdown.reduce((s, m) => s + (m.tool_hrs || 0), 0);
+}
+function siteToolEvents(r) {
+  if (!r.machine_breakdown) return null;
+  return r.machine_breakdown.reduce((s, m) => s + (m.tool_events || 0), 0);
+}
+function hasToolDowntime(runs) {
+  return runs.some(r => siteToolHrs(r) !== null);
+}
+
 function render(runs, idx) {
   const latest = runs[idx];
   const prev = idx > 0 ? runs[idx - 1] : null;
@@ -498,6 +516,15 @@ function render(runs, idx) {
         <div class="canvas-wrap short"><canvas id="backlogChart"></canvas></div>
       </div>
     </div>` : ''}
+
+    ${hasToolDowntime(runs) ? `
+    <div class="chart-grid">
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h3>Downtime (SFC) — Trend</h3>
+        <div class="chart-sub-note">Hours (left) and tool-related events (right) · no target set · same figures as the Monthly Performance Review gauge</div>
+        <div class="canvas-wrap short"><canvas id="toolDowntimeChart"></canvas></div>
+      </div>
+    </div>` : ''}
   `;
 
   const labels = runs.map(r => r.period_label || r.period);
@@ -558,6 +585,33 @@ function render(runs, idx) {
         plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
                    tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(0)}` } } },
         scales: { y: { beginAtZero: true } },
+      },
+    });
+  }
+
+  if (hasToolDowntime(runs)) {
+    new Chart(document.getElementById('toolDowntimeChart'), {
+      data: {
+        labels,
+        datasets: [
+          { type: 'line', label: 'Tool downtime (h)', data: runs.map(siteToolHrs),
+            borderColor: TOOLROOM, backgroundColor: TOOLROOM + '15', fill: true, tension: 0.25,
+            pointBackgroundColor: TOOLROOM, pointRadius: 5, spanGaps: true, yAxisID: 'y' },
+          { type: 'line', label: 'Tool-related events', data: runs.map(siteToolEvents),
+            borderColor: NAVY, borderDash: [5, 3], borderWidth: 1.5, pointRadius: 3,
+            pointBackgroundColor: NAVY, fill: false, spanGaps: true, yAxisID: 'y1' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: { callbacks: { label: c => c.dataset.yAxisID === 'y1'
+            ? `${c.dataset.label}: ${Number(c.parsed.y).toFixed(0)}`
+            : `${c.dataset.label}: ${Number(c.parsed.y).toFixed(0)}h` } } },
+        scales: {
+          y: { beginAtZero: true, ticks: { callback: v => v + 'h' } },
+          y1: { position: 'right', beginAtZero: true, grid: { display: false } },
+        },
       },
     });
   }
