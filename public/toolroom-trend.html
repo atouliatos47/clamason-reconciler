@@ -238,6 +238,23 @@ function toolReasonTotals(mb) {
   return Object.entries(totals).sort((a, b) => b[1] - a[1]);
 }
 
+// Every uploaded month's machine_breakdown summed per press, rather than
+// just the currently-selected period — "which presses have cost us the
+// most tool downtime overall", not "this month only". A press that only
+// shows up in older months still counts here even if it's since been
+// retired or renamed, same reasoning as the per-period Pareto never
+// hiding a press just because it's not in the latest file.
+function allTimeToolTop5(runs) {
+  const totals = {};
+  runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
+    totals[m.machine] = (totals[m.machine] || 0) + (m.tool_hrs || 0);
+  }));
+  return Object.entries(totals)
+    .map(([machine, tool_hrs]) => ({ machine, tool_hrs }))
+    .sort((a, b) => b.tool_hrs - a.tool_hrs)
+    .slice(0, 5);
+}
+
 // Darker than Chart.js's default grey tick colour so it survives a
 // projector or a printed page — same reasoning as toolroom.html.
 const TICK = '#555';
@@ -485,14 +502,17 @@ function render(runs, idx) {
     </div>
 
     <div class="chart-grid">
-      <div class="chart-card">
+      <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Downtime Pareto — Top 5 Presses</h3>
-        <div class="chart-sub-note">${latest.period_label || latest.period} · same chart as the Monthly Performance Review slide</div>
+        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${latest.period_label || latest.period} combined · all ${runs.length} uploaded months</div>
         <div class="canvas-wrap short"><canvas id="paretoChart"></canvas></div>
       </div>
-      <div class="chart-card">
+    </div>
+
+    <div class="chart-grid">
+      <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Tool Downtime — Reason Codes</h3>
-        <div class="chart-sub-note">${latest.period_label || latest.period}</div>
+        <div class="chart-sub-note">${latest.period_label || latest.period} · same chart as the Monthly Performance Review slide</div>
         <div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>
       </div>
     </div>
@@ -563,8 +583,7 @@ function render(runs, idx) {
   });
 
   const mb = latest.machine_breakdown || [];
-  const top5Tool = mb.slice().sort((a, b) => (b.tool_hrs || 0) - (a.tool_hrs || 0)).slice(0, 5);
-  pareto('paretoChart', top5Tool, 'tool_hrs', TOOLROOM);
+  pareto('paretoChart', allTimeToolTop5(runs), 'tool_hrs', TOOLROOM);
   reasonBarsSimple('reasonChart', toolReasonTotals(mb), TOOLROOM);
 
   if (hasWoBacklog(runs)) {
