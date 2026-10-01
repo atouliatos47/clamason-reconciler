@@ -228,16 +228,6 @@ const TOOLROOM_CODES = ['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP',
   'TOOL UNAVAILABLE', 'WASTE IN THE TOOL',
   'TR-TOOL UNAVAILABLE', 'TR-TOOL FAILURE'];
 
-function toolReasonTotals(mb) {
-  const totals = {};
-  mb.forEach(m => Object.entries(m.reasons || {}).forEach(([reason, h]) => {
-    if (TOOLROOM_CODES.includes((reason || '').toUpperCase().trim())) {
-      totals[reason] = (totals[reason] || 0) + h;
-    }
-  }));
-  return Object.entries(totals).sort((a, b) => b[1] - a[1]);
-}
-
 // Every uploaded month's machine_breakdown summed per press, rather than
 // just the currently-selected period — "which presses have cost us the
 // most tool downtime overall", not "this month only". A press that only
@@ -253,6 +243,21 @@ function allTimeToolTop5(runs) {
     .map(([machine, tool_hrs]) => ({ machine, tool_hrs }))
     .sort((a, b) => b.tool_hrs - a.tool_hrs)
     .slice(0, 5);
+}
+
+// Same all-time treatment as allTimeToolTop5 above, applied to the reason
+// codes instead of the presses — every uploaded month's hours per reason
+// summed together, not just whichever period is selected in the dropdown.
+function allTimeToolReasonTotals(runs) {
+  const totals = {};
+  runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
+    Object.entries(m.reasons || {}).forEach(([reason, h]) => {
+      if (TOOLROOM_CODES.includes((reason || '').toUpperCase().trim())) {
+        totals[reason] = (totals[reason] || 0) + h;
+      }
+    });
+  }));
+  return Object.entries(totals).sort((a, b) => b[1] - a[1]);
 }
 
 // Darker than Chart.js's default grey tick colour so it survives a
@@ -512,7 +517,7 @@ function render(runs, idx) {
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Tool Downtime — Reason Codes</h3>
-        <div class="chart-sub-note">${latest.period_label || latest.period} · same chart as the Monthly Performance Review slide</div>
+        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months</div>
         <div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>
       </div>
     </div>
@@ -582,9 +587,8 @@ function render(runs, idx) {
     },
   });
 
-  const mb = latest.machine_breakdown || [];
   pareto('paretoChart', allTimeToolTop5(runs), 'tool_hrs', TOOLROOM);
-  reasonBarsSimple('reasonChart', toolReasonTotals(mb), TOOLROOM);
+  reasonBarsSimple('reasonChart', allTimeToolReasonTotals(runs), TOOLROOM);
 
   if (hasWoBacklog(runs)) {
     new Chart(document.getElementById('backlogChart'), {
