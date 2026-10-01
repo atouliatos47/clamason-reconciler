@@ -504,7 +504,7 @@ function render(runs, idx) {
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Downtime Pareto — Top 5 Presses</h3>
-        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${latest.period_label || latest.period} combined · all ${runs.length} uploaded months</div>
+        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months</div>
         <div class="canvas-wrap short"><canvas id="paretoChart"></canvas></div>
       </div>
     </div>
