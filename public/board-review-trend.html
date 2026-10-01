@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Board Review Trend</title>
+<!--
+  Board-level progress over time — every saved Monthly Check, read
+  straight from /api/trend (same endpoint board-review.html and
+  dashboard.html already use, so this page needed zero backend or
+  database changes: every figure here has been captured automatically
+  every time someone presses Save on a Monthly Check).
+
+  Deliberately NOT a rebuild of /dashboard ("Maintenance Trend
+  Dashboard"). That page already does one job well — Maintenance's own
+  SFC-vs-Agility gap story, with month-over-month deltas — and nothing
+  here duplicates it. This page exists for what it doesn't cover:
+
+    - Production, Toolroom and Maintenance downtime side by side
+      (that page only ever shows Maintenance's own fault hours)
+    - MTBF as an actual trend line (that page only shows it as a
+      single-month number on the latest-month card)
+    - One screen a director can read without knowing which department
+      page to go looking on
+
+  Same reason the three headline KPIs (OEE / Gap / TPM) are repeated
+  here even though two of them also appear on /dashboard: a director
+  comparing "how are we doing this year" shouldn't have to visit a
+  maintenance-specific page to see the fleet OEE number that's also on
+  the board slide every month.
+-->
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar { width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh; display: flex; flex-direction: column; padding: 24px 0; border-right: 3px solid #95C11F; position: sticky; top: 0; align-self: flex-start; }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-item { color: #C7CFD6; font-size: 13px; text-decoration: none; padding: 11px 24px; border-left: 3px solid transparent; display: block; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.14); color: #95C11F; border-left-color: #95C11F; font-weight: bold; }
+  .nav-group-header {
+    width: 100%; background: none; border: none; text-align: left; cursor: pointer;
+    color: #C7CFD6; font-size: 13px; padding: 11px 24px; border-left: 3px solid transparent;
+    display: flex; align-items: center; justify-content: space-between; font-family: inherit;
+  }
+  .nav-group-header:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-group-header .chevron { font-size: 9px; transition: transform 0.15s; }
+  .nav-group-header.open .chevron { transform: rotate(90deg); }
+  .nav-group-items { display: none; flex-direction: column; }
+  .nav-group-items.open { display: flex; }
+  .nav-group-items .nav-item { padding-left: 42px; font-size: 12.5px; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; min-width: 0; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; }
+  .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
+  .page-header p { color: #888; font-size: 11.5px; margin-top: 3px; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
+
+  .state-msg { background: white; border-radius: 10px; padding: 40px; text-align: center; color: #888; font-size: 13px; }
+  .state-msg.error { color: #dc2626; }
+
+  .period-badge { background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; margin-bottom: 18px; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi { background: white; border-radius: 10px; padding: 20px 22px; border-top: 4px solid #ddd; }
+  .kpi.navy { border-top-color: #243547; }
+  .kpi.red { border-top-color: #dc2626; }
+  .kpi.green { border-top-color: #95C11F; }
+  .kpi label { font-size: 10.5px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; }
+  .kpi .val { font-size: 30px; font-weight: bold; color: #243547; margin: 6px 0 4px; }
+  .kpi .delta { font-size: 11.5px; font-weight: bold; }
+  .kpi .delta.up { color: #dc2626; }
+  .kpi .delta.down { color: #16a34a; }
+  .kpi .delta.flat { color: #888; }
+  .kpi .sub { font-size: 11px; color: #aaa; margin-top: 2px; }
+
+  .chart-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 16px; }
+  .chart-card { background: white; border-radius: 10px; padding: 20px 22px; margin-bottom: 16px; }
+  .chart-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .chart-card .chart-sub { font-size: 10.5px; color: #999; margin-bottom: 14px; }
+  .chart-card canvas { display: block; }
+  .canvas-wrap { position: relative; height: 240px; }
+
+  footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+
+  @media (max-width: 900px) {
+    .kpi-row { grid-template-columns: 1fr; }
+    .chart-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 768px) {
+    body { flex-direction: column; }
+    .sidebar { width: 100%; min-height: auto; flex-direction: row; align-items: center; padding: 12px 16px; overflow-x: auto; border-right: none; border-bottom: 3px solid #95C11F; }
+    .sidebar-brand { border-bottom: none; padding: 0 16px 0 0; margin-bottom: 0; white-space: nowrap; width: 140px; }
+    .sidebar-nav { flex-direction: row; }
+    .nav-item { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-item.active { border-left: none; border-bottom-color: #95C11F; }
+    .nav-group-header { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-group-header.open { border-bottom-color: #95C11F; }
+    .nav-group-items { flex-direction: row; }
+    .nav-group-items .nav-item { padding-left: 14px; }
+    .sidebar-footer { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Performance Hub</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-group">
+      <button type="button" class="nav-group-header open" id="nav-header-board-review" onclick="toggleNavGroup('board-review')">
+        <span>Board Review</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items open" id="nav-group-board-review">
+        <a class="nav-item" href="/board-review">Total Monthly Performance Review</a>
+        <a class="nav-item" href="/">Monthly Check</a>
+        <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+        <a class="nav-item active" href="/board-review-trend">Board Review Trend</a>
+        <a class="nav-item" href="/teep">TEEP</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-production" onclick="toggleNavGroup('production')">
+        <span>Production</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-production">
+        <a class="nav-item" href="/production">Monthly Performance Review</a>
+        <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/daily-oee">Daily OEE</a>
+        <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
+        <a class="nav-item" href="/production-plan">Production Plan</a>
+        <a class="nav-item" href="/production-sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/production-sfc-trend">SFC Trend</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
+        <span>Maintenance</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-maintenance">
+        <a class="nav-item" href="/maintenance">Monthly Performance Review</a>
+        <a class="nav-item" href="/maintenance-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/maintenance-sfc-vs-agility">SFC vs Agility</a>
+        <a class="nav-item" href="/daily">Daily Check</a>
+        <a class="nav-item" href="/daily-trend">Daily Trend</a>
+        <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+        <a class="nav-item" href="/tpm-schedule">TPM Schedule</a>
+        <a class="nav-item" href="/maintenance-personnel">Personnel Performance</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-toolroom" onclick="toggleNavGroup('toolroom')">
+        <span>Toolroom</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-toolroom">
+        <a class="nav-item" href="/toolroom">Monthly Performance Review</a>
+        <a class="nav-item" href="/toolroom-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/toolroom-sfc-vs-agility">SFC vs Agility</a>
+      </div>
+    </div>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<script>
+function toggleNavGroup(name) {
+  var header = document.getElementById('nav-header-' + name);
+  var items = document.getElementById('nav-group-' + name);
+  var isOpen = items.classList.toggle('open');
+  header.classList.toggle('open', isOpen);
+}
+
+// Idle timeout — same 2-minute convention as every other page here.
+(function() {
+  var IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+  var idleTimer;
+  function goIdle() { window.location.href = '/splash'; }
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(goIdle, IDLE_TIMEOUT_MS);
+  }
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function(evt) {
+    document.addEventListener(evt, resetIdleTimer, { passive: true });
+  });
+  resetIdleTimer();
+})();
+</script>
+
+<div class="main">
+
+<div class="page-header">
+  <h1>Board Review Trend</h1>
+  <p>Overall progress across every saved Monthly Check — Production, Toolroom and Maintenance together</p>
+</div>
+
+<div class="container" id="app">
+  <div class="state-msg" id="state-msg">Loading trend data...</div>
+</div>
+
+<footer>Clamason Performance Hub — Internal Tool</footer>
+
+</div>
+
+<script>
+// Department colours match board-review.html exactly, on purpose — a
+// director who has seen one Board Review slide already reads navy as
+// Production, amber as Toolroom, green as Maintenance without a legend.
+const PRODUCTION = '#3d6491', TOOLROOM = '#bf7d2c', MAINTENANCE = '#2e6b4f';
+const NAVY = '#243547', LIME = '#95C11F', RED = '#dc2626';
+// Dashed, half-opacity reference lines for the three board-approved
+// targets (config lives in board-review.html's own TARGETS object —
+// duplicated here as plain constants rather than imported, since this
+// is a static page with no build step to share one source file from).
+const TARGETS = { oee: 70, ppmCompletion: 90, mttf: 400 };
+
+function fmt(n, d = 1) { return (n === null || n === undefined) ? '—' : Number(n).toFixed(d); }
+
+// Identical to dashboard.html's own helper, on purpose — the same
+// month-over-month arrow should mean the same thing on every page in
+// this app. higherIsWorse flips which direction counts as improvement
+// (a shrinking Gap % is good; a growing OEE % is good).
+function deltaBadge(curr, prev, higherIsWorse) {
+  if (prev === null || prev === undefined || curr === null || curr === undefined) return '';
+  const diff = curr - prev;
+  if (Math.abs(diff) < 0.05) return `<span class="delta flat">— no change vs prior month</span>`;
+  const worse = higherIsWorse ? diff > 0 : diff < 0;
+  const arrow = diff > 0 ? '▲' : '▼';
+  const cls = worse ? 'up' : 'down';
+  return `<span class="delta ${cls}">${arrow} ${fmt(Math.abs(diff))} vs prior month</span>`;
+}
+
+// A flat dashed line at a fixed value, for "where the board's approved
+// target sits" on a trend chart — same idea as board-review.html's ring
+// target-tick, translated into a line-chart reference. order:0 keeps it
+// drawn behind the real data line.
+function targetDataset(label, value, count) {
+  return {
+    label, data: Array(count).fill(value), borderColor: '#999',
+    borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, order: 0,
+    fill: false,
+  };
+}
+
+async function load() {
+  let data;
+  try {
+    const res = await fetch('/api/trend');
+    data = await res.json();
+    if (data.error) throw new Error(data.error);
+  } catch (e) {
+    document.getElementById('state-msg').className = 'state-msg error';
+    document.getElementById('state-msg').textContent = 'Could not load trend data: ' + e.message;
+    return;
+  }
+
+  const runs = data.runs || [];
+  if (runs.length === 0) {
+    document.getElementById('state-msg').textContent =
+      'No saved months yet — run a Monthly Check and press Save to see progress here.';
+    return;
+  }
+
+  render(runs);
+}
+
+// A single data point isn't a trend — same guard dashboard.html already
+// uses for its own charts. Below this count a chart hides rather than
+// drawing one dot and calling it a line.
+const MIN_POINTS_FOR_TREND = 2;
+
+function render(runs) {
+  const latest = runs[runs.length - 1];
+  const prev = runs.length > 1 ? runs[runs.length - 2] : null;
+  const labels = runs.map(r => r.period_label || r.period);
+
+  // Deliberately NOT total_hrs minus the other two — that raw residual
+  // includes idle time, lunch/break and planned shutdown, which inflated
+  // Production to 30-40x the other two departments when this was first
+  // tried against real data (caught by actually rendering the chart,
+  // not by reading the code). board-review.html hit the exact same
+  // problem and fixed it the same way: sum each machine's OWN fault/
+  // tool/production_hrs (already categorised server-side, per machine,
+  // in machine_breakdown), then strip LUNCH/BREAK/MEETING and Idle out
+  // of the production total — see EXCLUDED_FROM_PRODUCTION below, copied
+  // from board-review.html's own list so the two pages agree on what
+  // counts as a department's downtime.
+  //
+  // This also means this chart's Maintenance/Toolroom bars come from the
+  // same per-machine fault_hrs/tool_hrs sums board-review.html's own
+  // Pareto columns use — NOT the stored maintenance_hrs/toolroom_hrs
+  // columns on the row, which are scoped narrower (maintenance_hrs
+  // specifically backs the Gap % figure, a different, deliberately
+  // stricter question — see config.py's BLAME_FAULT_CODES vs
+  // FAULT_CODES). Using machine_breakdown throughout keeps this chart
+  // reading the same as the slide it's captioned to match.
+  const EXCLUDED_FROM_PRODUCTION = ['LUNCH / BREAK / MEETING', 'IDLE'];
+  function deptHours(run) {
+    const mb = run.machine_breakdown || [];
+    if (!mb.length) return { fault: null, tool: null, production: null };
+    const fault = mb.reduce((s, m) => s + (m.fault_hrs || 0), 0);
+    const tool = mb.reduce((s, m) => s + (m.tool_hrs || 0), 0);
+    const prodRaw = mb.reduce((s, m) => s + (m.production_hrs || 0), 0);
+    let excluded = 0;
+    mb.forEach(m => Object.entries(m.reasons || {}).forEach(([reason, h]) => {
+      if (EXCLUDED_FROM_PRODUCTION.includes((reason || '').toUpperCase().trim())) excluded += h;
+    }));
+    return { fault, tool, production: prodRaw - excluded };
+  }
+  const deptByMonth = runs.map(deptHours);
+  const productionHrs = deptByMonth.map(d => d.production);
+  const toolroomHrs = deptByMonth.map(d => d.tool);
+  const maintenanceFaultHrs = deptByMonth.map(d => d.fault);
+
+  const hasOee = runs.some(r => r.oee_pct != null);
+  const hasPpm = runs.some(r => r.ppm_completion_pct != null);
+  const hasGap = runs.some(r => r.gap_pct != null);
+  const hasReliability = runs.some(r => r.mtbf_mttr_hrs != null);
+  // MTTF isn't stored directly — board-review.html derives it the same
+  // way (MTBF in hours, minus MTTR) for its own headline ring, so this
+  // repeats that exact formula rather than introducing a second
+  // definition of the same number.
+  const mttf = runs.map(r => (r.mtbf_days == null || r.mtbf_mttr_hrs == null)
+    ? null : (r.mtbf_days * 24) - r.mtbf_mttr_hrs);
+  const hasMttf = mttf.some(v => v != null);
+
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="period-badge">${labels[0]} → ${labels[labels.length - 1]} · ${runs.length} month${runs.length === 1 ? '' : 's'} tracked</div>
+
+    <div class="kpi-row">
+      <div class="kpi green">
+        <label>Fleet OEE</label>
+        <div class="val">${latest.oee_pct == null ? '—' : fmt(latest.oee_pct, 1) + '%'}</div>
+        ${prev ? deltaBadge(latest.oee_pct, prev.oee_pct, false) : '<span class="sub">target 70% · First recorded month</span>'}
+      </div>
+      <div class="kpi navy">
+        <label>Maintenance Gap</label>
+        <div class="val">${latest.gap_pct == null ? '—' : fmt(latest.gap_pct, 1) + '%'}</div>
+        ${prev ? deltaBadge(latest.gap_pct, prev.gap_pct, true) : '<span class="sub">SFC fault hours without a matched WO</span>'}
+      </div>
+      <div class="kpi green">
+        <label>TPM Completion</label>
+        <div class="val">${latest.ppm_completion_pct == null ? '—' : fmt(latest.ppm_completion_pct, 1) + '%'}</div>
+        ${prev ? deltaBadge(latest.ppm_completion_pct, prev.ppm_completion_pct, false) : '<span class="sub">target 90% · First recorded month</span>'}
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h3>Downtime Hours by Department</h3>
+      <div class="chart-sub">Production, Toolroom and Maintenance — same split and colours as the Board Review slide</div>
+      <div class="canvas-wrap"><canvas id="deptChart"></canvas></div>
+    </div>
+
+    ${runs.length < MIN_POINTS_FOR_TREND ? `
+    <div class="state-msg" style="margin-top:4px;">
+      Only one month saved so far — the charts below need at least two months
+      to draw a trend. Save another Monthly Check and they'll fill in here.
+    </div>` : `
+    <div class="chart-grid">
+      ${hasOee ? `
+      <div class="chart-card" style="margin-bottom:0;">
+        <h3>Fleet OEE % — Trend</h3>
+        <div class="chart-sub">Dashed line is the board's 70% target</div>
+        <div class="canvas-wrap"><canvas id="oeeChart"></canvas></div>
+      </div>` : ''}
+      ${hasGap ? `
+      <div class="chart-card" style="margin-bottom:0;">
+        <h3>Maintenance Gap % — Trend</h3>
+        <div class="chart-sub">SFC fault hours with no matched Agility work order — lower is better</div>
+        <div class="canvas-wrap"><canvas id="gapChart"></canvas></div>
+      </div>` : ''}
+    </div>
+
+    <div class="chart-grid">
+      ${hasPpm ? `
+      <div class="chart-card" style="margin-bottom:0;">
+        <h3>TPM Schedule Completion % — Trend</h3>
+        <div class="chart-sub">Dashed line is the board's 90% target</div>
+        <div class="canvas-wrap"><canvas id="ppmChart"></canvas></div>
+      </div>` : ''}
+      ${hasMttf ? `
+      <div class="chart-card" style="margin-bottom:0;">
+        <h3>MTTF — Trend</h3>
+        <div class="chart-sub">Same figure as the Board Review gauge · dashed line is the 400h target</div>
+        <div class="canvas-wrap"><canvas id="mttfChart"></canvas></div>
+      </div>` : ''}
+    </div>
+
+    ${hasReliability ? `
+    <div class="chart-card">
+      <h3>Reliability — MTBF &amp; MTTR</h3>
+      <div class="chart-sub">Mean Time Between Failures (days, left axis) against Mean Time To Repair (hours, right axis) — plant only, tools excluded</div>
+      <div class="canvas-wrap"><canvas id="reliabilityChart"></canvas></div>
+    </div>` : ''}
+    `}
+  `;
+
+  // Grouped, not stacked — a director comparing "is Toolroom's bar
+  // shrinking" needs each department's own height, which a stacked bar
+  // hides once Production sits underneath it.
+  new Chart(document.getElementById('deptChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Production', data: productionHrs, backgroundColor: PRODUCTION, borderRadius: 3 },
+        { label: 'Toolroom', data: toolroomHrs, backgroundColor: TOOLROOM, borderRadius: 3 },
+        { label: 'Maintenance', data: maintenanceFaultHrs, backgroundColor: MAINTENANCE, borderRadius: 3 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}h` } },
+      },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
+    },
+  });
+
+  if (runs.length < MIN_POINTS_FOR_TREND) return;
+
+  if (hasOee) {
+    new Chart(document.getElementById('oeeChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'OEE %', data: runs.map(r => r.oee_pct), borderColor: LIME,
+            backgroundColor: LIME, borderWidth: 2.5, pointRadius: 4, spanGaps: true },
+          targetDataset('Target', TARGETS.oee, runs.length),
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+                   tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}%` } } },
+        scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+      },
+    });
+  }
+
+  if (hasGap) {
+    new Chart(document.getElementById('gapChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Gap %', data: runs.map(r => r.gap_pct),
+          borderColor: NAVY, backgroundColor: NAVY + '15', fill: true, tension: 0.25,
+          pointBackgroundColor: NAVY, pointRadius: 5, spanGaps: true,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { callback: v => v + '%' } } },
+      },
+    });
+  }
+
+  if (hasPpm) {
+    new Chart(document.getElementById('ppmChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'TPM Completion %', data: runs.map(r => r.ppm_completion_pct),
+            borderColor: LIME, backgroundColor: LIME + '15', fill: true, tension: 0.25,
+            pointBackgroundColor: LIME, pointRadius: 5, spanGaps: true },
+          targetDataset('Target', TARGETS.ppmCompletion, runs.length),
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+        scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+      },
+    });
+  }
+
+  if (hasMttf) {
+    new Chart(document.getElementById('mttfChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'MTTF (h)', data: mttf, borderColor: MAINTENANCE,
+            backgroundColor: MAINTENANCE + '15', fill: true, tension: 0.25,
+            pointBackgroundColor: MAINTENANCE, pointRadius: 5, spanGaps: true },
+          targetDataset('Target', TARGETS.mttf, runs.length),
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+                   tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(0)}h` } } },
+        scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
+      },
+    });
+  }
+
+  if (hasReliability) {
+    new Chart(document.getElementById('reliabilityChart'), {
+      data: {
+        labels,
+        datasets: [
+          { type: 'line', label: 'MTBF (days)', data: runs.map(r => r.mtbf_days),
+            borderColor: '#d97706', backgroundColor: '#d97706', borderWidth: 2.5,
+            pointRadius: 4, spanGaps: true, yAxisID: 'y' },
+          // Green, not red — matching /dashboard's own convention, where
+          // plain MTTR (time spent actually repairing) is the neutral
+          // figure and red is reserved for Response Wait specifically
+          // (time before work starts, not charted on this page).
+          { type: 'bar', label: 'MTTR (hours)', data: runs.map(r => r.mtbf_mttr_hrs),
+            backgroundColor: LIME, borderRadius: 3, yAxisID: 'y1' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(2)}${c.dataset.yAxisID === 'y' ? 'd' : 'h'}` } },
+        },
+        scales: {
+          y: { beginAtZero: true, position: 'left', title: { display: true, text: 'Days' }, ticks: { callback: v => v + 'd' } },
+          y1: { beginAtZero: true, position: 'right', grid: { display: false }, title: { display: true, text: 'Hours' }, ticks: { callback: v => v + 'h' } },
+        },
+      },
+    });
+  }
+}
+
+load();
+</script>
+</body>
+</html>
