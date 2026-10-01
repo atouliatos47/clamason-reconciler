@@ -769,6 +769,11 @@ def toolroom_sfc_vs_agility_view():
     return send_from_directory('public', 'toolroom-sfc-vs-agility.html')
 
 
+@bp.route('/toolroom-trend')
+def toolroom_trend_view():
+    return send_from_directory('public', 'toolroom-trend.html')
+
+
 @bp.route('/maintenance')
 def maintenance_view():
     return send_from_directory('public', 'maintenance.html')
