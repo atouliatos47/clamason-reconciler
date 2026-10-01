@@ -744,18 +744,6 @@ def board_review_view():
     return send_from_directory('public', 'board-review.html')
 
 
-@bp.route('/board-review-trend')
-def board_review_trend_view():
-    """Month-over-month progress across all three departments — same
-    /api/trend data the Maintenance-only Trend Dashboard (/dashboard)
-    already reads, just not duplicating it: that page is Maintenance's
-    own SFC-vs-Agility deep dive, this one is the board-level view it
-    doesn't cover (Production/Toolroom/Maintenance downtime side by
-    side, plus the three headline KPIs and reliability trend in one
-    place) — see board-review-trend.html's own top comment."""
-    return send_from_directory('public', 'board-review-trend.html')
-
-
 @bp.route('/production')
 def production_view():
     return send_from_directory('public', 'production.html')
