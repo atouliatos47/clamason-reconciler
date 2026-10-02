@@ -296,24 +296,6 @@ function reasonHrsForRun(r, codes) {
   return total;
 }
 
-function monthlyToolAvailFailureRows(runs) {
-  return runs.map(r => ({
-    month: r.period_label || r.period,
-    unavailable: reasonHrsForRun(r, TOOL_UNAVAILABLE_CODES),
-    failure: reasonHrsForRun(r, TOOL_FAILURE_CODES),
-  }));
-}
-
-// Plain table, not a chart — 2 rows per month (Tool Unavailable, then
-// Tool Failure) with the month name spanning both via rowspan, oldest
-// uploaded month first so it reads top-to-bottom like a year unfolding.
-function toolAvailFailureTableHtml(runs) {
-  const rows = monthlyToolAvailFailureRows(runs);
-  const body = rows.map(row => `
-    <tr><th rowspan="2">${row.month}</th><th>Tool Unavailable</th><td>${fmt(row.unavailable)}h</td></tr>
-    <tr><th>Tool Failure</th><td>${fmt(row.failure)}h</td></tr>`).join('');
-  return `<thead><tr><th>Month</th><th>Reason</th><th>Hours</th></tr></thead><tbody>${body}</tbody>`;
-}
 
 // Same all-time idea applied to the top KPI tiles — but only for the two
 // that are genuinely a running total (hours accumulate month over month).
@@ -682,8 +664,8 @@ function render(runs, idx) {
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Tool Unavailable vs Tool Failure — Monthly Trend</h3>
-        <div class="chart-sub-note">Scott's 2 priority reason codes · one row pair per uploaded month, carries on as each new month is added · old and new SFC-naming-era codes merged into each figure</div>
-        <table class="values-table">${toolAvailFailureTableHtml(runs)}</table>
+        <div class="chart-sub-note">Scott's 2 priority reason codes · old and new SFC-naming-era codes merged into each figure</div>
+        <div class="canvas-wrap short"><canvas id="toolAvailFailureChart"></canvas></div>
       </div>
     </div>
 
@@ -756,6 +738,28 @@ function render(runs, idx) {
 
   pareto('paretoChart', allTimeToolTop5(runs), 'tool_hrs', TOOLROOM);
   reasonBarsSimple('reasonChart', allTimeToolReasonTotals(runs), TOOLROOM);
+
+  new Chart(document.getElementById('toolAvailFailureChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Tool Unavailable', data: runs.map(r => reasonHrsForRun(r, TOOL_UNAVAILABLE_CODES)),
+          borderColor: TOOLROOM, backgroundColor: TOOLROOM + '15', fill: true, tension: 0.25,
+          pointBackgroundColor: TOOLROOM, pointRadius: 5, spanGaps: true },
+        { label: 'Tool Failure', data: runs.map(r => reasonHrsForRun(r, TOOL_FAILURE_CODES)),
+          borderColor: RED, backgroundColor: RED + '15', fill: true, tension: 0.25,
+          pointBackgroundColor: RED, pointRadius: 5, spanGaps: true },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}h` } } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
+    },
+  });
+  attachValuesTable('toolAvailFailureChart');
 
   if (hasWoBacklog(runs)) {
     new Chart(document.getElementById('backlogChart'), {
