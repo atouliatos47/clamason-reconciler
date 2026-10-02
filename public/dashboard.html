@@ -240,12 +240,33 @@ const MAINTENANCE_FAULT_CODES = ['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR',
   'FAULT-FEEDER/DECOILER/STRAIGHTENER', 'FAULT-SHAKER/CONVEYOR',
   'MA-FAULT PRESS', 'MA-FAULT-FEEDER/DECOILER/', 'MA-FAULT SHAKER/CONVEYOR'];
 
-function faultReasonTotals(mb) {
+// Every uploaded month's machine_breakdown summed per press, rather than
+// just the currently-selected period — "which presses have cost us the
+// most fault downtime overall", not "this month only". Same all-time
+// treatment as toolroom-trend.html's allTimeToolTop5, applied here to
+// Maintenance's own fault hours.
+function allTimeFaultTop5(runs) {
   const totals = {};
-  mb.forEach(m => Object.entries(m.reasons || {}).forEach(([reason, h]) => {
-    if (MAINTENANCE_FAULT_CODES.includes((reason || '').toUpperCase().trim())) {
-      totals[reason] = (totals[reason] || 0) + h;
-    }
+  runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
+    totals[m.machine] = (totals[m.machine] || 0) + (m.fault_hrs || 0);
+  }));
+  return Object.entries(totals)
+    .map(([machine, fault_hrs]) => ({ machine, fault_hrs }))
+    .sort((a, b) => b.fault_hrs - a.fault_hrs)
+    .slice(0, 5);
+}
+
+// Same all-time idea applied to the reason codes instead of the presses
+// — every uploaded month's hours per reason summed together, not just
+// whichever period is selected in the dropdown.
+function allTimeFaultReasonTotals(runs) {
+  const totals = {};
+  runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
+    Object.entries(m.reasons || {}).forEach(([reason, h]) => {
+      if (MAINTENANCE_FAULT_CODES.includes((reason || '').toUpperCase().trim())) {
+        totals[reason] = (totals[reason] || 0) + h;
+      }
+    });
   }));
   return Object.entries(totals).sort((a, b) => b[1] - a[1]);
 }
@@ -711,12 +732,12 @@ function render(runs, idx) {
     <div class="chart-grid">
       <div class="chart-card">
         <h3>Downtime Pareto — Top 5 Presses</h3>
-        <div class="chart-sub-note">${latest.period_label || latest.period} · same chart as the Monthly Performance Review slide</div>
+        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months</div>
         <div class="canvas-wrap short"><canvas id="paretoChart"></canvas></div>
       </div>
       <div class="chart-card">
         <h3>Fault Downtime — Reason Codes</h3>
-        <div class="chart-sub-note">${latest.period_label || latest.period} · ${fmt(latest.maintenance_hrs)}h total</div>
+        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months</div>
         <div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>
       </div>
     </div>
@@ -866,10 +887,8 @@ function render(runs, idx) {
   });
   attachValuesTable('hoursChart');
 
-  const mb = latest.machine_breakdown || [];
-  const top5Fault = mb.slice().sort((a, b) => (b.fault_hrs || 0) - (a.fault_hrs || 0)).slice(0, 5);
-  pareto('paretoChart', top5Fault, 'fault_hrs', MAINTENANCE);
-  reasonBarsSimple('reasonChart', faultReasonTotals(mb), MAINTENANCE);
+  pareto('paretoChart', allTimeFaultTop5(runs), 'fault_hrs', MAINTENANCE);
+  reasonBarsSimple('reasonChart', allTimeFaultReasonTotals(runs), MAINTENANCE);
 
   if (hasMtbf(runs)) {
     new Chart(document.getElementById('mttfChart'), {
