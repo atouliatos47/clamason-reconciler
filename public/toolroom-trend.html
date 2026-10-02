@@ -271,6 +271,50 @@ function allTimeToolReasonTotals(runs) {
   return Object.entries(totals).sort((a, b) => b[1] - a[1]);
 }
 
+// Scott's 2 priority reason codes, trended per month rather than summed
+// all-time like the chart above — "what happens across the whole year",
+// one month at a time, not one grand total. SFC renamed these at the
+// September 2026 boundary (TOOL UNAVAILABLE -> TR-TOOL UNAVAILABLE;
+// TOOL FAILURE - PRODUCTION / - SET UP -> TR-TOOL FAILURE), so each
+// bucket below merges both eras' codes — otherwise a month either side
+// of that boundary would look like the problem vanished when it only
+// got relabelled.
+const TOOL_UNAVAILABLE_CODES = ['TOOL UNAVAILABLE', 'TR-TOOL UNAVAILABLE'];
+const TOOL_FAILURE_CODES = ['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP', 'TR-TOOL FAILURE'];
+
+// Null (not 0) when a month has no machine_breakdown at all — e.g. no SFC
+// file uploaded yet — so the table can show "—" rather than claiming a
+// verified zero for a month with no data to check.
+function reasonHrsForRun(r, codes) {
+  if (!r.machine_breakdown) return null;
+  let total = 0;
+  r.machine_breakdown.forEach(m => {
+    Object.entries(m.reasons || {}).forEach(([reason, h]) => {
+      if (codes.includes((reason || '').toUpperCase().trim())) total += (h || 0);
+    });
+  });
+  return total;
+}
+
+function monthlyToolAvailFailureRows(runs) {
+  return runs.map(r => ({
+    month: r.period_label || r.period,
+    unavailable: reasonHrsForRun(r, TOOL_UNAVAILABLE_CODES),
+    failure: reasonHrsForRun(r, TOOL_FAILURE_CODES),
+  }));
+}
+
+// Plain table, not a chart — 2 rows per month (Tool Unavailable, then
+// Tool Failure) with the month name spanning both via rowspan, oldest
+// uploaded month first so it reads top-to-bottom like a year unfolding.
+function toolAvailFailureTableHtml(runs) {
+  const rows = monthlyToolAvailFailureRows(runs);
+  const body = rows.map(row => `
+    <tr><th rowspan="2">${row.month}</th><th>Tool Unavailable</th><td>${fmt(row.unavailable)}h</td></tr>
+    <tr><th>Tool Failure</th><td>${fmt(row.failure)}h</td></tr>`).join('');
+  return `<thead><tr><th>Month</th><th>Reason</th><th>Hours</th></tr></thead><tbody>${body}</tbody>`;
+}
+
 // Same all-time idea applied to the top KPI tiles — but only for the two
 // that are genuinely a running total (hours accumulate month over month).
 // toolroom_gap_pct is NOT averaged across months (averaging percentages
@@ -632,6 +676,14 @@ function render(runs, idx) {
         <h3>Tool Downtime — Reason Codes</h3>
         <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months</div>
         <div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h3>Tool Unavailable vs Tool Failure — Monthly Trend</h3>
+        <div class="chart-sub-note">Scott's 2 priority reason codes · one row pair per uploaded month, carries on as each new month is added · old and new SFC-naming-era codes merged into each figure</div>
+        <table class="values-table">${toolAvailFailureTableHtml(runs)}</table>
       </div>
     </div>
 
