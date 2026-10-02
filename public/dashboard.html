@@ -94,6 +94,16 @@
   .canvas-wrap { position: relative; height: 420px; }
   .canvas-wrap.short { height: 220px; }
 
+  /* Click-to-reveal values table — lets a trend chart's hover-only
+     numbers be seen all at once, selected and pasted into a board
+     report instead of read off the chart point by point. */
+  .values-hint { font-size: 10.5px; color: #8a93a3; text-align: center; cursor: pointer; margin-top: 6px; user-select: none; }
+  .values-hint:hover { color: #243547; text-decoration: underline; }
+  .values-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+  .values-table th, .values-table td { border: 1px solid #e5e7eb; padding: 6px 9px; text-align: center; white-space: nowrap; }
+  .values-table thead th { background: #f8f9fb; font-weight: 600; color: #243547; }
+  .values-table tbody th { text-align: left; font-weight: 600; color: #243547; background: #f8f9fb; }
+
   footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
 </style>
 </head>
@@ -400,6 +410,83 @@ function deltaBadge(curr, prev, higherIsWorse) {
   return `<span class="delta ${cls}">${arrow} ${fmt(Math.abs(diff))} vs prior month</span>`;
 }
 
+// --- Click-to-reveal values table ------------------------------------
+// Every trend chart's tooltip already has every month's numbers — you
+// just have to hover one point at a time to see them. This turns that
+// into one plain HTML table showing every month side by side, toggled
+// by clicking the chart, so the whole thing can be selected and pasted
+// straight into a board-review doc or slide instead of read off by eye.
+//
+// The table's numbers are produced by calling each chart's OWN tooltip
+// callback (when it has one) rather than a second hand-written copy of
+// the formatting — so "1.5h" in the table and "1.5h" on hover can never
+// quietly drift apart. A chart with no custom callback still has one:
+// Chart.js supplies its own default, and that default reads a
+// `formattedValue` field it normally computes internally while actually
+// hovering — since nothing is being hovered here, that field has to be
+// filled in by hand, or every plain chart's table comes back blank.
+function buildValuesTableHtml(chart) {
+  const labels = chart.data.labels;
+  const tooltipCb = chart.options?.plugins?.tooltip?.callbacks?.label;
+
+  const rows = chart.data.datasets.map((ds, dsIdx) => {
+    const cells = ds.data.map((v, i) => {
+      if (v === null || v === undefined) return '<td>—</td>';
+      let text;
+      if (tooltipCb) {
+        text = tooltipCb({ dataset: ds, datasetIndex: dsIdx, dataIndex: i,
+                            parsed: { x: i, y: v }, label: labels[i],
+                            formattedValue: String(v) });
+        // The callback returns "Series name: value" — drop the repeated
+        // series name since this row's header already shows it.
+        const prefix = ds.label + ': ';
+        if (text.startsWith(prefix)) text = text.slice(prefix.length);
+      } else {
+        text = Number(v).toFixed(1);
+      }
+      return `<td>${text}</td>`;
+    }).join('');
+    return `<tr><th>${ds.label}</th>${cells}</tr>`;
+  }).join('');
+
+  const header = labels.map(l => `<th>${l}</th>`).join('');
+  return `<thead><tr><th></th>${header}</tr></thead><tbody>${rows}</tbody>`;
+}
+
+// Wires up one trend chart to toggle between itself and its values
+// table on click. Call this right after constructing the chart, every
+// time render() rebuilds it — the canvas is a brand-new element each
+// time the dropdown changes, so the click listener has to be too.
+function attachValuesTable(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  const chart = Chart.getChart(canvas);
+  const wrap = canvas.closest('.canvas-wrap');
+
+  const hint = document.createElement('div');
+  hint.className = 'values-hint';
+  hint.textContent = 'Click chart to view monthly values ▾';
+
+  const table = document.createElement('table');
+  table.className = 'values-table';
+  table.style.display = 'none';
+  table.innerHTML = buildValuesTableHtml(chart);
+
+  wrap.insertAdjacentElement('afterend', table);
+  wrap.insertAdjacentElement('afterend', hint);
+
+  canvas.style.cursor = 'pointer';
+  const toggle = () => {
+    const showingTable = table.style.display !== 'none';
+    table.style.display = showingTable ? 'none' : 'table';
+    wrap.style.display = showingTable ? '' : 'none';
+    hint.textContent = showingTable
+      ? 'Click chart to view monthly values ▾'
+      : 'Click table to view chart ▴';
+  };
+  canvas.addEventListener('click', toggle);
+  hint.addEventListener('click', toggle);
+}
+
 async function load() {
   let data;
   try {
@@ -700,6 +787,7 @@ function render(runs, idx) {
         scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
       },
     });
+    attachValuesTable('oeeChart');
 
     new Chart(document.getElementById('mttrChart'), {
       type: 'bar',
@@ -717,6 +805,7 @@ function render(runs, idx) {
         scales: { y: { beginAtZero: true, title: { display: true, text: 'Hours' } } },
       },
     });
+    attachValuesTable('mttrChart');
   }
 
   new Chart(document.getElementById('gapChart'), {
@@ -735,6 +824,7 @@ function render(runs, idx) {
       scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
     },
   });
+  attachValuesTable('gapChart');
 
   if (hasPpm(runs)) {
     // spanGaps: same reasoning as the OEE chart above — a month with no
@@ -756,6 +846,7 @@ function render(runs, idx) {
         scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
       },
     });
+    attachValuesTable('ppmChart');
   }
 
   new Chart(document.getElementById('hoursChart'), {
@@ -773,6 +864,7 @@ function render(runs, idx) {
       scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
     },
   });
+  attachValuesTable('hoursChart');
 
   const mb = latest.machine_breakdown || [];
   const top5Fault = mb.slice().sort((a, b) => (b.fault_hrs || 0) - (a.fault_hrs || 0)).slice(0, 5);
@@ -799,6 +891,7 @@ function render(runs, idx) {
         scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
       },
     });
+    attachValuesTable('mttfChart');
   }
 }
 
