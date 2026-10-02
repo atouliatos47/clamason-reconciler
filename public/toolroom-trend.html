@@ -260,6 +260,28 @@ function allTimeToolReasonTotals(runs) {
   return Object.entries(totals).sort((a, b) => b[1] - a[1]);
 }
 
+// Same all-time idea applied to the top KPI tiles — but only for the two
+// that are genuinely a running total (hours accumulate month over month).
+// toolroom_gap_pct is NOT averaged across months (averaging percentages
+// weights a slow month the same as a busy one and gives a misleading
+// figure) — it's recalculated from the two summed totals below, exactly
+// the way compute_toolroom_gap() derives it for a single month:
+// gap% = (sfc hours − agility-matched hours) / sfc hours. Open WO Backlog
+// deliberately has NO all-time version — it's a snapshot of what's
+// sitting in the queue right now, not a flow, so "summed across every
+// month" would just double-count the same lingering tickets. That tile
+// stays tied to whichever period is selected.
+function allTimeToolroomGap(runs) {
+  let sfcSum = 0, agilitySum = 0, sawSfc = false;
+  runs.forEach(r => {
+    if (r.toolroom_sfc_hrs != null) { sfcSum += r.toolroom_sfc_hrs; sawSfc = true; }
+    if (r.agility_toolroom_hrs != null) agilitySum += r.agility_toolroom_hrs;
+  });
+  if (!sawSfc) return { sfcSum: null, agilitySum: null, gapPct: null };
+  const gapPct = sfcSum > 0 ? (sfcSum - agilitySum) / sfcSum * 100 : 0;
+  return { sfcSum, agilitySum, gapPct };
+}
+
 // Darker than Chart.js's default grey tick colour so it survives a
 // projector or a printed page — same reasoning as toolroom.html.
 const TICK = '#555';
@@ -476,6 +498,8 @@ function hasToolDowntime(runs) {
 function render(runs, idx) {
   const latest = runs[idx];
   const prev = idx > 0 ? runs[idx - 1] : null;
+  const gap = allTimeToolroomGap(runs);
+  const rangeNote = `${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined`;
 
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -484,18 +508,18 @@ function render(runs, idx) {
     <div class="kpi-row">
       <div class="kpi red">
         <label>Tool SFC Hours</label>
-        <div class="val">${fmt(latest.toolroom_sfc_hrs)}h</div>
-        ${prev ? deltaBadge(latest.toolroom_sfc_hrs, prev.toolroom_sfc_hrs, true) : '<span class="sub">First recorded month</span>'}
+        <div class="val">${fmt(gap.sfcSum)}h</div>
+        <span class="sub">${rangeNote}</span>
       </div>
       <div class="kpi green">
         <label>Agility Hours Matched</label>
-        <div class="val">${fmt(latest.agility_toolroom_hrs)}h</div>
-        ${prev ? deltaBadge(latest.agility_toolroom_hrs, prev.agility_toolroom_hrs, false) : '<span class="sub">First recorded month</span>'}
+        <div class="val">${fmt(gap.agilitySum)}h</div>
+        <span class="sub">${rangeNote}</span>
       </div>
       <div class="kpi navy">
         <label>WO Coverage Gap</label>
-        <div class="val">${fmt(latest.toolroom_gap_pct, 1)}%</div>
-        ${prev ? deltaBadge(latest.toolroom_gap_pct, prev.toolroom_gap_pct, true) : '<span class="sub">First recorded month</span>'}
+        <div class="val">${fmt(gap.gapPct, 1)}%</div>
+        <span class="sub">${rangeNote}</span>
       </div>
       <div class="kpi amber">
         <label>Open WO Backlog</label>
