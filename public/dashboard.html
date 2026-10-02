@@ -272,6 +272,29 @@ function allTimeFaultReasonTotals(runs) {
   return Object.entries(totals).sort((a, b) => b[1] - a[1]);
 }
 
+// Same treatment as the Toolroom Trend Dashboard's Tool Unavailable vs
+// Tool Failure chart: the Reason Codes bars above double up every fault
+// location because SFC renamed these at the September 2026 boundary
+// (FAULT - PRESS -> MA-FAULT PRESS, etc.) — each pair below merges both
+// eras into one real-world location and trends it month by month, so a
+// month either side of the rename doesn't look like the problem vanished.
+const FAULT_PRESS_CODES = ['FAULT - PRESS', 'MA-FAULT PRESS'];
+const FAULT_FEEDER_CODES = ['FAULT-FEEDER/DECOILER/STR', 'FAULT-FEEDER/DECOILER/STRAIGHTENER', 'MA-FAULT-FEEDER/DECOILER/'];
+const FAULT_SHAKER_CODES = ['FAULT-SHAKER/CONVEYOR', 'MA-FAULT SHAKER/CONVEYOR'];
+
+// Null (not 0) when a month has no machine_breakdown at all, so the chart
+// can leave a genuine gap rather than claiming a verified zero.
+function faultCategoryHrsForRun(r, codes) {
+  if (!r.machine_breakdown) return null;
+  let total = 0;
+  r.machine_breakdown.forEach(m => {
+    Object.entries(m.reasons || {}).forEach(([reason, h]) => {
+      if (codes.includes((reason || '').toUpperCase().trim())) total += (h || 0);
+    });
+  });
+  return total;
+}
+
 // Darker than Chart.js's default grey tick colour so it survives a
 // projector or a printed page — same reasoning as maintenance.html.
 const TICK = '#555';
@@ -747,6 +770,14 @@ function render(runs, idx) {
     </div>
 
     <div class="chart-grid">
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h3>Fault Locations — Monthly Trend</h3>
+        <div class="chart-sub-note">Press, Feeder/Decoiler/Straightener, Shaker/Conveyor · old and new SFC-naming-era codes merged into each figure</div>
+        <div class="canvas-wrap short"><canvas id="faultLocationChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-grid">
       <div class="chart-card">
         <h3>Fault Hours vs Agility-Covered Hours</h3>
         <div class="canvas-wrap short"><canvas id="hoursChart"></canvas></div>
@@ -893,6 +924,31 @@ function render(runs, idx) {
 
   pareto('paretoChart', allTimeFaultTop5(runs), 'fault_hrs', MAINTENANCE);
   reasonBarsSimple('reasonChart', allTimeFaultReasonTotals(runs), MAINTENANCE);
+
+  new Chart(document.getElementById('faultLocationChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Press', data: runs.map(r => faultCategoryHrsForRun(r, FAULT_PRESS_CODES)),
+          borderColor: MAINTENANCE, backgroundColor: MAINTENANCE + '15', fill: true, tension: 0.25,
+          pointBackgroundColor: MAINTENANCE, pointRadius: 5, spanGaps: true },
+        { label: 'Feeder/Decoiler/Straightener', data: runs.map(r => faultCategoryHrsForRun(r, FAULT_FEEDER_CODES)),
+          borderColor: RED, backgroundColor: RED + '15', fill: true, tension: 0.25,
+          pointBackgroundColor: RED, pointRadius: 5, spanGaps: true },
+        { label: 'Shaker/Conveyor', data: runs.map(r => faultCategoryHrsForRun(r, FAULT_SHAKER_CODES)),
+          borderColor: AMBER, backgroundColor: AMBER + '15', fill: true, tension: 0.25,
+          pointBackgroundColor: AMBER, pointRadius: 5, spanGaps: true },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}h` } } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
+    },
+  });
+  attachValuesTable('faultLocationChart');
 
   if (hasMtbf(runs)) {
     new Chart(document.getElementById('mttfChart'), {
