@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Clamason — Toolroom Trend Dashboard</title>
+<title>Clamason — Production Trend Dashboard</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
@@ -64,7 +64,7 @@
   .state-msg { background: white; border-radius: 10px; padding: 40px; text-align: center; color: #888; font-size: 13px; }
   .state-msg.error { color: #dc2626; }
 
-  .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
   .kpi { background: white; border-radius: 10px; padding: 20px 22px; border-top: 4px solid #ddd; }
   .kpi.navy { border-top-color: #243547; }
   .kpi.red { border-top-color: #dc2626; }
@@ -91,9 +91,9 @@
   .canvas-wrap { position: relative; height: 420px; }
   .canvas-wrap.short { height: 220px; }
 
-  /* Click-to-reveal values table — same as the Maintenance Trend
-     Dashboard: lets a trend chart's hover-only numbers be seen all at
-     once, selected and pasted into a board report. */
+  /* Click-to-reveal values table — same as the Maintenance and Toolroom
+     Trend Dashboards: lets a trend chart's hover-only numbers be seen
+     all at once, selected and pasted into a board report. */
   .values-hint { font-size: 10.5px; color: #8a93a3; text-align: center; cursor: pointer; margin-top: 6px; user-select: none; }
   .values-hint:hover { color: #243547; text-decoration: underline; }
   .values-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
@@ -123,12 +123,12 @@
       </div>
     </div>
     <div class="nav-group">
-      <button type="button" class="nav-group-header" id="nav-header-production" onclick="toggleNavGroup('production')">
+      <button type="button" class="nav-group-header open" id="nav-header-production" onclick="toggleNavGroup('production')">
         <span>Production</span><span class="chevron">▸</span>
       </button>
-      <div class="nav-group-items" id="nav-group-production">
+      <div class="nav-group-items open" id="nav-group-production">
         <a class="nav-item" href="/production">Monthly Performance Review</a>
-        <a class="nav-item" href="/production-trend">Trend Dashboard</a>
+        <a class="nav-item active" href="/production-trend">Trend Dashboard</a>
         <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
         <a class="nav-item" href="/daily-oee">Daily OEE</a>
         <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
@@ -155,12 +155,12 @@
       </div>
     </div>
     <div class="nav-group">
-      <button type="button" class="nav-group-header open" id="nav-header-toolroom" onclick="toggleNavGroup('toolroom')">
+      <button type="button" class="nav-group-header" id="nav-header-toolroom" onclick="toggleNavGroup('toolroom')">
         <span>Toolroom</span><span class="chevron">▸</span>
       </button>
-      <div class="nav-group-items open" id="nav-group-toolroom">
+      <div class="nav-group-items" id="nav-group-toolroom">
         <a class="nav-item" href="/toolroom">Monthly Performance Review</a>
-        <a class="nav-item active" href="/toolroom-trend">Trend Dashboard</a>
+        <a class="nav-item" href="/toolroom-trend">Trend Dashboard</a>
         <a class="nav-item" href="/toolroom-notes">Notes and Action Plan</a>
         <a class="nav-item" href="/toolroom-sfc-vs-agility">SFC vs Agility</a>
       </div>
@@ -200,8 +200,8 @@ function toggleNavGroup(name) {
 
 <div class="page-header">
   <div>
-    <h1>Toolroom Trend Dashboard</h1>
-    <p>SFC tool downtime, Agility coverage and WO backlog — month over month</p>
+    <h1>Production Trend Dashboard</h1>
+    <p>Production-owned downtime, OEE and run time — month over month</p>
   </div>
   <div>
     <select id="period-select" onchange="selectPeriod(this.value)"></select>
@@ -212,92 +212,94 @@ function toggleNavGroup(name) {
   <div class="state-msg" id="state-msg">Loading trend data...</div>
 </div>
 
-<footer>Clamason Toolroom — Internal Tool</footer>
+<footer>Clamason Production — Internal Tool</footer>
 
 </div>
 
 <script>
 const NAVY = '#243547', LIME = '#95C11F', RED = '#dc2626';
-// Toolroom's house colour everywhere else in this app (board-review.html,
-// toolroom.html) — used here for the Pareto bars and reason-code bars so
-// this page reads as the same department rather than introducing a new one.
-const TOOLROOM = '#bf7d2c';
+// Production's house colour everywhere else in this app (production.html's
+// own Pareto and reason-code bars) — used here too so this page reads as
+// the same department rather than introducing a new one.
+const PRODUCTION = '#3d6491';
 let RUNS = [];
 
-// --- Downtime Pareto / reason-codes — ported from toolroom.html ----------
+// --- Downtime Pareto / reason-codes — ported from production.html --------
 // Same functions, same look, so a director who's seen the Monthly
 // Performance Review slide recognises this chart immediately.
-
-// Kept in step with config.py / toolroom.html. Display-only: it decides
-// which reason rows appear in the chart below. This is the BROAD list
-// (includes WASTE IN THE TOOL) — the same one the board-slide Pareto and
-// reason chart use. It is deliberately NOT config.TOOLROOM_BLAME_CODES
-// (Scott's narrower 3-code list) — that one only ever drives the
-// toolroom_gap_pct / toolroom_sfc_hrs figures used in the KPI row below,
-// same split reconciliation.py's compute_toolroom_gap() documents.
+//
+// Unlike Maintenance and Toolroom, "production downtime" isn't its own
+// whitelist of reason codes — production.html defines it as a RESIDUAL
+// bucket: every SFC reason code that isn't Maintenance-owned, Toolroom-
+// owned, or a planned stoppage falls here by elimination (that's also
+// where QA-prefixed codes like QA-QUALITY FAIL land, since no dedicated
+// quality category exists yet). Kept in step with config.py /
+// production.html's own categorise() — if a reason code is added or
+// reclassified there, this needs the same change.
+const FAULT_CODES = ['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR',
+  'FAULT-FEEDER/DECOILER/STRAIGHTENER', 'FAULT-SHAKER/CONVEYOR',
+  'MA-FAULT PRESS', 'MA-FAULT-FEEDER/DECOILER/', 'MA-FAULT SHAKER/CONVEYOR'];
 const TOOLROOM_CODES = ['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP',
   'TOOL UNAVAILABLE', 'WASTE IN THE TOOL',
   'TR-TOOL UNAVAILABLE', 'TR-TOOL FAILURE'];
+const PLANNED_CODES = ['PLANNED OFFLINE', 'NO PRODUCTION PLANNED'];
+
+// Codes stripped out of the Production reason-codes chart (and its
+// headline hours) because they aren't lost performance — they're time
+// the line was never going to be producing. Lunch/Break/Meeting is
+// contractual break time; Idle is a machine available with nothing
+// scheduled on it. They're excluded, not hidden: the hours still count
+// in each press's own production_hrs figure on the Pareto below, same
+// as production.html's own split — only the reason-codes chart and the
+// Downtime (SFC) KPI/trend take them out.
+const EXCLUDED_FROM_PRODUCTION = ['LUNCH / BREAK / MEETING', 'IDLE'];
+
+function categorise(reason) {
+  const r = (reason || '').toUpperCase().trim();
+  if (FAULT_CODES.includes(r)) return 'fault';
+  if (TOOLROOM_CODES.includes(r)) return 'tool';
+  if (PLANNED_CODES.includes(r)) return 'planned';
+  return 'production';
+}
 
 // Every uploaded month's machine_breakdown summed per press, rather than
 // just the currently-selected period — "which presses have cost us the
-// most tool downtime overall", not "this month only". A press that only
-// shows up in older months still counts here even if it's since been
-// retired or renamed, same reasoning as the per-period Pareto never
-// hiding a press just because it's not in the latest file.
-function allTimeToolTop5(runs) {
+// most production downtime overall", not "this month only". Uses each
+// press's raw production_hrs, unadjusted for breaks/idle — same as the
+// Pareto on production.html, which never subtracted them either; only
+// the reason-codes chart and headline total do that.
+function allTimeProductionTop5(runs) {
   const totals = {};
   runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
-    totals[m.machine] = (totals[m.machine] || 0) + (m.tool_hrs || 0);
+    totals[m.machine] = (totals[m.machine] || 0) + (m.production_hrs || 0);
   }));
   return Object.entries(totals)
-    .map(([machine, tool_hrs]) => ({ machine, tool_hrs }))
-    .sort((a, b) => b.tool_hrs - a.tool_hrs)
+    .map(([machine, production_hrs]) => ({ machine, production_hrs }))
+    .sort((a, b) => b.production_hrs - a.production_hrs)
     .slice(0, 5);
 }
 
-// Same all-time treatment as allTimeToolTop5 above, applied to the reason
-// codes instead of the presses — every uploaded month's hours per reason
-// summed together, not just whichever period is selected in the dropdown.
-function allTimeToolReasonTotals(runs) {
+// Same all-time idea applied to the reason codes instead of the presses
+// — every uploaded month's hours per reason summed together, not just
+// whichever period is selected in the dropdown. Breaks/idle excluded,
+// same as production.html's own reason chart.
+function allTimeProductionReasonTotals(runs) {
   const totals = {};
   runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
     Object.entries(m.reasons || {}).forEach(([reason, h]) => {
-      if (TOOLROOM_CODES.includes((reason || '').toUpperCase().trim())) {
-        totals[reason] = (totals[reason] || 0) + h;
-      }
+      const key = (reason || '').toUpperCase().trim();
+      if (EXCLUDED_FROM_PRODUCTION.includes(key)) return;
+      if (categorise(reason) === 'production') totals[reason] = (totals[reason] || 0) + h;
     });
   }));
   return Object.entries(totals).sort((a, b) => b[1] - a[1]);
 }
 
-// Same all-time idea applied to the top KPI tiles — but only for the two
-// that are genuinely a running total (hours accumulate month over month).
-// toolroom_gap_pct is NOT averaged across months (averaging percentages
-// weights a slow month the same as a busy one and gives a misleading
-// figure) — it's recalculated from the two summed totals below, exactly
-// the way compute_toolroom_gap() derives it for a single month:
-// gap% = (sfc hours − agility-matched hours) / sfc hours. Open WO Backlog
-// deliberately has NO all-time version — it's a snapshot of what's
-// sitting in the queue right now, not a flow, so "summed across every
-// month" would just double-count the same lingering tickets. That tile
-// stays tied to whichever period is selected.
-function allTimeToolroomGap(runs) {
-  let sfcSum = 0, agilitySum = 0, sawSfc = false;
-  runs.forEach(r => {
-    if (r.toolroom_sfc_hrs != null) { sfcSum += r.toolroom_sfc_hrs; sawSfc = true; }
-    if (r.agility_toolroom_hrs != null) agilitySum += r.agility_toolroom_hrs;
-  });
-  if (!sawSfc) return { sfcSum: null, agilitySum: null, gapPct: null };
-  const gapPct = sfcSum > 0 ? (sfcSum - agilitySum) / sfcSum * 100 : 0;
-  return { sfcSum, agilitySum, gapPct };
-}
-
 // Darker than Chart.js's default grey tick colour so it survives a
-// projector or a printed page — same reasoning as toolroom.html.
+// projector or a printed page — same reasoning as production.html.
 const TICK = '#555';
-// The Pareto's cumulative-% line colour — toolroom.html's own Pareto line
-// colour, kept as its own constant.
+// The Pareto's cumulative-% line colour — production.html's own Pareto
+// line colour, kept as its own constant.
 const PARETO_LINE = '#c0392b';
 
 const MAX_TICK = 13;
@@ -442,11 +444,11 @@ function deltaBadge(curr, prev, higherIsWorse) {
 }
 
 // --- Click-to-reveal values table ------------------------------------
-// Same as the Maintenance Trend Dashboard: every trend chart's tooltip
-// already has every month's numbers, you just have to hover one point
-// at a time to see them. This turns that into one plain HTML table
-// showing every month side by side, toggled by clicking the chart, so
-// the whole thing can be selected and pasted straight into a
+// Same as the Maintenance and Toolroom Trend Dashboards: every trend
+// chart's tooltip already has every month's numbers, you just have to
+// hover one point at a time to see them. This turns that into one plain
+// HTML table showing every month side by side, toggled by clicking the
+// chart, so the whole thing can be selected and pasted straight into a
 // board-review doc or slide instead of read off by eye.
 //
 // The table's numbers are produced by calling each chart's OWN tooltip
@@ -534,7 +536,7 @@ async function load() {
   RUNS = data.runs || [];
   if (RUNS.length === 0) {
     document.getElementById('state-msg').textContent =
-      'No saved runs yet. Go run a toolroom check and click "Save to Trend Dashboard" to see history here.';
+      'No saved runs yet. Go run a monthly check and click "Save to Trend Dashboard" to see history here.';
     return;
   }
 
@@ -555,67 +557,66 @@ function selectPeriod(i) {
   render(RUNS, idx);
 }
 
-// Months saved before the WO backlog column existed (or with no WO file
-// uploaded that period) have NULL here. The chart hides entirely rather
-// than drawing an axis with one point on it — a chart with a single datum
-// isn't a trend, it's a decoration. Same guard convention as dashboard.html's
-// hasMtbf/hasOee.
-function hasWoBacklog(runs) {
-  return runs.some(r => r.toolroom_wo_open !== null && r.toolroom_wo_open !== undefined);
+// oee_pct / oee_run_hrs only exist for months with an OEE file uploaded
+// alongside the SFC export — most months before OEE uploads started (and
+// any month nobody attached one) have NULL here. Same guard convention
+// as dashboard.html's hasOee, gating the OEE and Run Time trend charts.
+function hasOee(runs) {
+  return runs.some(r => r.oee_pct !== null && r.oee_pct !== undefined);
 }
 
-const TOOLROOM_BACKLOG_TARGET = 25;
+const RUN_TIME_TARGET = 2000;
 
-// toolroom.html's "Downtime (SFC)" gauge, trended — same broad definition
-// as the Pareto/reason-code charts above (machine_breakdown's own tool_hrs
-// / tool_events, TOOLROOM_CODES-scoped), NOT the narrower toolroom_sfc_hrs
-// used in the KPI row (that one is Scott's 3-code gap figure). Two
-// different numbers on toolroom.html itself — this keeps them just as
-// distinct here rather than quietly merging them into one.
-function siteToolHrs(r) {
+// production.html's "Downtime (SFC)" gauge, trended: each press's raw
+// production_hrs summed site-wide, minus Lunch/Break/Meeting and Idle
+// (EXCLUDED_FROM_PRODUCTION) — same net figure that gauge and the
+// reason-codes chart total both show, so this trend line always agrees
+// with the Monthly Performance Review slide for whatever month it's
+// plotting. Deliberately NOT the same number the Pareto bars sum to —
+// see the comment on EXCLUDED_FROM_PRODUCTION above.
+function siteProductionHrs(r) {
   if (!r.machine_breakdown) return null;
-  return r.machine_breakdown.reduce((s, m) => s + (m.tool_hrs || 0), 0);
+  const raw = r.machine_breakdown.reduce((s, m) => s + (m.production_hrs || 0), 0);
+  const excluded = r.machine_breakdown.reduce((s, m) => {
+    return s + Object.entries(m.reasons || {}).reduce((s2, [reason, h]) => {
+      return EXCLUDED_FROM_PRODUCTION.includes((reason || '').toUpperCase().trim()) ? s2 + h : s2;
+    }, 0);
+  }, 0);
+  return raw - excluded;
 }
-function siteToolEvents(r) {
-  if (!r.machine_breakdown) return null;
-  return r.machine_breakdown.reduce((s, m) => s + (m.tool_events || 0), 0);
-}
-function hasToolDowntime(runs) {
-  return runs.some(r => siteToolHrs(r) !== null);
+function hasProductionDowntime(runs) {
+  return runs.some(r => siteProductionHrs(r) !== null);
 }
 
 function render(runs, idx) {
   const latest = runs[idx];
   const prev = idx > 0 ? runs[idx - 1] : null;
-  const gap = allTimeToolroomGap(runs);
-  const rangeNote = `${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined`;
+  const prodHrs = siteProductionHrs(latest);
+  const prevProdHrs = prev ? siteProductionHrs(prev) : null;
 
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="period-badge">Period: ${latest.period_label || latest.period}</div>
 
     <div class="kpi-row">
-      <div class="kpi red">
-        <label>Tool SFC Hours</label>
-        <div class="val">${fmt(gap.sfcSum)}h</div>
-        <span class="sub">${rangeNote}</span>
-      </div>
       <div class="kpi green">
-        <label>Agility Hours Matched</label>
-        <div class="val">${fmt(gap.agilitySum)}h</div>
-        <span class="sub">${rangeNote}</span>
+        <label>OEE</label>
+        <div class="val">${latest.oee_pct == null ? '—' : fmt(latest.oee_pct, 1) + '%'}</div>
+        ${latest.oee_pct == null ? '<span class="sub">not uploaded</span>'
+          : prev && prev.oee_pct != null ? deltaBadge(latest.oee_pct, prev.oee_pct, false)
+          : '<span class="sub">First recorded month</span>'}
       </div>
-      <div class="kpi navy">
-        <label>WO Coverage Gap</label>
-        <div class="val">${fmt(gap.gapPct, 1)}%</div>
-        <span class="sub">${rangeNote}</span>
+      <div class="kpi red">
+        <label>Downtime (SFC)</label>
+        <div class="val">${fmt(prodHrs, 0)}h</div>
+        ${prev ? deltaBadge(prodHrs, prevProdHrs, true) : '<span class="sub">First recorded month</span>'}
       </div>
       <div class="kpi amber">
-        <label>Open WO Backlog</label>
-        <div class="val">${latest.toolroom_wo_open == null ? '—' : latest.toolroom_wo_open}</div>
-        ${latest.toolroom_wo_count == null ? '<span class="sub">no WO file uploaded</span>'
-          : prev && prev.toolroom_wo_open != null ? deltaBadge(latest.toolroom_wo_open, prev.toolroom_wo_open, true)
-          : `<span class="sub">target &lt;${TOOLROOM_BACKLOG_TARGET}</span>`}
+        <label>Run Time</label>
+        <div class="val">${latest.oee_run_hrs == null ? '—' : Math.round(latest.oee_run_hrs).toLocaleString() + 'h'}</div>
+        ${latest.oee_run_hrs == null ? '<span class="sub">not uploaded</span>'
+          : prev && prev.oee_run_hrs != null ? deltaBadge(latest.oee_run_hrs, prev.oee_run_hrs, false)
+          : `<span class="sub">target ${RUN_TIME_TARGET.toLocaleString()}h</span>`}
       </div>
     </div>
 
@@ -629,131 +630,107 @@ function render(runs, idx) {
 
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
-        <h3>Tool Downtime — Reason Codes</h3>
-        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months</div>
+        <h3>Production Reason Codes</h3>
+        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months · breaks and idle excluded</div>
         <div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>
       </div>
     </div>
 
+    ${hasOee(runs) ? `
     <div class="chart-grid">
       <div class="chart-card">
-        <h3>Tool Hours vs Agility-Covered Hours</h3>
-        <div class="canvas-wrap short"><canvas id="hoursChart"></canvas></div>
+        <h3>OEE — Trend</h3>
+        <div class="canvas-wrap short"><canvas id="oeeChart"></canvas></div>
       </div>
       <div class="chart-card">
-        <h3>WO Coverage Gap % — Trend</h3>
-        <div class="canvas-wrap short"><canvas id="gapChart"></canvas></div>
-      </div>
-    </div>
-
-    ${hasWoBacklog(runs) ? `
-    <div class="chart-grid">
-      <div class="chart-card" style="grid-column: 1 / -1;">
-        <h3>Tools Awaiting Repair — Trend</h3>
-        <div class="chart-sub-note">Dashed line is the ${TOOLROOM_BACKLOG_TARGET}-WO target · same figure as the Monthly Performance Review gauge</div>
-        <div class="canvas-wrap short"><canvas id="backlogChart"></canvas></div>
+        <h3>Run Time — Trend</h3>
+        <div class="chart-sub-note">Dashed line is the ${RUN_TIME_TARGET.toLocaleString()}h target · same figure as the Monthly Performance Review gauge</div>
+        <div class="canvas-wrap short"><canvas id="runTimeChart"></canvas></div>
       </div>
     </div>` : ''}
 
-    ${hasToolDowntime(runs) ? `
+    ${hasProductionDowntime(runs) ? `
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Downtime (SFC) — Trend</h3>
-        <div class="chart-sub-note">Hours (left) and tool-related events (right) · no target set · same figures as the Monthly Performance Review gauge</div>
-        <div class="canvas-wrap short"><canvas id="toolDowntimeChart"></canvas></div>
+        <div class="chart-sub-note">Production-owned reasons only, breaks and idle excluded · no target set · same figure as the Monthly Performance Review gauge</div>
+        <div class="canvas-wrap short"><canvas id="prodDowntimeChart"></canvas></div>
       </div>
     </div>` : ''}
   `;
 
   const labels = runs.map(r => r.period_label || r.period);
 
-  new Chart(document.getElementById('gapChart'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Gap %', data: runs.map(r => r.toolroom_gap_pct),
-        borderColor: NAVY, backgroundColor: NAVY + '15', fill: true, tension: 0.25,
-        pointBackgroundColor: NAVY, pointRadius: 5, spanGaps: true,
-      }],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
-    },
-  });
-  attachValuesTable('gapChart');
-
-  new Chart(document.getElementById('hoursChart'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Tool SFC hours', data: runs.map(r => r.toolroom_sfc_hrs), borderColor: RED, backgroundColor: RED + '15', fill: true, tension: 0.25, pointRadius: 5, spanGaps: true },
-        { label: 'Agility hours matched', data: runs.map(r => r.agility_toolroom_hrs), borderColor: LIME, backgroundColor: LIME + '25', fill: true, tension: 0.25, pointRadius: 5, spanGaps: true },
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
-      scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
-    },
-  });
-  attachValuesTable('hoursChart');
-
-  pareto('paretoChart', allTimeToolTop5(runs), 'tool_hrs', TOOLROOM);
-  reasonBarsSimple('reasonChart', allTimeToolReasonTotals(runs), TOOLROOM);
-
-  if (hasWoBacklog(runs)) {
-    new Chart(document.getElementById('backlogChart'), {
+  if (hasOee(runs)) {
+    // spanGaps lets a month with no OEE upload leave a break in the line
+    // rather than being drawn as a drop to zero — same reasoning as
+    // dashboard.html's own OEE chart, which this is a direct copy of.
+    new Chart(document.getElementById('oeeChart'), {
       type: 'line',
       data: {
         labels,
         datasets: [
-          { label: 'Open WOs', data: runs.map(r => r.toolroom_wo_open), borderColor: TOOLROOM,
-            backgroundColor: TOOLROOM + '15', fill: true, tension: 0.25,
-            pointBackgroundColor: TOOLROOM, pointRadius: 5, spanGaps: true },
-          { label: 'Target', data: Array(runs.length).fill(TOOLROOM_BACKLOG_TARGET), borderColor: '#999',
+          { label: 'OEE %', data: runs.map(r => r.oee_pct), borderColor: '#95C11F',
+            backgroundColor: '#95C11F', borderWidth: 2.5, pointRadius: 4, spanGaps: true },
+          { label: 'Availability %', data: runs.map(r => r.oee_availability_pct), borderColor: '#243547',
+            backgroundColor: '#243547', borderWidth: 1.5, borderDash: [5, 3], pointRadius: 3, spanGaps: true },
+          { label: 'Performance %', data: runs.map(r => r.oee_performance_pct), borderColor: '#d97706',
+            backgroundColor: '#d97706', borderWidth: 1.5, borderDash: [2, 2], pointRadius: 3, spanGaps: true },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+                   tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}%` } } },
+        scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
+      },
+    });
+    attachValuesTable('oeeChart');
+
+    new Chart(document.getElementById('runTimeChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Run Time (h)', data: runs.map(r => r.oee_run_hrs), borderColor: PRODUCTION,
+            backgroundColor: PRODUCTION + '15', fill: true, tension: 0.25,
+            pointBackgroundColor: PRODUCTION, pointRadius: 5, spanGaps: true },
+          { label: 'Target', data: Array(runs.length).fill(RUN_TIME_TARGET), borderColor: '#999',
             borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, order: 0, fill: false },
         ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
-                   tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(0)}` } } },
-        scales: { y: { beginAtZero: true } },
+                   tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(0)}h` } } },
+        scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
       },
     });
-    attachValuesTable('backlogChart');
+    attachValuesTable('runTimeChart');
   }
 
-  if (hasToolDowntime(runs)) {
-    new Chart(document.getElementById('toolDowntimeChart'), {
+  pareto('paretoChart', allTimeProductionTop5(runs), 'production_hrs', PRODUCTION);
+  reasonBarsSimple('reasonChart', allTimeProductionReasonTotals(runs), PRODUCTION);
+
+  if (hasProductionDowntime(runs)) {
+    new Chart(document.getElementById('prodDowntimeChart'), {
+      type: 'line',
       data: {
         labels,
         datasets: [
-          { type: 'line', label: 'Tool downtime (h)', data: runs.map(siteToolHrs),
-            borderColor: TOOLROOM, backgroundColor: TOOLROOM + '15', fill: true, tension: 0.25,
-            pointBackgroundColor: TOOLROOM, pointRadius: 5, spanGaps: true, yAxisID: 'y' },
-          { type: 'line', label: 'Tool-related events', data: runs.map(siteToolEvents),
-            borderColor: NAVY, borderDash: [5, 3], borderWidth: 1.5, pointRadius: 3,
-            pointBackgroundColor: NAVY, fill: false, spanGaps: true, yAxisID: 'y1' },
+          { label: 'Production downtime (h)', data: runs.map(siteProductionHrs),
+            borderColor: PRODUCTION, backgroundColor: PRODUCTION + '15', fill: true, tension: 0.25,
+            pointBackgroundColor: PRODUCTION, pointRadius: 5, spanGaps: true },
         ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
-          tooltip: { callbacks: { label: c => c.dataset.yAxisID === 'y1'
-            ? `${c.dataset.label}: ${Number(c.parsed.y).toFixed(0)}`
-            : `${c.dataset.label}: ${Number(c.parsed.y).toFixed(0)}h` } } },
-        scales: {
-          y: { beginAtZero: true, ticks: { callback: v => v + 'h' } },
-          y1: { position: 'right', beginAtZero: true, grid: { display: false } },
-        },
+        plugins: { legend: { display: false },
+                   tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(0)}h` } } },
+        scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
       },
     });
-    attachValuesTable('toolDowntimeChart');
+    attachValuesTable('prodDowntimeChart');
   }
 }
 

@@ -754,6 +754,11 @@ def production_notes_view():
     return send_from_directory('public', 'production-notes.html')
 
 
+@bp.route('/production-trend')
+def production_trend_view():
+    return send_from_directory('public', 'production-trend.html')
+
+
 @bp.route('/toolroom')
 def toolroom_view():
     return send_from_directory('public', 'toolroom.html')
