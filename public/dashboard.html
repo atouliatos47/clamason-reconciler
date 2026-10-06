@@ -813,6 +813,7 @@ function render(runs, idx) {
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>TPM Schedule Completion % — Trend</h3>
+        <div class="chart-sub-note">Dashed line is the 90% target · same target as the Monthly Performance Review gauge</div>
         <div class="canvas-wrap short"><canvas id="ppmChart"></canvas></div>
       </div>
     </div>` : ''}
@@ -890,15 +891,24 @@ function render(runs, idx) {
       type: 'line',
       data: {
         labels,
-        datasets: [{
-          label: 'TPM Schedule Completion %', data: runs.map(r => r.ppm_completion_pct),
-          borderColor: LIME, backgroundColor: LIME + '15', fill: true, tension: 0.25,
-          pointBackgroundColor: LIME, pointRadius: 5, spanGaps: true,
-        }],
+        datasets: [
+          { label: 'TPM Schedule Completion %', data: runs.map(r => r.ppm_completion_pct),
+            borderColor: LIME, backgroundColor: LIME + '15', fill: true, tension: 0.25,
+            pointBackgroundColor: LIME, pointRadius: 5, spanGaps: true },
+          // Same dashed-target treatment as the MTTF chart below. The
+          // values table is built from the chart's datasets, so this line
+          // is also what gives the table its Target row.
+          { label: 'Target', data: Array(runs.length).fill(90), borderColor: '#999',
+            borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, order: 0, fill: false },
+        ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        // The tooltip callback also formats the values table (see
+        // buildValuesTableHtml), so this puts the % sign on both.
+        // The unary + drops a trailing .0, so the target reads 90%.
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+                   tooltip: { callbacks: { label: c => `${c.dataset.label}: ${+Number(c.parsed.y).toFixed(1)}%` } } },
         scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
       },
     });
