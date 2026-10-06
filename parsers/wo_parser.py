@@ -32,6 +32,40 @@ def _find_in_row(row, label):
     return ''
 
 
+def _find_due_date(row):
+    """The WO's Due Date, sitting on the same row as 'Job No'
+    (label in one column, the value a couple of cells to its right).
+
+    Returned as an ISO string 'YYYY-MM-DDTHH:MM' so it survives the trip
+    to JSON and sorts correctly as text, or '' when the cell is blank.
+    Read raw, NOT through _find_in_row: that turns a datetime into its
+    str() form, and Agility hands this cell over as a real datetime.
+
+    Agility sets the due date from the job's priority — for Breakdown
+    Repair usually 12h after the job was reported (checked against 52
+    Down Time Analysis rows, Sept 2026). The report has no 'raised'
+    date at all, so this is the only per-job date there is, and it's
+    what the Daily View's overdue check measures against."""
+    import pandas as pd
+    for idx, cell in enumerate(row):
+        if str(cell).strip().lower() == 'due date':
+            for offset in range(1, 4):
+                if idx + offset < len(row):
+                    raw = row[idx + offset]
+                    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+                        continue
+                    if not hasattr(raw, 'strftime'):
+                        text = _clean(raw)
+                        if not text:
+                            continue
+                        # Text form, e.g. '06/10/2026 11:07' — UK day-first.
+                        raw = pd.to_datetime(text, dayfirst=True, errors='coerce')
+                        if pd.isna(raw):
+                            return ''
+                    return raw.strftime('%Y-%m-%dT%H:%M')
+    return ''
+
+
 def _collect_block_crafts(rows, start_idx):
     """Walk forward from a WO's block collecting every TASKxx resource
     row, stopping at the next Job No or a fully blank separator row.
@@ -82,6 +116,7 @@ def _parse_all_maintenance_wos(filepath, craft_filter=MAINTENANCE_CRAFTS):
             continue
 
         job_no = _clean(row[1])
+        due = _find_due_date(row)
         block = [rows[i + j] if i + j < len(rows) else [] for j in range(1, 6)]
         asset_row, type_row, desc_row = block[0], block[1], block[2]
 
@@ -109,6 +144,7 @@ def _parse_all_maintenance_wos(filepath, craft_filter=MAINTENANCE_CRAFTS):
                 'assetName': asset_name,
                 'jobType': job_type,
                 'status': status,
+                'due': due,
                 'desc': desc,
                 'craft': ', '.join(sorted(set(block_crafts))),
                 'resource': ', '.join(resources),
