@@ -295,6 +295,44 @@ function faultCategoryHrsForRun(r, codes) {
   return total;
 }
 
+// The 3-month version of the Monthly Performance Review's "MA-FAULT
+// PRESS — by press" chart. Press-fault hours only (FAULT_PRESS_CODES, so
+// the same old/new code merge as the Fault Locations chart), per press,
+// per month. Top 5 is picked by the total across every uploaded month,
+// the same window as the Pareto, so the two charts cover the same period.
+function pressFaultHrs(m) {
+  return Object.entries(m.reasons || {}).reduce((sum, [reason, h]) =>
+    FAULT_PRESS_CODES.includes((reason || '').toUpperCase().trim()) ? sum + (h || 0) : sum, 0);
+}
+
+function pressFaultTopByMonth(runs, n = 5) {
+  const totals = {};
+  runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
+    totals[m.machine] = (totals[m.machine] || 0) + pressFaultHrs(m);
+  }));
+  const top = Object.entries(totals)
+    .filter(([, h]) => h > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([machine]) => machine);
+  return top.map(machine => ({
+    machine,
+    hrs: runs.map(r => {
+      // No breakdown for that month at all → null, so the line shows a
+      // gap rather than claiming a verified zero (same rule as
+      // faultCategoryHrsForRun). A press missing from a month that DOES
+      // have a breakdown genuinely had nothing logged → 0.
+      if (!r.machine_breakdown) return null;
+      const m = r.machine_breakdown.find(x => x.machine === machine);
+      return m ? pressFaultHrs(m) : 0;
+    }),
+  }));
+}
+
+// Five lines need five colours. RED is left out on purpose: on this page
+// it already means "SFC fault hours" and "Feeder/Decoiler/Straightener".
+const PRESS_COLOURS = [MAINTENANCE, NAVY, LIME, AMBER, '#7c8b99'];
+
 // Darker than Chart.js's default grey tick colour so it survives a
 // projector or a printed page — same reasoning as maintenance.html.
 const TICK = '#555';
@@ -778,6 +816,14 @@ function render(runs, idx) {
     </div>
 
     <div class="chart-grid">
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h3>MA-FAULT PRESS by Press — Monthly Trend</h3>
+        <div class="chart-sub-note">Top 5 presses by press-fault hours across all ${runs.length} uploaded months · old and new SFC-naming-era codes merged</div>
+        <div class="canvas-wrap short"><canvas id="pressFaultChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-grid">
       <div class="chart-card">
         <h3>Fault Hours vs Agility-Covered Hours</h3>
         <div class="canvas-wrap short"><canvas id="hoursChart"></canvas></div>
@@ -959,6 +1005,28 @@ function render(runs, idx) {
     },
   });
   attachValuesTable('faultLocationChart');
+
+  new Chart(document.getElementById('pressFaultChart'), {
+    type: 'line',
+    data: {
+      labels,
+      // fill: false here, unlike Fault Locations above: five shaded areas
+      // stacked on top of each other turn into one muddy block.
+      datasets: pressFaultTopByMonth(runs).map((p, i) => ({
+        label: p.machine, data: p.hrs,
+        borderColor: PRESS_COLOURS[i], backgroundColor: PRESS_COLOURS[i],
+        fill: false, tension: 0.25, pointBackgroundColor: PRESS_COLOURS[i],
+        pointRadius: 5, spanGaps: true,
+      })),
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}h` } } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
+    },
+  });
+  attachValuesTable('pressFaultChart');
 
   if (hasMtbf(runs)) {
     new Chart(document.getElementById('mttfChart'), {
