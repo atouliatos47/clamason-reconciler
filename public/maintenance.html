@@ -437,6 +437,15 @@ function render() {
   charts.length = 0;
 
   const siteFault = mb.reduce((s, m) => s + (m.fault_hrs || 0), 0);
+  // Average downtime per fault stop — replaces the old "Downtime (SFC)"
+  // gauge, whose "% covered" line compared SFC's clock against Agility's
+  // breakdown-to-online clock and could read 244.9% when work orders were
+  // left open. Both numbers here come from SFC alone, recorded at the
+  // press as it happens, over the same three MA- fault codes as siteFault
+  // (168.1h / 383 stops = 26 min for Sept 2026), so open work orders
+  // can't distort it.
+  const siteFaultEvents = mb.reduce((s, m) => s + (m.fault_events || 0), 0);
+  const minsPerStop = siteFaultEvents ? siteFault / siteFaultEvents * 60 : null;
 
   const top5 = (cat) => mb.slice().sort((a, b) => (b[cat] || 0) - (a[cat] || 0)).slice(0, 5);
 
@@ -477,9 +486,9 @@ function render() {
   })();
   const maintGauges =
     gauge('g-mtbf', 'MTTF', mtbfNote) +
-    gauge('g-fault', 'Downtime (SFC)', d.gap_pct == null
-      ? `Agility ${hrs(d.agility_maintenance_hrs)} · no SFC file this run<br>no target set`
-      : `Agility ${hrs(d.agility_maintenance_hrs)} · ${fmt(100 - d.gap_pct, 1)}% covered<br>no target set`) +
+    gauge('g-fault', 'Avg Downtime per Fault Stop', minsPerStop == null
+      ? 'no SFC fault stops this run<br>no target set'
+      : `${siteFault.toFixed(1)}h ÷ ${siteFaultEvents.toLocaleString()} fault stops<br>no target set`) +
     gauge('g-ppm', 'TPM Completion', d.ppm_completion_pct == null
       ? 'not uploaded'
       : `target ${TARGETS.ppmCompletion}% · tick on ring<br>${d.ppm_completed} of ${d.ppm_total} scheduled PPM jobs`);
@@ -523,7 +532,9 @@ function render() {
   // target is still visible, just not as an overfull ring).
   ring('g-mtbf', mttfHrs == null ? null : Math.min(100, mttfHrs / TARGETS.mttf * 100),
     mttfHrs == null ? '–' : Math.round(mttfHrs).toLocaleString() + 'h', '#2e6b4f', 100);
-  ring('g-fault', null, siteFault.toFixed(0) + 'h', '#c0392b');
+  // Navy, not red: with no target set there's nothing to be "in the red"
+  // against, and a full red ring reads as a failure on a board slide.
+  ring('g-fault', null, minsPerStop == null ? '–' : Math.round(minsPerStop) + ' min', '#243547');
   // Real target arc now — confirmed against the board's own established
   // "Number of Full TPM schedules completed to plan (%)" row (>90%),
   // not a guess. Was a plain frame before this: no confirmed target
