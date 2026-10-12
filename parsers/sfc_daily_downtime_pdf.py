@@ -25,10 +25,15 @@ from time_utils import hms_to_hours
 from config import BLAME_FAULT_CODES, TOOLROOM_CODES, PLANNED_CODES, NON_MACHINE_SHEETS
 
 ROW_RE = re.compile(r'^(.+?)\s+(\d+)\s+(\d{1,3}:\d{2}:\d{2})$')
-PERIOD_RE = re.compile(
-    r'Report Period\s+(\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[AP]M)'
-    r'\s+To\s+(\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[AP]M)'
-)
+# The word "To" sits slightly LOWER on the page than the two dates, so
+# pdfplumber reads it on the line AFTER both of them:
+#     "Report Period 10/10/2026 6:30:00 AM 10/11/2026 6:30:00 AM"
+#     "To"
+# Requiring "To" between the dates meant no match, no detected_date, and
+# the Daily check refusing to auto-save. "To" is optional here, so either
+# layout matches — the two timestamps in order are all we actually need.
+_DT = r'(\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[AP]M)'
+PERIOD_RE = re.compile(r'Report Period\s+' + _DT + r'\s+(?:To\s+)?' + _DT)
 SELECTED_MACHINES_RE = re.compile(r'Selected Machines:\s*(.+)', re.DOTALL)
 
 
