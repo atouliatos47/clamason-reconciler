@@ -33,6 +33,76 @@ def init_schema():
         conn.commit()
 
 
+# --- Which columns a re-save is allowed to overwrite -----------------------
+#
+# Re-saving a month (same period_label) used to overwrite EVERY column with
+# whatever this upload contained. Re-save September with only the three main
+# files and its OEE, MTBF, scrap and TPM figures were silently blanked —
+# the optional files you didn't attach this time came through as NULL, and
+# NULL replaced the real numbers already saved.
+#
+# Now each optional file owns its own columns. A file you attach overwrites
+# its columns as before; a file you leave out leaves its columns exactly as
+# they were. Keyed by the name each upload has in the result dict
+# (routes._parse_uploads 'extras'), which is None when that file wasn't
+# attached.
+#
+# The three main files (SFC Downtime Summary, Agility Down Time, Selective
+# WOs) are NOT in here on purpose: everything else in a run — gap, WO
+# counts, machine breakdown, MTTR, toolroom figures — is calculated from
+# them together, so a re-save always rewrites those from the files given.
+#
+# Adding a new optional upload? Put its columns in a group here, or a
+# re-save without that file will blank it.
+OPTIONAL_UPLOAD_COLUMNS = {
+    'oee': [
+        'oee_pct', 'oee_availability_pct', 'oee_performance_pct',
+        'oee_performance_pct_raw', 'oee_quality_pct', 'oee_week_count',
+        'oee_machine_count', 'oee_run_hrs', 'oee_net_avail_hrs', 'oee_total_avail_hrs',
+        'oee_utilization_pct', 'oee_teep_pct', 'oee_intended_hours',
+        'oee_utilization_vs_intended_pct', 'oee_teep_vs_intended_pct',
+        'oee_intended_configured_count', 'oee_total_parts', 'oee_scrap_parts',
+        'oee_per_machine', 'oee_quality_source',
+    ],
+    'efacs_scrap': [
+        'efacs_scrap_qty', 'efacs_scrap_cost',
+    ],
+    'mtbf': [
+        'mtbf_days', 'mtbf_assets', 'mtbf_asset_count', 'mtbf_mttr_hrs',
+        'mtbf_wait_hrs', 'mtbf_jobs', 'mtbf_downtime_hrs', 'mtbf_scopes',
+    ],
+    'ppm_completion': [
+        'ppm_total', 'ppm_completed', 'ppm_completion_pct',
+    ],
+}
+
+# Everything else in monthly_runs — always rewritten on a re-save.
+CORE_COLUMNS = [
+    'period_label', 'machine_count', 'total_hrs', 'total_events', 'maintenance_hrs',
+    'toolroom_hrs', 'agility_maintenance_hrs', 'gap_hrs', 'gap_pct', 'wo_count',
+    'machine_breakdown', 'mtta_hrs_press', 'mttr_hrs_press', 'mdt_hrs_press',
+    'mttr_jobs_press', 'mtta_hrs_all', 'mttr_hrs_all', 'mdt_hrs_all', 'mttr_jobs_all',
+    'toolroom_wo_count', 'toolroom_wo_completed', 'toolroom_wo_cancelled',
+    'toolroom_wo_open', 'toolroom_sfc_hrs', 'agility_toolroom_hrs', 'toolroom_gap_hrs',
+    'toolroom_gap_pct', 'toolroom_gap_wo_count', 'toolroom_machine_breakdown',
+]
+
+
+def _update_set_clause(result):
+    """The 'col = EXCLUDED.col' list for ON CONFLICT ... DO UPDATE, leaving
+    out the columns of any optional file that wasn't attached this time.
+
+    Building SQL text with an f-string is normally a red flag (SQL
+    injection). It's safe here because only the fixed column names above
+    ever go into the text — never anything from an upload or a form. The
+    VALUES still go through %(name)s parameters, as before."""
+    cols = list(CORE_COLUMNS)
+    for key, group in OPTIONAL_UPLOAD_COLUMNS.items():
+        if result.get(key):
+            cols += group
+    return ',\n'.join(f'{c} = EXCLUDED.{c}' for c in cols)
+
+
 def save_run(result, period_label):
     """Store one month's reconciliation result. result is the dict
     returned by reconciliation.reconcile(). Re-saving the same period
@@ -94,7 +164,8 @@ def save_run(result, period_label):
         row[f'mttr_jobs_{suffix}'] = rt.get('mttr_jobs')
 
     # OEE and MTBF are optional uploads — a check run without them stores
-    # NULLs rather than failing, and an existing row keeps whatever it had.
+    # NULLs rather than failing, and an existing row keeps whatever it had
+    # (see OPTIONAL_UPLOAD_COLUMNS above — that's what makes it true).
     oee = result.get('oee') or {}
     fleet = oee.get('fleet') or {}
     row.update({
@@ -224,69 +295,7 @@ def save_run(result, period_label):
                      %(toolroom_sfc_hrs)s, %(agility_toolroom_hrs)s, %(toolroom_gap_hrs)s,
                      %(toolroom_gap_pct)s, %(toolroom_gap_wo_count)s, %(toolroom_machine_breakdown)s)
                 ON CONFLICT (period) DO UPDATE SET
-                    period_label = EXCLUDED.period_label,
-                    machine_count = EXCLUDED.machine_count,
-                    total_hrs = EXCLUDED.total_hrs,
-                    total_events = EXCLUDED.total_events,
-                    maintenance_hrs = EXCLUDED.maintenance_hrs,
-                    toolroom_hrs = EXCLUDED.toolroom_hrs,
-                    agility_maintenance_hrs = EXCLUDED.agility_maintenance_hrs,
-                    gap_hrs = EXCLUDED.gap_hrs,
-                    gap_pct = EXCLUDED.gap_pct,
-                    wo_count = EXCLUDED.wo_count,
-                    machine_breakdown = EXCLUDED.machine_breakdown,
-                    mtta_hrs_press = EXCLUDED.mtta_hrs_press,
-                    mttr_hrs_press = EXCLUDED.mttr_hrs_press,
-                    mdt_hrs_press = EXCLUDED.mdt_hrs_press,
-                    mttr_jobs_press = EXCLUDED.mttr_jobs_press,
-                    mtta_hrs_all = EXCLUDED.mtta_hrs_all,
-                    mttr_hrs_all = EXCLUDED.mttr_hrs_all,
-                    mdt_hrs_all = EXCLUDED.mdt_hrs_all,
-                    mttr_jobs_all = EXCLUDED.mttr_jobs_all,
-                    oee_pct = EXCLUDED.oee_pct,
-                    oee_availability_pct = EXCLUDED.oee_availability_pct,
-                    oee_performance_pct = EXCLUDED.oee_performance_pct,
-                    oee_performance_pct_raw = EXCLUDED.oee_performance_pct_raw,
-                    oee_quality_pct = EXCLUDED.oee_quality_pct,
-                    oee_week_count = EXCLUDED.oee_week_count,
-                    oee_machine_count = EXCLUDED.oee_machine_count,
-                    oee_run_hrs = EXCLUDED.oee_run_hrs,
-                    oee_net_avail_hrs = EXCLUDED.oee_net_avail_hrs,
-                    oee_total_avail_hrs = EXCLUDED.oee_total_avail_hrs,
-                    oee_utilization_pct = EXCLUDED.oee_utilization_pct,
-                    oee_teep_pct = EXCLUDED.oee_teep_pct,
-                    oee_intended_hours = EXCLUDED.oee_intended_hours,
-                    oee_utilization_vs_intended_pct = EXCLUDED.oee_utilization_vs_intended_pct,
-                    oee_teep_vs_intended_pct = EXCLUDED.oee_teep_vs_intended_pct,
-                    oee_intended_configured_count = EXCLUDED.oee_intended_configured_count,
-                    oee_total_parts = EXCLUDED.oee_total_parts,
-                    oee_scrap_parts = EXCLUDED.oee_scrap_parts,
-                    oee_per_machine = EXCLUDED.oee_per_machine,
-                    mtbf_days = EXCLUDED.mtbf_days,
-                    mtbf_assets = EXCLUDED.mtbf_assets,
-                    mtbf_asset_count = EXCLUDED.mtbf_asset_count,
-                    mtbf_mttr_hrs = EXCLUDED.mtbf_mttr_hrs,
-                    mtbf_wait_hrs = EXCLUDED.mtbf_wait_hrs,
-                    mtbf_jobs = EXCLUDED.mtbf_jobs,
-                    mtbf_downtime_hrs = EXCLUDED.mtbf_downtime_hrs,
-                    mtbf_scopes = EXCLUDED.mtbf_scopes,
-                    toolroom_wo_count = EXCLUDED.toolroom_wo_count,
-                    toolroom_wo_completed = EXCLUDED.toolroom_wo_completed,
-                    toolroom_wo_cancelled = EXCLUDED.toolroom_wo_cancelled,
-                    toolroom_wo_open = EXCLUDED.toolroom_wo_open,
-                    ppm_total = EXCLUDED.ppm_total,
-                    ppm_completed = EXCLUDED.ppm_completed,
-                    ppm_completion_pct = EXCLUDED.ppm_completion_pct,
-                    oee_quality_source = EXCLUDED.oee_quality_source,
-                    efacs_scrap_qty = EXCLUDED.efacs_scrap_qty,
-                    efacs_scrap_cost = EXCLUDED.efacs_scrap_cost,
-                    toolroom_sfc_hrs = EXCLUDED.toolroom_sfc_hrs,
-                    agility_toolroom_hrs = EXCLUDED.agility_toolroom_hrs,
-                    toolroom_gap_hrs = EXCLUDED.toolroom_gap_hrs,
-                    toolroom_gap_pct = EXCLUDED.toolroom_gap_pct,
-                    toolroom_gap_wo_count = EXCLUDED.toolroom_gap_wo_count,
-                    toolroom_machine_breakdown = EXCLUDED.toolroom_machine_breakdown
-            """, row)
+            """ + _update_set_clause(result), row)
         conn.commit()
 
 
