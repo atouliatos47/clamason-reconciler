@@ -304,6 +304,48 @@ def normalize_machine_name(raw_name):
     return name
 
 
+# --- What each press is CALLED on screen ------------------------------------
+# normalize_machine_name() above turns SFC's new names back into the old
+# ones, so every saved month uses the same name for the same press and the
+# trend history joins up. That's right for storing, but people now know the
+# presses by SFC's new "Press Name - AssetCode" names — so every page shows
+# this name instead, at the moment it's drawn. The stored data never changes.
+#
+# This is the ONE list for the whole app. Pages load it from /machine-names.js,
+# which routes.py builds from this dict, so there's no second copy to forget.
+#
+# A new press (Unit 6): add it to SFC_TO_AGILITY above using SFC's own new
+# name as the key, and it needs NO entry here — a press not in this list is
+# shown exactly as stored. This list only exists to translate the old names.
+SFC_DISPLAY_NAMES = {
+    'Bihler':              'Bihler - 000074',
+    'Bruderer 1':          'Bruderer 1 - 00031',   # pair: SFC names it after the first press
+    'Bruderer 2':          'Bruderer 2 - 00046',   # pair: SFC names it after the first press
+    'Bruderer 3':          'Bruderer 3 - 00016',
+    'Bruderer 60T ISI73':  'Bruderer 60T - 00043',
+    'Chin Fong 110 ISI1':  'Chin Fong 110 - 00009',
+    'Chin Fong 110 ISI74': 'Chin Fong 110 - 00044',
+    'Finzer Line 17':      'Finzer Line 17 - 00375',
+    'Finzer Line 18':      'Finzer Line 18 - 00378',
+    'Finzer Line 19':      'Finzer Line 19 - 00379',
+    'Finzer Line 20':      'Finzer Line 20 - 00383',
+    'Heenan 1':            'Heenan 1 - 000038',
+    'Heenan 2':            'Heenan 2 - 000040',
+    'Heenan 3':            'Heenan 3 - 000057',
+    'HME 20T A ISI23':     'HME 20T A - 00025',
+    'HME 20T C ISI22':     'HME 20T C - 00024',
+    'Kaiser 50T 1':        'Kaiser 50T 1 - 00029',
+    'Kaiser 50T 2':        'Kaiser 50T 2 - 00030',
+    'Rockwell 1':          'Rockwell 1 - 00231',
+}
+
+
+def display_name(machine):
+    """The name to SHOW for a stored machine name. Anything not in the
+    list (a new press, or a name SFC hasn't renamed) is shown as it is."""
+    return SFC_DISPLAY_NAMES.get(machine, machine)
+
+
 # --- Intended shift pattern, for TEEP against a realistic baseline --------
 # TEEP's textbook definition measures against every calendar hour that
 # exists — see oee_parser.py — which treats every machine as if it could

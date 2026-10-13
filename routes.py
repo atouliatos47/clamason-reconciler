@@ -794,6 +794,43 @@ def maintenance_sfc_vs_agility_view():
     return send_from_directory('public', 'maintenance-sfc-vs-agility.html')
 
 
+@bp.route('/machine-names.js')
+def machine_names_js():
+    """The press display names for every page, built from config.py.
+
+    A page loads it with <script src="/machine-names.js"></script> and
+    then calls displayName('Bruderer 1') -> 'Bruderer 1 - 00031'. Built
+    here from config.SFC_DISPLAY_NAMES rather than kept as a file in
+    public/, so the names live in ONE place: change config.py and every
+    page picks it up, with no JavaScript copy to fall out of step.
+
+    no-cache so a name change shows on the next page load, not whenever
+    the browser decides its saved copy is too old."""
+    import json
+    from flask import Response
+    from config import SFC_DISPLAY_NAMES
+
+    js = (
+        "// Built by routes.py from SFC_DISPLAY_NAMES in config.py. Edit the names there, not here.\n"
+        f"const DISPLAY_NAMES = {json.dumps(SFC_DISPLAY_NAMES, indent=2)};\n"
+        "\n"
+        "// The name to show for a stored machine name: 'Bruderer 1' -> 'Bruderer 1 - 00031'.\n"
+        "// Anything not in the list is shown as it is.\n"
+        "function displayName(machine) {\n"
+        "  return DISPLAY_NAMES[machine] || machine;\n"
+        "}\n"
+        "\n"
+        "// The same name split over two lines, for the small tilted Pareto labels:\n"
+        "// ['Bruderer 1', '00031']. Chart.js draws an array label one line per item.\n"
+        "function displayNameLines(machine) {\n"
+        "  const name = displayName(machine);\n"
+        "  const cut = name.lastIndexOf(' - ');\n"
+        "  return cut > 0 ? [name.slice(0, cut), name.slice(cut + 3)] : name;\n"
+        "}\n"
+    )
+    return Response(js, mimetype='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+
 # Allowlist rather than accepting any string — keeps department_notes
 # clean (no typo'd department names quietly creating their own row)
 # and stops the API being used to write notes against something that

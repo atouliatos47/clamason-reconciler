@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="/machine-names.js"></script>  <!-- displayName(): the press names, from config.py -->
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
@@ -177,45 +178,8 @@ function toggleNavGroup(name) {
 <script>
 const NAVY = '#243547', LIME = '#95C11F';
 
-// Display labels only — SFC's new "Press Name - AssetCode" names.
-//
-// The saved runs deliberately keep the OLD canonical names (the keys on
-// the left). config.py's normalize_machine_name() maps SFC's new names
-// back to these so July/August and September+ join up as one history
-// per press. Renaming the stored data would split every press into two
-// lines on the trend pages — so we only swap the name at the moment
-// it's drawn on screen.
-//
-// Bruderer 1 and 2 are each a pair of presses; SFC names them after the
-// first asset code of the pair, so that's what's shown here.
-//
-// Anything not in this list is shown exactly as stored, so a new press
-// still appears rather than vanishing.
-const DISPLAY_NAMES = {
-  'Bihler':              'Bihler - 000074',
-  'Bruderer 1':          'Bruderer 1 - 00031',
-  'Bruderer 2':          'Bruderer 2 - 00046',
-  'Bruderer 3':          'Bruderer 3 - 00016',
-  'Bruderer 60T ISI73':  'Bruderer 60T - 00043',
-  'Chin Fong 110 ISI1':  'Chin Fong 110 - 00009',
-  'Chin Fong 110 ISI74': 'Chin Fong 110 - 00044',
-  'Finzer Line 17':      'Finzer Line 17 - 00375',
-  'Finzer Line 18':      'Finzer Line 18 - 00378',
-  'Finzer Line 19':      'Finzer Line 19 - 00379',
-  'Finzer Line 20':      'Finzer Line 20 - 00383',
-  'Heenan 1':            'Heenan 1 - 000038',
-  'Heenan 2':            'Heenan 2 - 000040',
-  'Heenan 3':            'Heenan 3 - 000057',
-  'HME 20T A ISI23':     'HME 20T A - 00025',
-  'HME 20T C ISI22':     'HME 20T C - 00024',
-  'Kaiser 50T 1':        'Kaiser 50T 1 - 00029',
-  'Kaiser 50T 2':        'Kaiser 50T 2 - 00030',
-  'Rockwell 1':          'Rockwell 1 - 00231',
-};
-
-function displayName(machine) {
-  return DISPLAY_NAMES[machine] || machine;
-}
+// displayName() comes from /machine-names.js (loaded in <head>), built from
+// config.py — the one list of press names for the whole app.
 
 let RUNS = [];
 let machineChartInstance = null;
