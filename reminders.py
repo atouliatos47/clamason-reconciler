@@ -53,6 +53,32 @@ DAILY_REMINDERS = [
         'href': '/sfc-daily',
         'saved_days': db.get_sfc_daily_snapshots,
     },
+    {
+        # Matt's own copy of SFC Daily — a separate table, so Production's
+        # saves and Maintenance's never count for each other.
+        'id': 'production-sfc-daily',
+        'dept': 'production',
+        'label': 'SFC Daily',
+        'href': '/production-sfc-daily',
+        'saved_days': db.get_production_sfc_daily_snapshots,
+    },
+]
+
+# Weekly reports. Saved under the Monday of the week they cover (the
+# Production Plan page snaps whatever day is picked to that Monday), so
+# the rule is simply: this week's Monday should have a row. Missing on
+# Monday = due; still missing later in the week, or a previous week
+# missing = overdue.
+LOOKBACK_WEEKS = 2
+
+WEEKLY_REMINDERS = [
+    {
+        'id': 'production-plan',
+        'dept': 'production',
+        'label': 'Production Plan',
+        'href': '/production-plan',
+        'saved_weeks': db.get_production_plan_weeks,
+    },
 ]
 
 
@@ -116,15 +142,47 @@ def check(reminder, today):
     }
 
 
+def week_label(monday):
+    return f'w/c {monday.day} {monday:%b}'      # 'w/c 12 Oct'
+
+
+def check_weekly(reminder, today):
+    """Status of one weekly reminder: 'ok', 'due' or 'overdue'."""
+    this_monday = today - timedelta(days=today.weekday())
+    weeks = [this_monday - timedelta(weeks=k) for k in range(LOOKBACK_WEEKS - 1, -1, -1)]
+    rows = reminder['saved_weeks'](start_date=weeks[0].isoformat(), end_date=weeks[-1].isoformat())
+    saved = {str(r.get('week_start'))[:10] for r in rows}
+    missing = [w for w in weeks if w.isoformat() not in saved]
+
+    if not missing:
+        status, detail = 'ok', ''
+    elif missing == [this_monday] and today.weekday() == 0:
+        status, detail = 'due', f'{week_label(this_monday)} not saved yet'
+    else:
+        status = 'overdue'
+        detail = ' & '.join(week_label(w) for w in missing) + ' not saved'
+
+    return {
+        'id': reminder['id'],
+        'dept': reminder['dept'],
+        'label': reminder['label'],
+        'href': reminder['href'],
+        'status': status,
+        'missing': [w.isoformat() for w in missing],
+        'detail': detail,
+    }
+
+
 def all_reminders(today=None):
     """Every reminder's current state. One that can't be checked (e.g. the
     database is unreachable) is left out rather than shown as overdue —
     a false alarm would teach people to ignore the badges."""
     today = today or london_today()
     out = []
-    for r in DAILY_REMINDERS:
-        try:
-            out.append(check(r, today))
-        except Exception:
-            continue
+    for checker, reminders in ((check, DAILY_REMINDERS), (check_weekly, WEEKLY_REMINDERS)):
+        for r in reminders:
+            try:
+                out.append(checker(r, today))
+            except Exception:
+                continue
     return {'today': today.isoformat(), 'reminders': out}
