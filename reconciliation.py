@@ -149,10 +149,25 @@ def compute_machine_breakdown(sfc_summary, matched_wos):
 
     wo_by_asset_count = {}
     wo_by_asset_hrs = {}
+    wo_by_asset_details = {}
     for d in matched_wos:
         a = d['asset']
         wo_by_asset_count[a] = wo_by_asset_count.get(a, 0) + 1
         wo_by_asset_hrs[a] = round(wo_by_asset_hrs.get(a, 0) + d['downtime_hrs'], 2)
+        # The WOs themselves, not just how many. Without these a saved
+        # month can say "Bruderer 1 had 2 breakdown WOs" but never which
+        # two, or what they were raised for — the SFC vs Agility page
+        # lists them when a press is expanded. One entry per matched row,
+        # so the list length always equals wo_count above.
+        wo_by_asset_details.setdefault(a, []).append({
+            'wo': d['wo'],
+            'asset': a,
+            'desc': d.get('desc') or '',
+            'job_type': d.get('job_type') or '',
+            'status': d.get('status') or '',
+            'downtime_hrs': d['downtime_hrs'],
+            'breakdown_at': d.get('breakdown_at'),
+        })
 
     rows = []
     for machine, asset_codes in SFC_TO_AGILITY.items():
@@ -199,6 +214,15 @@ def compute_machine_breakdown(sfc_summary, matched_wos):
             # the source workbook.
             'reasons': sfc.get('reasons', {}),
             'reason_events': sfc.get('reason_events', {}),
+
+            # Every matched WO on any of this press's asset codes (both
+            # presses of a Bruderer pair), oldest breakdown first. Months
+            # saved before this existed simply have no 'wos' key — the
+            # page tells you to re-save them rather than showing nothing.
+            'wos': sorted(
+                (w for a in asset_codes for w in wo_by_asset_details.get(a, [])),
+                key=lambda w: w['breakdown_at'] or '',
+            ),
         })
 
     rows.sort(key=lambda r: -r['fault_hrs'])
