@@ -312,10 +312,117 @@ function selectPeriod(i) {
   renderChart(run);
 }
 
-function renderChart(run) {
+// --- Click a press to expand its fault codes --------------------------------
+//
+// The navy bar (fault_events) is the sum of events on every code in
+// config.py's FAULT_CODES, counted per press by sfc_monthly_xlsx.py.
+// Each press in a saved run also carries its own reason_events/reasons
+// dicts, so the drill-down is rebuilt from data that's already saved —
+// no re-upload, no backend change.
+//
+// This is a COPY of FAULT_CODES in config.py. Using the same list is what
+// makes the expanded rows add up to the bar. If a code is ever added to
+// config.py and not here, the difference shows as an "Other fault codes"
+// row instead of the rows silently not adding up — that row appearing is
+// the signal to update this list.
+const FAULT_CODES = new Set([
+  'FAULT - PRESS',
+  'FAULT-FEEDER/DECOILER/STR',
+  'FAULT-FEEDER/DECOILER/STRAIGHTENER',
+  'FAULT-SHAKER/CONVEYOR',
+  'MA-FAULT PRESS',
+  'MA-FAULT-FEEDER/DECOILER/',
+  'MA-FAULT SHAKER/CONVEYOR',
+]);
+
+const CODE_NAVY = '#7d8ea3';  // lighter navy for the expanded code rows
+const ROW_PX = 24;            // height per chart row, so the card grows as rows open
+const INDENT = '    ';
+
+const EXPANDED = new Set();   // presses currently open, by stored machine name
+let CURRENT_RUN = null;
+let CHART_ROWS = [];          // one entry per chart row: a press or one of its codes
+
+// One row per fault code that press actually had this month, biggest first.
+function faultCodeRows(m) {
+  const events = m.reason_events || {};
+  const hours = m.reasons || {};
+  const rows = Object.keys(events)
+    .filter(code => FAULT_CODES.has(code.trim().toUpperCase()) && events[code] > 0)
+    .map(code => ({ code, events: events[code], hrs: hours[code] }))
+    .sort((a, b) => b.events - a.events);
+
+  const listed = rows.reduce((sum, r) => sum + r.events, 0);
+  if (listed < m.fault_events) {
+    rows.push({
+      // Months saved before per-press reasons were kept have no
+      // reason_events at all — say so rather than showing nothing.
+      code: listed === 0 ? 'Code breakdown not saved for this month' : 'Other fault codes',
+      events: m.fault_events - listed,
+      hrs: null,
+    });
+  }
+  return rows;
+}
+
+function buildRows(mb) {
+  const rows = [];
+  mb.forEach(m => {
+    const canExpand = m.fault_events > 0;  // nothing to open on a press with no faults
+    const open = canExpand && EXPANDED.has(m.machine);
+    const arrow = canExpand ? (open ? '▾ ' : '▸ ') : INDENT;
+    rows.push({
+      kind: 'press', machine: m.machine, canExpand,
+      label: arrow + displayName(m.machine),
+      faults: m.fault_events, faultHrs: m.fault_hrs, wos: m.wo_count,
+    });
+    if (open) {
+      faultCodeRows(m).forEach(c => rows.push({
+        kind: 'code', parent: m.machine, code: c.code, events: c.events, hrs: c.hrs,
+        label: INDENT + '↳ ' + c.code,
+      }));
+    }
+  });
+  return rows;
+}
+
+// Which chart row is under the mouse — works over the press names as well
+// as the bars. Chart.js's own onClick only fires inside the plotting area,
+// which would make the names themselves unclickable.
+function rowAtEvent(evt) {
+  const chart = machineChartInstance;
+  if (!chart) return null;
+  const y = evt.clientY - chart.canvas.getBoundingClientRect().top;
+  const yScale = chart.scales.y;
+  if (y < yScale.top || y > yScale.bottom) return null;
+  return CHART_ROWS[yScale.getValueForPixel(y)] || null;
+}
+
+function toggleRow(row) {
+  // Clicking a code row closes its press, so you don't have to scroll back up.
+  const machine = row.kind === 'code' ? row.parent : row.machine;
+  if (EXPANDED.has(machine)) EXPANDED.delete(machine); else EXPANDED.add(machine);
+  renderChart(CURRENT_RUN, false);
+}
+
+// Attached once: the <canvas> element stays the same when the chart is rebuilt.
+(function attachMachineChartClicks() {
+  const canvas = document.getElementById('machineChart');
+  canvas.addEventListener('click', evt => {
+    const row = rowAtEvent(evt);
+    if (row && (row.kind === 'code' || row.canExpand)) toggleRow(row);
+  });
+  canvas.addEventListener('mousemove', evt => {
+    const row = rowAtEvent(evt);
+    canvas.style.cursor = row && (row.kind === 'code' || row.canExpand) ? 'pointer' : 'default';
+  });
+})();
+
+function renderChart(run, animate = true) {
   const stateEl = document.getElementById('state-msg');
   const card = document.getElementById('machine-card');
   const mb = (run.machine_breakdown || []).slice().sort((a, b) => b.fault_hrs - a.fault_hrs);
+  CURRENT_RUN = run;
 
   if (!mb.length) {
     card.style.display = 'none';
@@ -328,23 +435,78 @@ function renderChart(run) {
   document.getElementById('machine-card-title').textContent =
     `${run.period_label || run.period} — Fault Events vs Breakdown WOs by Machine`;
 
+  const rows = buildRows(mb);
+  CHART_ROWS = rows;
+
+  // Grow the card with the number of rows so opening a press pushes the
+  // rest down, instead of squashing every bar into the same 460px.
+  document.getElementById('machine-wrap').style.height =
+    Math.max(240, rows.length * ROW_PX + 70) + 'px';
+
   if (machineChartInstance) { machineChartInstance.destroy(); }
   machineChartInstance = new Chart(document.getElementById('machineChart'), {
     type: 'bar',
     data: {
-      labels: mb.map(m => displayName(m.machine)),
+      labels: rows.map(r => r.label),
       datasets: [
-        { label: 'SFC fault events', data: mb.map(m => m.fault_events), backgroundColor: NAVY, borderRadius: 3 },
-        { label: 'Agility breakdown WOs', data: mb.map(m => m.wo_count), backgroundColor: LIME, borderRadius: 3 },
+        {
+          label: 'SFC fault events',
+          data: rows.map(r => r.kind === 'press' ? r.faults : r.events),
+          backgroundColor: rows.map(r => r.kind === 'press' ? NAVY : CODE_NAVY),
+          borderRadius: 3,
+          maxBarThickness: 10,  // keeps code bars as slim as their press bar
+        },
+        {
+          // Work orders aren't logged against an SFC code, so code rows
+          // get no green bar (null = nothing drawn, no value label).
+          label: 'Agility breakdown WOs',
+          data: rows.map(r => r.kind === 'press' ? r.wos : null),
+          backgroundColor: LIME,
+          borderRadius: 3,
+          maxBarThickness: 10,
+        },
       ],
     },
     plugins: [barValueLabels],
     options: {
       indexAxis: 'y',
       responsive: true, maintainAspectRatio: false,
+      animation: animate ? undefined : false,  // no re-grow from zero on every click
+      // Code rows have no green bar (null). Without this the grey bar keeps
+      // only half the row, as if waiting for a green partner; with it, it
+      // takes the full row height, centred under its name.
+      datasets: { bar: { skipNull: true } },
       layout: { padding: { right: 24 } },
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
-      scales: { x: { beginAtZero: true } },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            title: items => {
+              const r = rows[items[0].dataIndex];
+              return r.kind === 'press' ? displayName(r.machine) : `${displayName(r.parent)} — ${r.code}`;
+            },
+            label: ctx => {
+              const r = rows[ctx.dataIndex];
+              if (r.kind === 'code') {
+                return r.hrs == null ? `${r.events} events` : `${r.events} events · ${r.hrs.toFixed(1)}h`;
+              }
+              if (ctx.datasetIndex === 0) return `SFC fault events: ${r.faults} · ${r.faultHrs.toFixed(1)}h`;
+              return `Agility breakdown WOs: ${r.wos}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { beginAtZero: true },
+        y: {
+          ticks: {
+            autoSkip: false,   // every row must keep its label, or the codes lose their names
+            crossAlign: 'far', // left-align the names so the ▸ arrows and indents line up
+            color: ctx => rows[ctx.index] && rows[ctx.index].kind === 'code' ? '#888' : '#555',
+            font: ctx => rows[ctx.index] && rows[ctx.index].kind === 'code' ? { size: 11 } : { size: 12 },
+          },
+        },
+      },
     },
   });
 }
