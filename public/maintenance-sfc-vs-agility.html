@@ -161,7 +161,7 @@ function toggleNavGroup(name) {
     <div id="state-msg" class="state-msg"></div>
     <div class="machine-card" id="machine-card" style="display:none;">
       <h3 id="machine-card-title">Fault Events vs Breakdown WOs by Machine</h3>
-      <p class="hint">Click a press to see its fault codes. Click it again to close.</p>
+      <p class="hint">Click a press to see its fault codes and work orders. Click it again to close.</p>
       <div class="canvas-wrap" id="machine-wrap"><canvas id="machineChart"></canvas></div>
     </div>
     <div class="chart-card" id="gap-card" style="display:none;">
@@ -237,6 +237,40 @@ const barValueLabels = {
         ctx.fillText(String(value), bar.x + 6, bar.y);
         ctx.restore();
       });
+    });
+  },
+};
+
+// WO and note rows have no bars, so the plotting area of that row is free:
+// write what the WO was raised for across it. The label column only has
+// room for the WO number; descriptions are far too long to go there.
+const woRowText = {
+  id: 'woRowText',
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea } = chart;
+    const y = chart.scales.y;
+    const maxW = chartArea.right - chartArea.left - 16;
+    CHART_ROWS.forEach((r, i) => {
+      if (r.kind !== 'wo' && r.kind !== 'note') return;
+      ctx.save();
+      ctx.font = (r.kind === 'note' ? 'italic ' : '') + '11.5px Arial';
+      // Too long for the row? Shorten the DESCRIPTION with … and keep the
+      // facts after it whole — hours, date and press matter more than the
+      // last words of a long description, which shows in full on hover.
+      const tail = r.facts ? SEP + r.facts : '';
+      let desc = r.desc;
+      if (ctx.measureText(desc + tail).width > maxW) {
+        while (desc.length > 1 && ctx.measureText(desc + '…' + tail).width > maxW) desc = desc.slice(0, -1);
+        desc = desc.trimEnd() + '…';
+      }
+      const text = desc + tail;
+      const x = chartArea.left + 6, yy = y.getPixelForValue(i);
+      ctx.fillStyle = '#fff';                     // white behind the text so gridlines don't cut through it
+      ctx.fillRect(x - 3, yy - 8, ctx.measureText(text).width + 6, 16);
+      ctx.fillStyle = r.color;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, x, yy);
+      ctx.restore();
     });
   },
 };
@@ -339,9 +373,12 @@ const CODE_NAVY = '#7d8ea3';  // lighter navy for the expanded code rows
 const ROW_PX = 24;            // height per chart row, so the card grows as rows open
 const INDENT = '    ';
 
+const WO_TEXT = '#5f7d14';    // darker lime: Clamason green, but readable as text
+const GAP_RED = '#c0392b';
+
 const EXPANDED = new Set();   // presses currently open, by stored machine name
 let CURRENT_RUN = null;
-let CHART_ROWS = [];          // one entry per chart row: a press or one of its codes
+let CHART_ROWS = [];          // one entry per chart row: a press, a code, a WO or a note
 
 // One row per fault code that press actually had this month, biggest first.
 function faultCodeRows(m) {
@@ -365,22 +402,66 @@ function faultCodeRows(m) {
   return rows;
 }
 
+// The facts after a WO's description: job type, hours down, when, which press.
+function woFacts(w, machine) {
+  const parts = [];
+  // The green bar counts every matched maintenance WO, not only Breakdown
+  // Repairs — so any other job type is named, rather than passing as one.
+  if (w.job_type && w.job_type.trim().toLowerCase() !== 'breakdown repair') parts.push(w.job_type);
+  if (w.downtime_hrs != null) parts.push(`${Number(w.downtime_hrs).toFixed(1)}h down`);
+  if (w.breakdown_at) {
+    const d = new Date(w.breakdown_at);
+    if (!isNaN(d)) {
+      parts.push(d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' +
+                 d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    }
+  }
+  // Only worth saying for the Bruderer pairs: a WO on the second press
+  // (e.g. 00032) when the name shows the first (00031).
+  if (w.asset && !displayName(machine).endsWith(w.asset)) parts.push('on ' + w.asset);
+  return parts.join('  ·  ');
+}
+
+const SEP = '  ·  ';
+
+// One row per WO raised on this press, oldest first — or a note saying why
+// there's nothing to list.
+function woRows(m) {
+  const note = (text, color) => [{ kind: 'note', parent: m.machine, label: INDENT + '↳ Work orders', desc: text, facts: '', color }];
+
+  if (!Array.isArray(m.wos)) {
+    // Saved before reconciliation.py kept the WOs themselves.
+    if (m.wo_count > 0) {
+      return note(`${m.wo_count} WO${m.wo_count === 1 ? '' : 's'} — details not saved for this month. ` +
+                  'Re-save it from Monthly Check to see them.', '#888');
+    }
+    return note('No breakdown WO raised', GAP_RED);
+  }
+  if (!m.wos.length) return note('No breakdown WO raised', GAP_RED);
+  return m.wos.map(w => ({
+    kind: 'wo', parent: m.machine, label: INDENT + '↳ WO ' + w.wo, color: WO_TEXT,
+    desc: w.desc || '(no description in Agility)', facts: woFacts(w, m.machine),
+  }));
+}
+
 function buildRows(mb) {
   const rows = [];
   mb.forEach(m => {
-    const canExpand = m.fault_events > 0;  // nothing to open on a press with no faults
+    // Nothing to open on a press with no faults AND no WOs.
+    const canExpand = m.fault_events > 0 || m.wo_count > 0;
     const open = canExpand && EXPANDED.has(m.machine);
     const arrow = canExpand ? (open ? '▾ ' : '▸ ') : INDENT;
     rows.push({
       kind: 'press', machine: m.machine, canExpand,
       label: arrow + displayName(m.machine),
-      faults: m.fault_events, faultHrs: m.fault_hrs, wos: m.wo_count,
+      faults: m.fault_events, faultHrs: m.fault_hrs, woCount: m.wo_count,
     });
     if (open) {
       faultCodeRows(m).forEach(c => rows.push({
         kind: 'code', parent: m.machine, code: c.code, events: c.events, hrs: c.hrs,
         label: INDENT + '↳ ' + c.code,
       }));
+      woRows(m).forEach(w => rows.push(w));
     }
   });
   return rows;
@@ -399,8 +480,8 @@ function rowAtEvent(evt) {
 }
 
 function toggleRow(row) {
-  // Clicking a code row closes its press, so you don't have to scroll back up.
-  const machine = row.kind === 'code' ? row.parent : row.machine;
+  // Clicking any row under a press closes it, so you don't have to scroll back up.
+  const machine = row.kind === 'press' ? row.machine : row.parent;
   if (EXPANDED.has(machine)) EXPANDED.delete(machine); else EXPANDED.add(machine);
   renderChart(CURRENT_RUN, false);
 }
@@ -410,11 +491,14 @@ function toggleRow(row) {
   const canvas = document.getElementById('machineChart');
   canvas.addEventListener('click', evt => {
     const row = rowAtEvent(evt);
-    if (row && (row.kind === 'code' || row.canExpand)) toggleRow(row);
+    if (row && (row.kind !== 'press' || row.canExpand)) toggleRow(row);
   });
   canvas.addEventListener('mousemove', evt => {
     const row = rowAtEvent(evt);
-    canvas.style.cursor = row && (row.kind === 'code' || row.canExpand) ? 'pointer' : 'default';
+    canvas.style.cursor = row && (row.kind !== 'press' || row.canExpand) ? 'pointer' : 'default';
+    // WO rows have no bar for Chart.js's tooltip to attach to, so use the
+    // browser's own: hovering a WO shows its full description.
+    canvas.title = row && row.kind === 'wo' ? row.desc + (row.facts ? SEP + row.facts : '') : '';
   });
 })();
 
@@ -451,23 +535,24 @@ function renderChart(run, animate = true) {
       datasets: [
         {
           label: 'SFC fault events',
-          data: rows.map(r => r.kind === 'press' ? r.faults : r.events),
+          data: rows.map(r => r.kind === 'press' ? r.faults : r.kind === 'code' ? r.events : null),
           backgroundColor: rows.map(r => r.kind === 'press' ? NAVY : CODE_NAVY),
           borderRadius: 3,
           maxBarThickness: 10,  // keeps code bars as slim as their press bar
         },
         {
           // Work orders aren't logged against an SFC code, so code rows
-          // get no green bar (null = nothing drawn, no value label).
+          // get no green bar (null = nothing drawn, no value label). WO and
+          // note rows have no bars at all — their text is drawn by woRowText.
           label: 'Agility breakdown WOs',
-          data: rows.map(r => r.kind === 'press' ? r.wos : null),
+          data: rows.map(r => r.kind === 'press' ? r.woCount : null),
           backgroundColor: LIME,
           borderRadius: 3,
           maxBarThickness: 10,
         },
       ],
     },
-    plugins: [barValueLabels],
+    plugins: [barValueLabels, woRowText],
     options: {
       indexAxis: 'y',
       responsive: true, maintainAspectRatio: false,
@@ -491,7 +576,7 @@ function renderChart(run, animate = true) {
                 return r.hrs == null ? `${r.events} events` : `${r.events} events · ${r.hrs.toFixed(1)}h`;
               }
               if (ctx.datasetIndex === 0) return `SFC fault events: ${r.faults} · ${r.faultHrs.toFixed(1)}h`;
-              return `Agility breakdown WOs: ${r.wos}`;
+              return `Agility breakdown WOs: ${r.woCount}`;
             },
           },
         },
@@ -502,8 +587,12 @@ function renderChart(run, animate = true) {
           ticks: {
             autoSkip: false,   // every row must keep its label, or the codes lose their names
             crossAlign: 'far', // left-align the names so the ▸ arrows and indents line up
-            color: ctx => rows[ctx.index] && rows[ctx.index].kind === 'code' ? '#888' : '#555',
-            font: ctx => rows[ctx.index] && rows[ctx.index].kind === 'code' ? { size: 11 } : { size: 12 },
+            color: ctx => {
+              const r = rows[ctx.index];
+              if (!r || r.kind === 'press') return '#555';
+              return r.kind === 'wo' ? WO_TEXT : '#888';
+            },
+            font: ctx => rows[ctx.index] && rows[ctx.index].kind !== 'press' ? { size: 11 } : { size: 12 },
           },
         },
       },
