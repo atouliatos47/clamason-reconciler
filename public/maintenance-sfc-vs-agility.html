@@ -40,7 +40,8 @@
   .panel { background: #f7f8fa; border-radius: 0 0 8px 8px; padding: 22px; }
 
   .machine-card { background: white; border-radius: 10px; padding: 20px 22px; }
-  .machine-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .machine-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .machine-card .hint { font-size: 11.5px; color: #888; margin-bottom: 14px; }
   .canvas-wrap { position: relative; height: 460px; }
 
   .chart-card { background: white; border-radius: 10px; padding: 20px 22px; margin-top: 18px; }
@@ -160,7 +161,8 @@ function toggleNavGroup(name) {
     <div id="state-msg" class="state-msg"></div>
     <div class="machine-card" id="machine-card" style="display:none;">
       <h3 id="machine-card-title">Fault Events vs Breakdown WOs by Machine</h3>
-      <div class="canvas-wrap"><canvas id="machineChart"></canvas></div>
+      <p class="hint">Click a press to see its fault codes. Click it again to close.</p>
+      <div class="canvas-wrap" id="machine-wrap"><canvas id="machineChart"></canvas></div>
     </div>
     <div class="chart-card" id="gap-card" style="display:none;">
       <h3>WO Coverage Gap % — Trend</h3>
