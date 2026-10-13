@@ -794,6 +794,19 @@ def maintenance_sfc_vs_agility_view():
     return send_from_directory('public', 'maintenance-sfc-vs-agility.html')
 
 
+@bp.route('/api/reminders')
+def api_reminders():
+    """Which uploads are due or missed, per sidebar tab — read by
+    public/reminders.js on every page. The rules live in reminders.py.
+    Never errors at the page: if anything goes wrong it returns an empty
+    list, so a problem here can only hide badges, never break a page."""
+    from reminders import all_reminders
+    try:
+        return jsonify(all_reminders())
+    except Exception as e:
+        return jsonify({'reminders': [], 'error': str(e)})
+
+
 @bp.route('/machine-names.js')
 def machine_names_js():
     """The press display names for every page, built from config.py.
