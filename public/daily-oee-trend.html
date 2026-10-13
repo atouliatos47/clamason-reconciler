@@ -9,6 +9,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="/machine-names.js"></script>  <!-- displayName(): the press names, from config.py -->
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
@@ -540,7 +541,7 @@ function renderMachines(b) {
 
   const sorted = machines.slice().sort((a, c) => (c.oee_pct ?? -1) - (a.oee_pct ?? -1));
   tbody.innerHTML = sorted.length ? sorted.map(m => `<tr>
-      <td>${m.machine}</td>
+      <td>${displayName(m.machine)}</td>
       <td class="num">${oeePill(m.oee_pct)}</td>
       <td class="num">${h(m.run_time_hrs)}</td>
       <td class="num">${pct(m.availability_pct)}</td>

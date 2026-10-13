@@ -124,6 +124,7 @@
   .report-btn:hover { background: #95C11F; color: #243547; }
   .report-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 </style>
+<script src="/machine-names.js"></script>  <!-- displayName(): the press names, from config.py -->
 </head>
 <body>
 
@@ -542,7 +543,7 @@ function renderOee(d) {
       <strong>Weeks included:</strong><br>${ranges}
     </div>
     <div style="font-size:11.5px;color:#555;margin-top:10px;">
-      <strong>Lowest OEE:</strong> ${worst.map(m => `${m.machine} ${m.oee_pct}%`).join(' · ')}
+      <strong>Lowest OEE:</strong> ${worst.map(m => `${displayName(m.machine)} ${m.oee_pct}%`).join(' · ')}
     </div>
     ${anomalyNote}`;
   box.style.display = 'block';

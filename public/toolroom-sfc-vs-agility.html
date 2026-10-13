@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="/machine-names.js"></script>  <!-- displayName(): the press names, from config.py -->
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
@@ -270,7 +271,7 @@ function renderChart(run) {
   machineChartInstance = new Chart(document.getElementById('machineChart'), {
     type: 'bar',
     data: {
-      labels: sorted.map(m => m.machine),
+      labels: sorted.map(m => displayName(m.machine)),
       datasets: [
         { label: 'SFC tool events', data: sorted.map(m => m.tool_events), backgroundColor: NAVY, borderRadius: 3 },
         { label: 'Agility breakdown WOs', data: sorted.map(m => m.wo_count), backgroundColor: ORANGE, borderRadius: 3 },

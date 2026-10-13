@@ -9,6 +9,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="/machine-names.js"></script>  <!-- displayName(): the press names, from config.py -->
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
@@ -739,7 +740,8 @@ async function loadPressPareto() {
     if (pressParetoChart) { pressParetoChart.destroy(); }
     pressParetoChart = new Chart(document.getElementById('press-pareto-chart'), {
       data: {
-        labels: mb.map(m => m.machine),
+        // Two lines, 'Bruderer 1' above '00031' — same as the Board Review Paretos.
+        labels: mb.map(m => displayNameLines(m.machine)),
         datasets: [
           { type: 'bar', label: 'Hours', data: mb.map(m => m.production_hrs || 0),
             backgroundColor: '#3d6491', order: 2, yAxisID: 'y' },
@@ -756,7 +758,9 @@ async function loadPressPareto() {
           y1: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false },
                 title: { display: true, text: 'Cumulative %' }, ticks: { callback: v => v + '%' } },
         },
-        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+          // A two-line label would otherwise show as 'Bruderer 1,00031'.
+          tooltip: { callbacks: { title: c => displayName(mb[c[0].dataIndex].machine) } } },
       },
     });
 

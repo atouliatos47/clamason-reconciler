@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="/machine-names.js"></script>  <!-- displayName(): the press names, from config.py -->
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
@@ -695,7 +696,13 @@ function pareto(id, rows, key, colour) {
       // the percentage is already on the line and the right-hand axis —
       // so it was being paid for twice, and the cost was 'Finzer Line
       // 20' and 'Finzer Line 17' both truncating to 'Finzer Line'.
-      labels: uniqueShortLabels(rows.map(r => r.machine)),
+      //
+      // SFC's new "Press Name - AssetCode" name, split over two lines
+      // ('Bruderer 1' above '00031'). Cutting it to fit one 13-character
+      // line chopped off the asset number — the very part that changed.
+      // Two lines need no shortening: the longest name line is 'Finzer
+      // Line 20' and the two Chin Fong 110s now differ by their number.
+      labels: rows.map(r => displayNameLines(r.machine)),
       datasets: [
         { type: 'bar', data, backgroundColor: colour, borderRadius: 2, maxBarThickness: 34, order: 2 },
         { type: 'line', data: cum, borderColor: RED, borderWidth: 1.4, pointRadius: 2,
@@ -707,7 +714,10 @@ function pareto(id, rows, key, colour) {
       // Headroom so the value above the tallest bar is not clipped.
       layout: { padding: { top: 14, bottom: 6, left: 2, right: 2 } },
       plugins: { legend: { display: false },
-        tooltip: { callbacks: { label: c => c.dataset.type === 'line'
+        tooltip: { callbacks: {
+          // A two-line label would otherwise show as 'Bruderer 1,00031'.
+          title: c => displayName(rows[c[0].dataIndex].machine),
+          label: c => c.dataset.type === 'line'
           ? 'cumulative ' + c.parsed.y.toFixed(1) + '%' : c.parsed.y.toFixed(1) + 'h' } } },
       scales: {
         // Same 38-degree tick style as the reason charts below. The

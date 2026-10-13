@@ -125,6 +125,7 @@
 
   footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
 </style>
+<script src="/machine-names.js"></script>  <!-- displayName(): the press names, from config.py -->
 </head>
 <body>
 
@@ -493,7 +494,7 @@ function oeePill(pct) {
 function renderMachinesTable(machines) {
   const sorted = machines.slice().sort((a, b) => (b.oee_pct ?? -1) - (a.oee_pct ?? -1));
   document.getElementById('machines-tbody').innerHTML = sorted.length ? sorted.map(m => `<tr>
-      <td>${m.machine}</td>
+      <td>${displayName(m.machine)}</td>
       <td class="num">${oeePill(m.oee_pct)}</td>
       <td class="num">${fmt(m.run_time_hrs, 1)}h</td>
       <td class="num">${fmt(m.availability_pct, 1)}%</td>
