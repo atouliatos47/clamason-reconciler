@@ -38,6 +38,14 @@ import db
 # short enough that a gap from before reminders existed drops off.
 LOOKBACK_WORKING_DAYS = 10
 
+# Nothing before this date is ever reminded about. Set by Andreas on the
+# day reminders went live (14 Oct 2026): the gaps found in the two weeks
+# before then were days whose reports he no longer has, so there's no way
+# to clear them by uploading — a reminder that can never be cleared just
+# teaches everyone to ignore the badges. Weekly reports start from the
+# first week whose Monday is on or after this date.
+REMINDERS_START = date(2026, 10, 14)
+
 DAILY_REMINDERS = [
     {
         'id': 'maintenance-daily-check',
@@ -119,9 +127,12 @@ def describe(missing, status):
 
 def check(reminder, today):
     """Status of one daily reminder: 'ok', 'due' or 'overdue'."""
-    window = working_days_before(today, LOOKBACK_WORKING_DAYS)
-    rows = reminder['saved_days'](start_date=window[0].isoformat(), end_date=window[-1].isoformat())
-    saved = {str(r.get('date'))[:10] for r in rows}
+    window = [d for d in working_days_before(today, LOOKBACK_WORKING_DAYS) if d >= REMINDERS_START]
+    if window:
+        rows = reminder['saved_days'](start_date=window[0].isoformat(), end_date=window[-1].isoformat())
+        saved = {str(r.get('date'))[:10] for r in rows}
+    else:
+        saved = set()   # nothing to check yet
     missing = [d for d in window if d.isoformat() not in saved]
 
     if not missing:
@@ -150,8 +161,12 @@ def check_weekly(reminder, today):
     """Status of one weekly reminder: 'ok', 'due' or 'overdue'."""
     this_monday = today - timedelta(days=today.weekday())
     weeks = [this_monday - timedelta(weeks=k) for k in range(LOOKBACK_WEEKS - 1, -1, -1)]
-    rows = reminder['saved_weeks'](start_date=weeks[0].isoformat(), end_date=weeks[-1].isoformat())
-    saved = {str(r.get('week_start'))[:10] for r in rows}
+    weeks = [w for w in weeks if w >= REMINDERS_START]
+    if weeks:
+        rows = reminder['saved_weeks'](start_date=weeks[0].isoformat(), end_date=weeks[-1].isoformat())
+        saved = {str(r.get('week_start'))[:10] for r in rows}
+    else:
+        saved = set()   # nothing to check yet
     missing = [w for w in weeks if w.isoformat() not in saved]
 
     if not missing:
