@@ -769,36 +769,13 @@ function render(runs, idx) {
   const prev = idx > 0 ? runs[idx - 1] : null;
 
   const app = document.getElementById('app');
+  // Trend charts come first — they're what this page is for. The selected
+  // month's KPI cards sit at the bottom, with the period badge moved down
+  // alongside them because it labels those cards, not the charts (every
+  // chart above covers all uploaded months, whatever the dropdown says).
+  // Order in this template string is the order on screen; the Chart.js
+  // code below finds each canvas by id, so it doesn't care where it sits.
   app.innerHTML = `
-    <div class="period-badge">Period: ${latest.period_label || latest.period}</div>
-
-    <div class="kpi-row">
-      <div class="kpi red">
-        <label>SFC Fault Hours</label>
-        <div class="val">${fmt(latest.maintenance_hrs)}h</div>
-        ${prev ? deltaBadge(latest.maintenance_hrs, prev.maintenance_hrs, true) : '<span class="sub">First recorded month</span>'}
-      </div>
-      <div class="kpi green">
-        <label>Agility Hours Matched</label>
-        <div class="val">${fmt(latest.agility_maintenance_hrs)}h</div>
-        ${prev ? deltaBadge(latest.agility_maintenance_hrs, prev.agility_maintenance_hrs, false) : '<span class="sub">First recorded month</span>'}
-      </div>
-      <div class="kpi navy">
-        <label>WO Coverage Gap</label>
-        <div class="val">${fmt(latest.gap_pct, 1)}%</div>
-        ${prev ? deltaBadge(latest.gap_pct, prev.gap_pct, true) : '<span class="sub">First recorded month</span>'}
-      </div>
-      <div class="kpi amber">
-        <label>Breakdown WOs Raised</label>
-        <div class="val">${latest.wo_count}</div>
-        ${prev ? deltaBadge(latest.wo_count, prev.wo_count, false) : '<span class="sub">First recorded month</span>'}
-      </div>
-    </div>
-
-    ${oeeSection(latest, prev)}
-    ${reliabilitySection(latest, prev)}
-    ${ppmSection(latest, prev)}
-
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Downtime Pareto — Top 5 Presses</h3>
@@ -871,6 +848,35 @@ function render(runs, idx) {
         <div class="canvas-wrap short"><canvas id="ppmChart"></canvas></div>
       </div>
     </div>` : ''}
+
+    <div class="period-badge">Period: ${latest.period_label || latest.period}</div>
+
+    <div class="kpi-row">
+      <div class="kpi red">
+        <label>SFC Fault Hours</label>
+        <div class="val">${fmt(latest.maintenance_hrs)}h</div>
+        ${prev ? deltaBadge(latest.maintenance_hrs, prev.maintenance_hrs, true) : '<span class="sub">First recorded month</span>'}
+      </div>
+      <div class="kpi green">
+        <label>Agility Hours Matched</label>
+        <div class="val">${fmt(latest.agility_maintenance_hrs)}h</div>
+        ${prev ? deltaBadge(latest.agility_maintenance_hrs, prev.agility_maintenance_hrs, false) : '<span class="sub">First recorded month</span>'}
+      </div>
+      <div class="kpi navy">
+        <label>WO Coverage Gap</label>
+        <div class="val">${fmt(latest.gap_pct, 1)}%</div>
+        ${prev ? deltaBadge(latest.gap_pct, prev.gap_pct, true) : '<span class="sub">First recorded month</span>'}
+      </div>
+      <div class="kpi amber">
+        <label>Breakdown WOs Raised</label>
+        <div class="val">${latest.wo_count}</div>
+        ${prev ? deltaBadge(latest.wo_count, prev.wo_count, false) : '<span class="sub">First recorded month</span>'}
+      </div>
+    </div>
+
+    ${oeeSection(latest, prev)}
+    ${reliabilitySection(latest, prev)}
+    ${ppmSection(latest, prev)}
   `;
 
   const labels = runs.map(r => r.period_label || r.period);
