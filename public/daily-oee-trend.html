@@ -99,32 +99,42 @@
   .trend-print-btn { margin-left: auto; padding: 6px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; }
   .trend-print-btn:hover { background: #95C11F; color: #243547; }
 
-  /* --- Printing the trend chart on its own ---------------------------
+  /* --- Printing the month on one A3 sheet ----------------------------
+     The month pill, the five KPI cards and the OEE & Run Time Trend
+     chart — what's on screen at the top of the page.
      printTrend() adds body.print-trend just before printing, and the
      afterprint handler takes it off again. These first rules apply on
-     screen as well as on paper: they lay the card out at exactly the
+     screen as well as on paper: they lay the page out at exactly the
      printed width (A3 landscape is 420mm wide, minus the 8mm @page
      margin each side = 404mm) so the chart can be redrawn at its real
      paper size first — Chart.js won't resize for print by itself, and
      would otherwise print at its 1012px screen width. */
   body.print-trend .container { width: 404mm; max-width: none; padding: 0; margin: 0; }
   body.print-trend #trend-card { padding: 0; margin: 0; border-radius: 0; }
-  /* 297mm tall minus 16mm of margin = 281mm of page; the card's title
-     row takes ~11mm, and 240mm leaves spare so it can't spill onto a
-     second sheet. */
-  body.print-trend .trend-wrap { height: 240mm; }
+  /* 297mm tall minus 16mm of margin = 281mm of page. The pill, the card
+     row and the chart's title take ~55mm of that; 205mm of chart leaves
+     ~20mm spare so it can't spill onto a second sheet. */
+  body.print-trend .trend-wrap { height: 205mm; }
   body.print-trend #trend-chart { max-height: none; }
 
   @media print {
     @page { size: A3 landscape; margin: 8mm; }
-    /* "Print only what you see": everything except the trend card's
-       title and chart is left off the sheet — tabs and button included. */
+    /* Left off the sheet: sidebar, page header, the two tables below the
+       chart, and the on-screen controls (tabs, Print button, collapse
+       arrow). */
     body.print-trend { background: white; }
     body.print-trend .sidebar, body.print-trend .page-header, body.print-trend footer,
-    body.print-trend .scope-pill, body.print-trend .cards,
     body.print-trend .error-box, body.print-trend .empty-note,
     body.print-trend .table-card:not(#trend-card),
     body.print-trend .filter-tabs, body.print-trend .collapse-arrow { display: none !important; }
+    /* On screen the white cards stand out against the grey page; on a
+       white sheet they'd have no edges at all, so give them a thin one
+       (the coloured top border stays). */
+    body.print-trend .card { border: 1px solid #e2e5ea; border-top: 3px solid #95C11F; }
+    body.print-trend .card.run   { border-top-color: #d97706; }
+    body.print-trend .card.avail { border-top-color: #243547; }
+    body.print-trend .card.qual  { border-top-color: #dc2626; }
+    body.print-trend .card.parts { border-top-color: #0891b2; }
   }
 
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -443,7 +453,8 @@ function updatePrintButton() {
   document.getElementById('trend-print-btn').style.display = granularity === 'monthly' ? '' : 'none';
 }
 
-// Prints just the OEE & Run Time Trend card on one A3 landscape sheet.
+// Prints the month pill, the KPI cards and the OEE & Run Time Trend
+// chart on one A3 landscape sheet.
 // body.print-trend switches on the print-only layout in the CSS;
 // window.print() then fires 'beforeprint', where the chart is redrawn
 // at its A3 size, and 'afterprint' puts everything back.
