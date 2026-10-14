@@ -551,7 +551,7 @@ function render() {
   document.getElementById('slide').innerHTML = `
     <div class="slide-head">
       <h2>${d.period_label || d.period}</h2>
-      <div class="period">Period: <strong>${d.period_label || d.period}</strong> · ${mb.length} presses</div>
+      <div class="period"><strong>${d.period_label || d.period}</strong></div>
     </div>
     <div class="cols">
       ${col('production', 'PRODUCTION', '01', 'production_hrs', totalUnplanned,
