@@ -424,7 +424,7 @@ async function load() {
     }
     document.getElementById('content').style.display = 'block';
     populateMonthChooser();
-    renderAllTimeParts();
+    renderMonthParts();
     render();
   } catch (e) {
     showError(e.message);
@@ -458,26 +458,26 @@ function populateMonthChooser() {
 function selectMonth(key) {
   endMonth = key;
   selectedIndex = null;   // back to the newest period on show, i.e. the chosen month
-  renderAllTimeParts();
+  renderMonthParts();
   render();
 }
 
-// Deliberately NOT part of renderCards()/render() — this card is a
-// running total across every saved day, the same figure whichever
-// tab or row you're looking at. Summing DATA.daily specifically (not
-// weekly/monthly) because it's the one list guaranteed to be exactly
-// one row per saved day — no risk of a day being counted twice.
-// "All-time" stops at the chosen month too, so a September board sheet
-// doesn't quietly include October's parts.
-function renderAllTimeParts() {
-  const days = DATA.daily.filter(d => !endMonth || monthOf(d) <= endMonth);
+// The Total Parts card: parts produced in the CHOSEN MONTH only — for
+// September, September's total. (It used to be a running total of every
+// saved month, which read as confusing next to cards about one month.)
+// Deliberately NOT part of renderCards()/render(): it follows the month
+// chooser, not whichever tab or table row is selected. Summing DATA.daily
+// because it's the one list guaranteed to be exactly one row per saved
+// day — no risk of a day being counted twice.
+function renderMonthParts() {
+  const days = DATA.daily.filter(d => !endMonth || monthOf(d) === endMonth);
   const totalParts = days.reduce((s, d) => s + (d.total_parts || 0), 0);
   const scrapParts = days.reduce((s, d) => s + (d.scrap_parts || 0), 0);
-  const upTo = DATA.monthly.find(b => monthOf(b) === endMonth);
+  const month = DATA.monthly.find(b => monthOf(b) === endMonth);
   document.getElementById('c-parts').textContent = Math.round(totalParts).toLocaleString();
   document.getElementById('c-parts-sub').textContent =
-    `${Math.round(totalParts - scrapParts).toLocaleString()} good · ${Math.round(scrapParts).toLocaleString()} scrap · all-time`
-    + (upTo ? ` to ${upTo.label}` : '');
+    `${Math.round(totalParts - scrapParts).toLocaleString()} good · ${Math.round(scrapParts).toLocaleString()} scrap`
+    + (month ? ` · ${month.label}` : '');
 }
 
 function showError(msg) {
