@@ -108,8 +108,8 @@
      edge off. Removed again by afterprint. */
   body.print-sizing .container { width: 404mm; max-width: none; padding: 0; margin: 0; }
   body.print-sizing .slide { padding: 12px; border-radius: 0; }
-  body.print-sizing .chart-wrap { height: 220px; }
-  body.print-sizing .chart-wrap.short { height: 190px; }
+  body.print-sizing .chart-wrap { height: 195px; }
+  body.print-sizing .chart-wrap.short { height: 165px; }
 
   @media print {
     .sidebar, .page-header, .print-btn { display: none; }
@@ -168,12 +168,15 @@
       break-after: avoid;
       page-break-after: avoid;
     }
-    /* Taller than on screen — A3 has the room, and these are sized so
-       the whole slide still lands on ONE sheet. Must match the
-       body.print-sizing heights above: those are the sizes the charts
-       get redrawn at, these are the boxes they're printed into. */
-    .chart-wrap { height: 220px; }
-    .chart-wrap.short { height: 190px; }
+    /* Sized so the whole slide lands on ONE sheet with ~20mm to spare.
+       The spare matters: the Production note and the uncategorised-codes
+       strip grow with each month's data, and at 220/190 a real month
+       came out a few mm too tall — just enough to push the logo footer
+       onto a second sheet on its own. Must match the body.print-sizing
+       heights above: those are the sizes the charts get redrawn at,
+       these are the boxes they're printed into. */
+    .chart-wrap { height: 195px; }
+    .chart-wrap.short { height: 165px; }
     /* One row of gauges per department instead of two — each A3 column
        is wide enough for three side by side, and that second row was
        what pushed the slide onto a second sheet. Also lines every
