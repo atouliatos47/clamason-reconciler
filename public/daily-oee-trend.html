@@ -41,9 +41,12 @@
   .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
 
   .main { flex: 1; min-width: 0; }
-  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; display: flex; justify-content: space-between; align-items: center; }
   .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
   .page-header p { color: #888; font-size: 11.5px; margin-top: 3px; }
+  /* Month chooser — same look as the Board Review's period dropdown. */
+  .month-label { font-size: 11.5px; color: #555; margin-right: 6px; }
+  .month-select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 12.5px; }
 
   @media (max-width: 768px) {
     body { flex-direction: column; }
@@ -253,8 +256,14 @@ function toggleNavGroup(name) {
 <div class="main">
 
 <div class="page-header">
-  <h1>Daily OEE Trend</h1>
-  <p>Rolled up from saved Daily OEE snapshots</p>
+  <div>
+    <h1>Daily OEE Trend</h1>
+    <p>Rolled up from saved Daily OEE snapshots</p>
+  </div>
+  <div>
+    <label class="month-label" for="month-select">Show up to</label>
+    <select class="month-select" id="month-select" onchange="selectMonth(this.value)"></select>
+  </div>
 </div>
 
 <div class="container">
@@ -362,6 +371,10 @@ let DATA = { daily: [], weekly: [], monthly: [] };
 let granularity = 'daily';
 let selectedIndex = null;
 let chart = null;
+// The month chooser's pick, as 'YYYY-MM'. It's the LAST month shown:
+// August shows just August, September shows August + September, and so
+// on — so a sheet printed in October for the board can stop at September.
+let endMonth = null;
 
 // Self-contained rather than a third-party plugin — draws each bar's
 // value directly onto the canvas using Chart.js's own documented
@@ -410,6 +423,7 @@ async function load() {
       return;
     }
     document.getElementById('content').style.display = 'block';
+    populateMonthChooser();
     renderAllTimeParts();
     render();
   } catch (e) {
@@ -417,19 +431,53 @@ async function load() {
   }
 }
 
+// Which calendar month a bucket belongs to, as 'YYYY-MM' — taken from
+// the first saved day in it. For a day or a month that's simply its own
+// month; a week that straddles two months counts as the month it starts in.
+function monthOf(b) { return (b.first_date || '').slice(0, 7); }
+
+// Fills the chooser with every saved month, newest first, and picks LAST
+// month by default — the most recent complete month, which is the one
+// that goes on the board. Deliberately not remembered between visits:
+// opening the page in November should land on October, not whatever was
+// picked last time. Falls back to the newest month if nothing older exists.
+function populateMonthChooser() {
+  const months = DATA.monthly.map(b => ({ key: monthOf(b), label: b.label }));
+  const sel = document.getElementById('month-select');
+  sel.innerHTML = months.slice().reverse()
+    .map(m => `<option value="${m.key}">${m.label}</option>`).join('');
+
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);   // month 0 - 1 rolls back to last December
+  const prevKey = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+  const pick = months.filter(m => m.key <= prevKey).pop() || months[months.length - 1];
+  endMonth = pick ? pick.key : null;
+  sel.value = endMonth;
+}
+
+function selectMonth(key) {
+  endMonth = key;
+  selectedIndex = null;   // back to the newest period on show, i.e. the chosen month
+  renderAllTimeParts();
+  render();
+}
+
 // Deliberately NOT part of renderCards()/render() — this card is a
 // running total across every saved day, the same figure whichever
-// tab or row you're looking at, so it has to be set once from the
-// full DATA.daily set rather than re-derived from whichever period
-// happens to be selected. Summing DATA.daily specifically (not
+// tab or row you're looking at. Summing DATA.daily specifically (not
 // weekly/monthly) because it's the one list guaranteed to be exactly
 // one row per saved day — no risk of a day being counted twice.
+// "All-time" stops at the chosen month too, so a September board sheet
+// doesn't quietly include October's parts.
 function renderAllTimeParts() {
-  const totalParts = DATA.daily.reduce((s, d) => s + (d.total_parts || 0), 0);
-  const scrapParts = DATA.daily.reduce((s, d) => s + (d.scrap_parts || 0), 0);
+  const days = DATA.daily.filter(d => !endMonth || monthOf(d) <= endMonth);
+  const totalParts = days.reduce((s, d) => s + (d.total_parts || 0), 0);
+  const scrapParts = days.reduce((s, d) => s + (d.scrap_parts || 0), 0);
+  const upTo = DATA.monthly.find(b => monthOf(b) === endMonth);
   document.getElementById('c-parts').textContent = Math.round(totalParts).toLocaleString();
   document.getElementById('c-parts-sub').textContent =
-    `${Math.round(totalParts - scrapParts).toLocaleString()} good · ${Math.round(scrapParts).toLocaleString()} scrap · all-time`;
+    `${Math.round(totalParts - scrapParts).toLocaleString()} good · ${Math.round(scrapParts).toLocaleString()} scrap · all-time`
+    + (upTo ? ` to ${upTo.label}` : '');
 }
 
 function showError(msg) {
@@ -479,7 +527,12 @@ window.addEventListener('afterprint', () => {
   if (chart) { chart.stop(); chart.resize(); }
 });
 
-function rows() { return DATA[granularity] || []; }
+// Everything on the page reads its periods through here, so the month
+// chooser's cut-off reaches the cards, chart, tables and print at once.
+function rows() {
+  const all = DATA[granularity] || [];
+  return endMonth ? all.filter(b => monthOf(b) <= endMonth) : all;
+}
 
 function render() {
   const list = rows();
