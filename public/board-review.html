@@ -95,35 +95,57 @@
   .slide-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 11px; border-top: 1px solid #e8eaee; font-size: 10px; color: #4a4a4a; }
 
   .print-brand-line, .print-brand-footer { display: none; }
+
+  /* Printed page geometry — A3 landscape is 420 x 297mm. Minus the 8mm
+     @page margin all round (below) that leaves a 404 x 281mm printable
+     area. Change the paper size and the 404mm / 280mm figures in this
+     file have to change with it. */
+  /* Added by the beforeprint handler at the bottom of the script, just
+     before the print preview is built: lays the slide out on screen at
+     exactly the printed A3 width, so every chart can be redrawn to the
+     size it will actually be on paper. Without it, Chart.js keeps each
+     chart at its on-screen width and the printout cuts the right-hand
+     edge off. Removed again by afterprint. */
+  body.print-sizing .container { width: 404mm; max-width: none; padding: 0; margin: 0; }
+  body.print-sizing .slide { padding: 12px; border-radius: 0; }
+  body.print-sizing .chart-wrap { height: 220px; }
+  body.print-sizing .chart-wrap.short { height: 190px; }
+
   @media print {
     .sidebar, .page-header, .print-btn { display: none; }
     body { background: white; }
-    .container { max-width: none; padding: 0; }
     .slide { border-radius: 0; padding: 12px; }
-    @page { size: A4 landscape; margin: 15mm 8mm 22mm 8mm; }
+    @page { size: A3 landscape; margin: 8mm; }
 
     /* Matches slide 3 of Clamason_Rebrand_slideDeck_Template_JAN2026:
        thin accent rule, logo bottom-left, tagline bottom-right. Same
        colours and proportions as the template, adapted from its 16:9
-       canvas onto A4 landscape's slightly squarer page. */
-    /* position:fixed's containing block in paged media is the page's
-       CONTENT box, not the physical page — so top/bottom here have to
-       be negative to reach up/down into the @page margin reserved
-       above, verified precisely against real pixel measurements
-       (7.1mm clear gap on both sides, no overlap with content on any
-       page the content spans, at any page count). */
+       canvas onto A3 landscape's slightly squarer page. */
+    /* The whole sheet as one column: accent rule at the top, the slide,
+       then the logo footer pushed to the bottom edge by margin-top:auto.
+       min-height is the 281mm printable height less 1mm of slack, so
+       rounding can never spill a blank second page.
+       This used to pin the rule and footer with position:fixed. Chrome
+       placed those at the PAGE BREAK rather than the page edges — the
+       rule ran through the gauges and the logo landed on top of Run Time
+       on page 2 — and the footer alone was enough to force a second
+       sheet. Laid out in the normal flow, they can't drift. */
+    .container {
+      max-width: none; padding: 0;
+      min-height: 280mm;
+      display: flex; flex-direction: column;
+    }
     .print-brand-line {
       display: block;
-      position: fixed;
-      top: -7mm; left: 0; right: 0;
       border-top: 1.5pt solid #97C21E;
+      margin-bottom: 6mm;
     }
     .print-brand-footer {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      position: fixed;
-      bottom: -14mm; left: 0; right: 0;
+      margin-top: auto;
+      padding-top: 4mm;
     }
     .print-brand-footer img { height: 7mm; }
     .print-brand-footer span {
@@ -146,12 +168,17 @@
       break-after: avoid;
       page-break-after: avoid;
     }
-    /* Trimmed specifically for print, alongside the half-gauge switch
-       above — together these are what get the whole page onto one
-       printed sheet instead of two. Screen view is untouched: this
-       only takes effect inside @media print. */
-    .chart-wrap { height: 150px; }
-    .chart-wrap.short { height: 140px; }
+    /* Taller than on screen — A3 has the room, and these are sized so
+       the whole slide still lands on ONE sheet. Must match the
+       body.print-sizing heights above: those are the sizes the charts
+       get redrawn at, these are the boxes they're printed into. */
+    .chart-wrap { height: 220px; }
+    .chart-wrap.short { height: 190px; }
+    /* One row of gauges per department instead of two — each A3 column
+       is wide enough for three side by side, and that second row was
+       what pushed the slide onto a second sheet. Also lines every
+       department's gauges up across the page. */
+    .gauges { grid-template-columns: repeat(3, 1fr); }
   }
 </style>
 <script src="/reminders.js" defer></script>  <!-- upload reminders on the sidebar tabs -->
@@ -523,7 +550,7 @@ function render() {
 
   document.getElementById('slide').innerHTML = `
     <div class="slide-head">
-      <h2>Monthly Performance Review</h2>
+      <h2>${d.period_label || d.period}</h2>
       <div class="period">Period: <strong>${d.period_label || d.period}</strong> · ${mb.length} presses</div>
     </div>
     <div class="cols">
@@ -1044,6 +1071,22 @@ function ring(id, pct, text, colour, target) {
     plugins: [centre],
   }));
 }
+
+// Printing. Chart.js doesn't resize charts for the printed page by
+// itself (its own docs say so), so each chart printed at its on-screen
+// width and was cut off at the right-hand edge of its column. Just
+// before the print preview is built, body.print-sizing lays the slide
+// out at the exact A3 printed width (see the CSS) and every chart is
+// redrawn to fit; afterwards the class comes off and they're redrawn
+// back to screen size. Fires for the Print / PDF button and Ctrl+P alike.
+window.addEventListener('beforeprint', () => {
+  document.body.classList.add('print-sizing');
+  charts.forEach(c => c.resize());
+});
+window.addEventListener('afterprint', () => {
+  document.body.classList.remove('print-sizing');
+  charts.forEach(c => c.resize());
+});
 
 load();
 </script>
