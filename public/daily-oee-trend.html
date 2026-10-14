@@ -88,6 +88,44 @@
   .filter-tab.active { background: #243547; color: white; }
 
   canvas { max-height: 320px; }
+  /* Gives the trend chart an explicit height to fill (Chart.js's
+     recommended setup) — 320px on screen, exactly what max-height above
+     already produced, so the screen view doesn't change. It's what lets
+     the print below hand the same chart a full A3 page instead. */
+  .trend-wrap { position: relative; height: 320px; }
+
+  /* Only offered on the Monthly tab — see updatePrintButton(). Same look
+     as the Board Review's Print / PDF button. */
+  .trend-print-btn { margin-left: auto; padding: 6px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; }
+  .trend-print-btn:hover { background: #95C11F; color: #243547; }
+
+  /* --- Printing the trend chart on its own ---------------------------
+     printTrend() adds body.print-trend just before printing, and the
+     afterprint handler takes it off again. These first rules apply on
+     screen as well as on paper: they lay the card out at exactly the
+     printed width (A3 landscape is 420mm wide, minus the 8mm @page
+     margin each side = 404mm) so the chart can be redrawn at its real
+     paper size first — Chart.js won't resize for print by itself, and
+     would otherwise print at its 1012px screen width. */
+  body.print-trend .container { width: 404mm; max-width: none; padding: 0; margin: 0; }
+  body.print-trend #trend-card { padding: 0; margin: 0; border-radius: 0; }
+  /* 297mm tall minus 16mm of margin = 281mm of page; the card's title
+     row takes ~11mm, and 240mm leaves spare so it can't spill onto a
+     second sheet. */
+  body.print-trend .trend-wrap { height: 240mm; }
+  body.print-trend #trend-chart { max-height: none; }
+
+  @media print {
+    @page { size: A3 landscape; margin: 8mm; }
+    /* "Print only what you see": everything except the trend card's
+       title and chart is left off the sheet — tabs and button included. */
+    body.print-trend { background: white; }
+    body.print-trend .sidebar, body.print-trend .page-header, body.print-trend footer,
+    body.print-trend .scope-pill, body.print-trend .cards,
+    body.print-trend .error-box, body.print-trend .empty-note,
+    body.print-trend .table-card:not(#trend-card),
+    body.print-trend .filter-tabs, body.print-trend .collapse-arrow { display: none !important; }
+  }
 
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
@@ -248,7 +286,7 @@ function toggleNavGroup(name) {
       </div>
     </div>
 
-    <div class="table-card">
+    <div class="table-card" id="trend-card">
       <div class="card-header" onclick="toggleCard('trend')">
         <h3>OEE &amp; Run Time Trend</h3>
         <span class="collapse-arrow" id="trend-arrow">▼</span>
@@ -258,8 +296,9 @@ function toggleNavGroup(name) {
           <button class="filter-tab active" onclick="event.stopPropagation(); setGranularity('daily', this)">Daily</button>
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('weekly', this)">Weekly</button>
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
+          <button class="trend-print-btn" id="trend-print-btn" style="display:none;" onclick="event.stopPropagation(); printTrend()">Print / PDF</button>
         </div>
-        <canvas id="trend-chart"></canvas>
+        <div class="trend-wrap"><canvas id="trend-chart"></canvas></div>
       </div>
     </div>
 
@@ -395,8 +434,39 @@ function setGranularity(g, btn) {
   document.querySelectorAll('#granularity-tabs .filter-tab')
     .forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  updatePrintButton();
   render();
 }
+
+// The Print / PDF button only appears on the Monthly tab.
+function updatePrintButton() {
+  document.getElementById('trend-print-btn').style.display = granularity === 'monthly' ? '' : 'none';
+}
+
+// Prints just the OEE & Run Time Trend card on one A3 landscape sheet.
+// body.print-trend switches on the print-only layout in the CSS;
+// window.print() then fires 'beforeprint', where the chart is redrawn
+// at its A3 size, and 'afterprint' puts everything back.
+function printTrend() {
+  document.body.classList.add('print-trend');
+  window.print();
+}
+
+// Both handlers check for the class first, so Ctrl+P on its own (without
+// the button) still prints the page the way it always has.
+// chart.stop() first: Chart.js quietly postpones a resize while the chart
+// is still animating — so pressing Print within a second of clicking the
+// Monthly tab would otherwise print the chart at its small screen size.
+window.addEventListener('beforeprint', () => {
+  if (!document.body.classList.contains('print-trend') || !chart) return;
+  chart.stop();
+  chart.resize();
+});
+window.addEventListener('afterprint', () => {
+  if (!document.body.classList.contains('print-trend')) return;
+  document.body.classList.remove('print-trend');
+  if (chart) { chart.stop(); chart.resize(); }
+});
 
 function rows() { return DATA[granularity] || []; }
 
