@@ -3,7 +3,9 @@
 // Asks /api/reminders what's due or missed (rules in reminders.py), then:
 //   - puts a number on the department tab: amber = due today, red = missed;
 //   - puts a dot on the menu item that needs doing, with a one-line reason
-//     underneath (visible when the tab is open).
+//     underneath (visible when the tab is open);
+//   - a reminder with no menu item of its own (the Monday open-jobs check)
+//     gets its own line at the bottom of the tab, with a "Mark as done" button.
 // Saving the report clears it on the next page load. If the request fails,
 // nothing is drawn — a reminder problem must never break a page.
 (function () {
@@ -20,8 +22,13 @@
     .rem-note { font-size: 10.5px; line-height: 1.3; padding: 0 16px 6px 42px; margin-top: -6px; }
     .rem-note.rem-overdue { color: #ff8a8a; }
     .rem-note.rem-due { color: #e6b450; }
+    .rem-item { cursor: default; }
+    .rem-done { display: block; margin-top: 5px; padding: 3px 8px; font-size: 10.5px; font-weight: bold;
+      color: #95C11F; background: transparent; border: 1px solid #95C11F; border-radius: 4px; cursor: pointer; }
+    .rem-done:hover { background: rgba(149,193,31,0.15); }
+    .rem-done:disabled { opacity: 0.6; cursor: wait; }
     @media (max-width: 768px) { .rem-note { display: none; } }
-    @media print { .rem-badge, .rem-dot, .rem-note { display: none !important; } }
+    @media print { .rem-badge, .rem-dot, .rem-note, .rem-item { display: none !important; } }
   `;
 
   function addStyles() {
@@ -33,7 +40,43 @@
   }
 
   function clear() {
-    document.querySelectorAll('.rem-badge, .rem-dot, .rem-note').forEach(el => el.remove());
+    document.querySelectorAll('.rem-badge, .rem-dot, .rem-note, .rem-item').forEach(el => el.remove());
+  }
+
+  function makeNote(item, cls) {
+    const note = document.createElement('div');
+    note.className = 'rem-note ' + cls;
+    note.textContent = item.detail;
+    return note;
+  }
+
+  function makeDot(item, cls) {
+    const dot = document.createElement('span');
+    dot.className = 'rem-dot ' + cls;
+    dot.title = item.detail;
+    return dot;
+  }
+
+  // A reminder with no menu item of its own: a plain line at the bottom of
+  // its tab, plus the "Mark as done" button if it's cleared by hand.
+  function addOwnLine(dept, item, cls) {
+    const group = document.getElementById('nav-group-' + dept);
+    if (!group) return;
+    const line = document.createElement('div');
+    line.className = 'nav-item rem-item';
+    line.textContent = item.label;
+    line.appendChild(makeDot(item, cls));
+    const note = makeNote(item, cls);
+    if (item.ack) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'rem-done';
+      btn.textContent = '✓ Mark as done';
+      btn.addEventListener('click', e => { e.stopPropagation(); markDone(item.id, btn); });
+      note.appendChild(btn);
+    }
+    group.appendChild(line);
+    group.appendChild(note);
   }
 
   function draw(reminders) {
@@ -56,21 +99,35 @@
         nameSpan.appendChild(badge);
       }
 
-      // Dot + reason on the menu item itself.
+      // Dot + reason on the menu item itself, or a line of its own.
       items.forEach(i => {
         const cls = i.status === 'overdue' ? 'rem-overdue' : 'rem-due';
+        if (!i.href) { addOwnLine(dept, i, cls); return; }
         document.querySelectorAll(`a.nav-item[href="${i.href}"]`).forEach(link => {
-          const dot = document.createElement('span');
-          dot.className = 'rem-dot ' + cls;
-          dot.title = i.detail;
-          link.appendChild(dot);
-          const note = document.createElement('div');
-          note.className = 'rem-note ' + cls;
-          note.textContent = i.detail;
-          link.insertAdjacentElement('afterend', note);
+          link.appendChild(makeDot(i, cls));
+          link.insertAdjacentElement('afterend', makeNote(i, cls));
         });
       });
     });
+  }
+
+  async function markDone(id, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+      const res = await fetch('/api/reminders/ack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error || !Array.isArray(data.reminders)) throw new Error(data.error || res.status);
+      clear();
+      draw(data.reminders);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = "Couldn't save — try again";
+    }
   }
 
   async function refresh() {

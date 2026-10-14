@@ -981,3 +981,46 @@ def save_department_actions(department, actions):
                     'sort_order': i,
                 })
         conn.commit()
+
+
+def get_saved_month_labels():
+    """Every saved monthly run's period_label ('September 2026', ...) and
+    nothing else — the Monthly Check reminder only needs to know which
+    months exist, not their figures, so this skips get_all_runs()'s full
+    rows (machine_breakdown alone is the bulk of the table)."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT period_label FROM monthly_runs")
+            return [row[0] for row in cur.fetchall() if row[0]]
+
+
+def get_reminder_acks(reminder_id, start_date=None, end_date=None):
+    """'Mark as done' clicks for one reminder, as [{'period': 'YYYY-MM-DD',
+    'done_at': iso}], optionally limited to periods between start_date and
+    end_date (inclusive, 'YYYY-MM-DD')."""
+    query = "SELECT period, done_at FROM reminder_acks WHERE reminder_id = %(rid)s"
+    params = {'rid': reminder_id}
+    if start_date:
+        query += " AND period >= %(start_date)s"
+        params['start_date'] = start_date
+    if end_date:
+        query += " AND period <= %(end_date)s"
+        params['end_date'] = end_date
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            return [{'period': p.isoformat(), 'done_at': d.isoformat() if d else None}
+                    for p, d in cur.fetchall()]
+
+
+def save_reminder_ack(reminder_id, period):
+    """Record one 'Mark as done' click. Clicking twice for the same period
+    is harmless — the second insert is simply ignored."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO reminder_acks (reminder_id, period)
+                VALUES (%(rid)s, %(period)s)
+                ON CONFLICT (reminder_id, period) DO NOTHING
+            """, {'rid': reminder_id, 'period': period})
+        conn.commit()

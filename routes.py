@@ -807,6 +807,24 @@ def api_reminders():
         return jsonify({'reminders': [], 'error': str(e)})
 
 
+@bp.route('/api/reminders/ack', methods=['POST'])
+def api_reminders_ack():
+    """The "Mark as done" button on a reminder the hub can't check by itself
+    (the Monday open-jobs check). Body: {"id": "<reminder id>"}. Marks every
+    week that reminder is currently missing, then returns the updated list
+    so the sidebar can redraw straight away. Only reminders built for a
+    button can be marked — see reminders.mark_done()."""
+    from reminders import mark_done, all_reminders
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        mark_done(str(data.get('id', '')))
+        return jsonify(all_reminders())
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @bp.route('/machine-names.js')
 def machine_names_js():
     """The press display names for every page, built from config.py.

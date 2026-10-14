@@ -479,3 +479,15 @@ CREATE TABLE IF NOT EXISTS department_actions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_department_actions_dept ON department_actions (department, sort_order);
+
+-- reminder_acks — "Mark as done" clicks for sidebar reminders the hub can't
+-- check by itself, because nothing gets uploaded to it (the Monday open-jobs
+-- check in Agility is the first). One row per reminder per period (the
+-- Monday of the week it covers); clicking again for the same period changes
+-- nothing. Read and written only by reminders.py — see mark_done() there.
+CREATE TABLE IF NOT EXISTS reminder_acks (
+    reminder_id             TEXT NOT NULL,
+    period                  DATE NOT NULL,
+    done_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (reminder_id, period)
+);
