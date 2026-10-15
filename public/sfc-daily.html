@@ -543,6 +543,9 @@ async function saveSfcDaily() {
     statusEl.textContent = `✓ Saved for ${formatUKDate(d.date)}`;
     statusEl.className = 'save-status ok';
     persist();   // so the tick is still there when you come back
+    // Clear the sidebar's "not saved yet" note now, rather than on the next
+    // page load. The check is there in case reminders.js hasn't loaded.
+    if (window.refreshReminders) window.refreshReminders();
   } catch (e) {
     statusEl.textContent = 'Error: ' + e.message;
     statusEl.className = 'save-status err';
