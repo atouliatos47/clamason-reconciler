@@ -19,6 +19,10 @@ the date from the report itself (the 12->13 Oct report is saved as
     is when you'd normally upload it;
   - any earlier working day still missing is "overdue" (red);
   - today itself is never due yet: its data doesn't exist until tomorrow.
+Daily OEE is the one exception to "saved under the day it covers": its page
+fills the date in from the END of the report's period, so Wednesday's
+production can be saved as Thursday. Its reminder reads the production day
+from the start of the report's own period instead — see oee_production_days().
 
 WEEKLY — each week should have a row for its Monday
 ---------------------------------------------------
@@ -79,6 +83,31 @@ NON_WORKING_DAYS = {
 MONTHLY_DEADLINE_WORKING_DAY = 3
 
 
+def _oee_production_day(row):
+    """The production day a saved Daily OEE report covers: the start date of
+    the report's own period ('10/14/2026 6:30:00 AM to 2026-10-15' -> 14 Oct).
+    SFC writes that start date month first. Falls back to the saved date if
+    the period is missing or isn't in that shape."""
+    m = re.match(r'\s*(\d{1,2})/(\d{1,2})/(\d{4})', row.get('period') or '')
+    if m:
+        try:
+            return date(int(m.group(3)), int(m.group(1)), int(m.group(2))).isoformat()
+        except ValueError:
+            pass
+    return str(row.get('date'))[:10]
+
+
+def oee_production_days(start_date, end_date):
+    """The Daily OEE reminder's saved_days: one {'date': production day} per
+    saved report. Asks the database for a few days past end_date, because a
+    report is saved under its period's END date — Wednesday's production can
+    be saved as Thursday, and Friday's as Saturday or Monday."""
+    lo = date.fromisoformat(start_date) - timedelta(days=1)
+    hi = date.fromisoformat(end_date) + timedelta(days=4)
+    rows = db.get_oee_daily_snapshots(start_date=lo.isoformat(), end_date=hi.isoformat())
+    return [{'date': _oee_production_day(r)} for r in rows]
+
+
 DAILY_REMINDERS = [
     {
         'id': 'maintenance-daily-check',
@@ -93,6 +122,16 @@ DAILY_REMINDERS = [
         'label': 'SFC Daily',
         'href': '/sfc-daily',
         'saved_days': db.get_sfc_daily_snapshots,
+    },
+    {
+        # Matt's Daily OEE (SFC's Daily UK OEE By Machine Tabular), uploaded
+        # the morning after, like the others. Checked by the production day
+        # the report covers, not the date it was saved under.
+        'id': 'production-daily-oee',
+        'dept': 'production',
+        'label': 'Daily OEE',
+        'href': '/daily-oee',
+        'saved_days': oee_production_days,
     },
     {
         # Matt's own copy of SFC Daily — a separate table, so Production's
