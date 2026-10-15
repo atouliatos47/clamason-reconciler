@@ -6,8 +6,10 @@
 //     underneath (visible when the tab is open);
 //   - a reminder with no menu item of its own (the Monday open-jobs check)
 //     gets its own line at the bottom of the tab, with a "Mark as done" button.
-// Saving the report clears it on the next page load. If the request fails,
-// nothing is drawn — a reminder problem must never break a page.
+// Saving the report clears it on the next page load — or straight away, when
+// the page's save code calls window.refreshReminders() after a good save.
+// If the request fails, nothing is drawn — a reminder problem must never
+// break a page.
 (function () {
   const CSS = `
     .rem-badge { display: inline-flex; align-items: center; justify-content: center;
@@ -142,6 +144,11 @@
     clear();
     draw(data.reminders);
   }
+
+  // Let a page ask for a fresh check right after it saves something, so the
+  // badge and the "not saved yet" note disappear without a page refresh.
+  // Everything else in here stays private to this file.
+  window.refreshReminders = refresh;
 
   function start() {
     addStyles();
