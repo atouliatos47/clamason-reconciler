@@ -714,6 +714,9 @@ async function saveRun() {
     const d = await res.json();
     if (d.error) throw new Error(d.error);
     statusEl.textContent = `✓ Saved "${d.period_label}" to the trend dashboard (gap: ${d.gap_pct}%)`;
+    // Clear the sidebar's reminder now, rather than on the next page load.
+    // The check is there in case reminders.js hasn't loaded.
+    if (window.refreshReminders) window.refreshReminders();
   } catch (e) {
     statusEl.style.color = '#dc2626';
     statusEl.textContent = 'Save failed: ' + e.message;

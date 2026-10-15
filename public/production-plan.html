@@ -443,6 +443,9 @@ async function savePlan() {
     status.textContent = '✓ Saved for week of ' + data.week_start;
     status.className = 'save-status ok';
     persist();
+    // Clear the sidebar's reminder now, rather than on the next page load.
+    // The check is there in case reminders.js hasn't loaded.
+    if (window.refreshReminders) window.refreshReminders();
   } catch (e) {
     status.textContent = 'Save failed: ' + e.message;
     status.className = 'save-status err';
