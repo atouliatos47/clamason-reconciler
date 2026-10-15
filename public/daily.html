@@ -482,6 +482,9 @@ async function saveDaily() {
     if (d.error) throw new Error(d.error);
     statusEl.textContent = `✓ Saved for ${formatUKDate(d.date)}`;
     statusEl.className = 'save-status ok';
+    // Clear the sidebar's "not saved yet" note now, rather than on the next
+    // page load. The check is there in case reminders.js hasn't loaded.
+    if (window.refreshReminders) window.refreshReminders();
   } catch (e) {
     statusEl.textContent = 'Error: ' + e.message;
     statusEl.className = 'save-status err';
