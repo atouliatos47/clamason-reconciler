@@ -393,9 +393,12 @@ function renderPanel(data, opts) {
   const sub = opts.mode === 'check'
     ? `${esc(data.filename || '')} · ${data.jobs_in_file.toLocaleString()} jobs in the file, ${data.finished_in_file.toLocaleString()} finished · due dates ${fmtDate(data.due_from, true)} to ${fmtDate(data.due_to, true)}`
     : `Checked ${fmtDay(asOf)} · ${esc(data.source_filename || '')}`;
-  const save = opts.mode === 'check'
-    ? `<div class="save-row"><button class="save-btn" id="save-btn" onclick="saveWeek()">💾 Save for ${weekLabel(data.week_start)}</button><span class="save-status" id="save-status"></span></div>`
-    : '';
+  // An export too short to see older overdue jobs can't be saved — the
+  // server refuses it too (MIN_EXPORT_DAYS_BACK in open_jobs_parser.py).
+  const save = opts.mode !== 'check' ? ''
+    : data.short_export
+      ? `<div class="save-row"><button class="save-btn" disabled title="This export is too short to save">💾 Save for ${weekLabel(data.week_start)}</button><span class="save-status err">Can't save this one: see the warning below</span></div>`
+      : `<div class="save-row"><button class="save-btn" id="save-btn" onclick="saveWeek()">💾 Save for ${weekLabel(data.week_start)}</button><span class="save-status" id="save-status"></span></div>`;
 
   const warnings = (data.warnings || []).map(w => `<div class="warn-box">⚠ ${esc(w)}</div>`).join('');
 

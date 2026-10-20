@@ -89,7 +89,7 @@ def _collect_block_crafts(rows, start_idx):
     return resources, crafts, j
 
 
-def _parse_all_maintenance_wos(filepath, craft_filter=MAINTENANCE_CRAFTS):
+def _parse_all_maintenance_wos(filepath, craft_filter=MAINTENANCE_CRAFTS, rows=None):
     """Shared core: walks every WO block, returns every WO whose task
     list carries one of `crafts`, regardless of job type, plus
     asset_lookup.
@@ -104,10 +104,16 @@ def _parse_all_maintenance_wos(filepath, craft_filter=MAINTENANCE_CRAFTS):
     Both parse_wo_file() (job-type-restricted, for the monthly board
     reconciliation) and parse_wo_file_all_types() (every job type, for
     the Daily View) build on this same walk, so there's only one place
-    that has to get the block-parsing right."""
-    import pandas as pd
-    df = pd.read_excel(filepath, header=None)
-    rows = df.values.tolist()
+    that has to get the block-parsing right.
+
+    rows: the sheet already read into rows, to skip pandas. The Open
+    Jobs page passes parsers.xlsx_rows.read_rows(), because its export is
+    far too big for pandas on Render. Every other caller leaves it out
+    and reads through pandas exactly as before."""
+    if rows is None:
+        import pandas as pd
+        df = pd.read_excel(filepath, header=None)
+        rows = df.values.tolist()
     records = []
     asset_lookup = {}
 

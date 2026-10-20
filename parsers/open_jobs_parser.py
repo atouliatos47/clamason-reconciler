@@ -11,7 +11,9 @@ brings back everything and this file drops the finished ones itself.
 The block-by-block reading of the export is NOT repeated here: it's
 wo_parser._parse_all_maintenance_wos(), the same walk the Daily Check
 uses every morning, called with craft_filter=None so jobs nobody has
-been allocated to yet come back too.
+been allocated to yet come back too. The sheet itself is read by
+xlsx_rows.read_rows() rather than pandas: the full export is ~31,000
+rows, and pandas took long enough over it to time out on Render.
 
 What counts:
   - OPEN: any status that isn't completed or cancelled (see FINISHED_WORDS).
@@ -28,6 +30,7 @@ from datetime import date, datetime, timedelta
 
 from config import MAINTENANCE_CRAFTS, TOOLROOM_CRAFTS, PLANNED_JOB_TYPES_DAILY, PERSONNEL_PPM_EXCLUDED_EMPLOYEES
 from parsers.wo_parser import _parse_all_maintenance_wos
+from parsers.xlsx_rows import read_rows
 
 # A status containing any of these means the job is finished. Substring
 # match, like the Daily Check's 'complet', so "Completed", "Job Complete"
@@ -35,6 +38,14 @@ from parsers.wo_parser import _parse_all_maintenance_wos
 FINISHED_WORDS = ('complet', 'cancel', 'closed')
 
 DUE_SOON_DAYS = 14
+
+# An export whose earliest due date is less than this many days before
+# today is too short to trust: a job that went overdue before it started
+# isn't in it at all. 20 Oct 2026: a "this week only" export (due from
+# 19 Oct) showed 9 open / 3 overdue when the full one showed 22 / 8.
+# Such an export is shown with a warning but can't be saved, so it can
+# never put a falsely good week on the trend.
+MIN_EXPORT_DAYS_BACK = 90
 
 
 def is_open(status):
@@ -87,7 +98,7 @@ def summarise_open_jobs(filepath, as_of=None):
     soon_until = as_of + timedelta(days=DUE_SOON_DAYS)
 
     try:
-        records, _ = _parse_all_maintenance_wos(filepath, craft_filter=None)
+        records, _ = _parse_all_maintenance_wos(filepath, craft_filter=None, rows=read_rows(filepath))
     except Exception as e:
         raise ValueError(
             f'Couldn\'t read this file as an Excel export ({e}). Upload the .xlsx file '
@@ -150,7 +161,14 @@ def summarise_open_jobs(filepath, as_of=None):
 
     overdue = [j for j in jobs if j['overdue']]
     warnings = []
+    earliest_due = min(dues) if dues else None
     latest_due = max(dues) if dues else None
+    short_export = bool(earliest_due and earliest_due > as_of - timedelta(days=MIN_EXPORT_DAYS_BACK))
+    if short_export:
+        warnings.append(
+            f'This export only has jobs due from {earliest_due:%d/%m/%Y}, so any job that went '
+            f'overdue before then isn\'t in it, and the overdue count will look better than it is. '
+            f'Run it again with Due Date From 01/01/2025 to save it.')
     if latest_due and latest_due < as_of:
         warnings.append(
             f'The latest due date in this export is {latest_due:%d/%m/%Y}, before today, so jobs '
@@ -161,7 +179,8 @@ def summarise_open_jobs(filepath, as_of=None):
         'week_start': (as_of - timedelta(days=as_of.weekday())).isoformat(),
         'jobs_in_file': len(records),
         'finished_in_file': finished,
-        'due_from': min(dues).isoformat() if dues else None,
+        'due_from': earliest_due.isoformat() if earliest_due else None,
+        'short_export': short_export,
         'due_to': latest_due.isoformat() if latest_due else None,
         'open_total': len(jobs),
         'overdue': len(overdue),

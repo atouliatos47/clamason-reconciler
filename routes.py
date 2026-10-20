@@ -709,6 +709,9 @@ def save_open_jobs():
             return jsonify({'error': 'Selective Work Orders file is required'})
         with saved_upload(wo_file, 'open_jobs') as path:
             result = summarise_open_jobs(path)
+        if result.get('short_export'):
+            # Too short to see older overdue jobs — see MIN_EXPORT_DAYS_BACK.
+            return jsonify({'error': 'Not saved. ' + result['warnings'][0]})
         db.save_open_jobs_week(result, wo_file.filename)
         return jsonify({
             'saved': True, 'week_start': result['week_start'],
