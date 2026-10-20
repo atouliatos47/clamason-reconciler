@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — Open Jobs</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh;
+    display: flex; flex-direction: column; padding: 24px 0;
+    border-right: 3px solid #95C11F;
+    position: sticky; top: 0; align-self: flex-start;
+  }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-item { color: #C7CFD6; font-size: 13px; text-decoration: none; padding: 11px 24px; border-left: 3px solid transparent; display: block; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.14); color: #95C11F; border-left-color: #95C11F; font-weight: bold; }
+  .nav-group-header {
+    width: 100%; background: none; border: none; text-align: left; cursor: pointer;
+    color: #C7CFD6; font-size: 13px; padding: 11px 24px; border-left: 3px solid transparent;
+    display: flex; align-items: center; justify-content: space-between; font-family: inherit;
+  }
+  .nav-group-header:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-group-header .chevron { font-size: 9px; transition: transform 0.15s; }
+  .nav-group-header.open .chevron { transform: rotate(90deg); }
+  .nav-group-items { display: none; flex-direction: column; }
+  .nav-group-items.open { display: flex; }
+  .nav-group-items .nav-item { padding-left: 42px; font-size: 12.5px; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; min-width: 0; }
+  .page-header { padding: 20px 32px; background: white; border-bottom: 1px solid #e2e5ea; }
+  .page-header h1 { color: #243547; font-size: 17px; font-weight: bold; }
+  .page-header p { color: #888; font-size: 11.5px; margin-top: 3px; }
+
+  @media (max-width: 768px) {
+    body { flex-direction: column; }
+    .sidebar { width: 100%; min-height: auto; flex-direction: row; align-items: center; padding: 12px 16px; overflow-x: auto; border-right: none; border-bottom: 3px solid #95C11F; }
+    .sidebar-brand { border-bottom: none; padding: 0 16px 0 0; margin-bottom: 0; white-space: nowrap; width: 140px; }
+    .sidebar-nav { flex-direction: row; }
+    .nav-item { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-item.active { border-left: none; border-bottom-color: #95C11F; }
+    .nav-group-header { padding: 8px 14px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .nav-group-header.open { border-bottom-color: #95C11F; }
+    .nav-group-items { flex-direction: row; }
+    .nav-group-items .nav-item { padding-left: 14px; }
+    .sidebar-footer { display: none; }
+    .page-header { padding: 16px; }
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+  @media (max-width: 768px) { .container { padding: 20px 16px; } }
+
+  /* --- upload ---------------------------------------------------------- */
+  .upload-section { background: white; border-radius: 10px; padding: 24px 28px; margin-bottom: 24px; }
+  .upload-section h2 { font-size: 15px; color: #243547; margin-bottom: 4px; }
+  .upload-section > p { font-size: 12px; color: #888; margin-bottom: 18px; }
+  .upload-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .upload-grid { grid-template-columns: minmax(0, 1fr); } }
+  .upload-card { border: 2px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; transition: all 0.2s; }
+  .upload-card.done { border-color: #95C11F; border-style: solid; background: #f9fdf0; }
+  .upload-card h3 { font-size: 13px; color: #243547; margin-bottom: 6px; }
+  .upload-card p { font-size: 11px; color: #888; margin-bottom: 12px; }
+  .upload-card input[type=file] { display: none; }
+  .upload-btn { display: inline-block; padding: 8px 18px; background: #243547; color: white; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
+  .upload-btn:hover { background: #95C11F; color: #243547; }
+  .file-status { font-size: 11px; margin-top: 8px; color: #6b8f12; font-weight: bold; min-height: 16px; word-break: break-all; }
+  .how-to { background: #f6f8fa; border-left: 4px solid #95C11F; border-radius: 6px; padding: 14px 16px; font-size: 12px; color: #444; }
+  .how-to h4 { font-size: 11px; color: #243547; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; }
+  .how-to table { width: 100%; border-collapse: collapse; }
+  .how-to td { padding: 3px 0; border: none; font-size: 12px; vertical-align: top; }
+  .how-to td:first-child { color: #888; width: 42%; padding-right: 10px; }
+  .how-to td:last-child { font-weight: bold; color: #243547; }
+  .how-to tr:hover td { background: none; }
+  .run-btn { padding: 12px 26px; background: #95C11F; color: #243547; font-size: 14px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; margin-top: 18px; transition: opacity 0.2s; }
+  .run-btn:hover { opacity: 0.9; }
+  .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .error-box { background: #fee2e2; border: 1px solid #dc2626; border-radius: 8px; padding: 12px 14px; color: #b91c1c; font-size: 12.5px; margin-top: 16px; display: none; }
+
+  /* --- the week being shown (a fresh check, or a saved week) -------------- */
+  .panel { display: none; margin-bottom: 24px; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .panel-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .badge { font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; }
+  .badge.navy { background: #243547; color: #95C11F; }
+  .badge.unsaved { background: #fef3c7; color: #92400e; }
+  .badge.saved { background: #dcfce7; color: #166534; }
+  .panel-sub { font-size: 11.5px; color: #888; }
+  .save-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .save-btn { padding: 9px 18px; background: #243547; color: white; font-size: 12px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+  .save-btn:hover { background: #1a2735; }
+  .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .save-status { font-size: 12px; font-weight: bold; }
+  .save-status.ok { color: #16a34a; }
+  .save-status.err { color: #dc2626; }
+  .warn-box { background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 6px; padding: 11px 14px; margin-bottom: 16px; font-size: 12px; color: #92400e; line-height: 1.5; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+  @media (max-width: 860px) { .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .kpi { background: white; border-radius: 10px; padding: 18px 20px; border-top: 4px solid #ddd; }
+  .kpi.navy { border-top-color: #243547; }
+  .kpi.red { border-top-color: #dc2626; }
+  .kpi.amber { border-top-color: #f59e0b; }
+  .kpi.green { border-top-color: #95C11F; }
+  .kpi label { font-size: 10.5px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; }
+  .kpi .val { font-size: 30px; font-weight: bold; color: #243547; margin: 6px 0 4px; }
+  .kpi.red .val.hot { color: #dc2626; }
+  .kpi .sub { font-size: 11px; color: #999; }
+  .kpi .delta { font-size: 11px; font-weight: bold; margin-top: 4px; }
+  .delta.worse { color: #dc2626; }
+  .delta.better { color: #16a34a; }
+  .delta.same { color: #999; }
+
+  .two-col { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 960px) { .two-col { grid-template-columns: minmax(0, 1fr); } }
+
+  .card { background: white; border-radius: 10px; padding: 20px 22px; margin-bottom: 24px; }
+  .card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .card .note { font-size: 11.5px; color: #888; margin-top: 12px; line-height: 1.5; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #243547; color: white; padding: 9px 10px; text-align: left; font-size: 11px; white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid #f0f2f5; vertical-align: top; }
+  td.num, th.num { text-align: right; }
+  tr:hover td { background: #fafafa; }
+  tr.overdue td:first-child { box-shadow: inset 4px 0 0 #dc2626; }
+  tr.soon td:first-child { box-shadow: inset 4px 0 0 #f59e0b; }
+  .job-no { font-weight: bold; color: #243547; white-space: nowrap; }
+  .due { white-space: nowrap; }
+  .when { display: block; font-size: 10.5px; font-weight: bold; margin-top: 2px; }
+  .when.late { color: #dc2626; }
+  .when.soon { color: #b45309; }
+  .muted { color: #999; font-size: 11px; display: block; margin-top: 2px; }
+  .tag { display: inline-block; font-size: 10px; font-weight: bold; padding: 2px 7px; border-radius: 9px; background: #eef1f4; color: #55647a; white-space: nowrap; }
+  .tag.ppm { background: #eef6dc; color: #4d6b0a; }
+  .tag.unalloc { background: #fef3c7; color: #92400e; }
+  .empty { padding: 26px; text-align: center; color: #16a34a; font-weight: bold; font-size: 13px; }
+
+  .canvas-wrap { position: relative; height: 300px; }
+  .trend-empty { padding: 30px; text-align: center; color: #888; font-size: 12.5px; }
+  tr.week-row { cursor: pointer; }
+  tr.week-row.selected td { background: #f4f9e6; }
+
+  footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
+
+  @media print {
+    body { display: block; background: white; }
+    .sidebar, .upload-section, .save-row, footer { display: none !important; }
+    .card, .kpi { break-inside: avoid; border: 1px solid #e2e5ea; }
+  }
+</style>
+<script src="/reminders.js" defer></script>  <!-- upload reminders on the sidebar tabs -->
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Performance Hub</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-board-review" onclick="toggleNavGroup('board-review')">
+        <span>Board Review</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-board-review">
+        <a class="nav-item" href="/board-review">Total Monthly Performance Review</a>
+        <a class="nav-item" href="/">Monthly Check</a>
+        <a class="nav-item" href="/teep">TEEP</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-production" onclick="toggleNavGroup('production')">
+        <span>Production</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-production">
+        <a class="nav-item" href="/production">Monthly Performance Review</a>
+        <a class="nav-item" href="/production-trend">Trend Dashboard</a>
+        <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/daily-oee">Daily OEE</a>
+        <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
+        <a class="nav-item" href="/production-plan">Production Plan</a>
+        <a class="nav-item" href="/production-sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/production-sfc-trend">SFC Trend</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header open" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
+        <span>Maintenance</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items open" id="nav-group-maintenance">
+        <a class="nav-item" href="/maintenance">Monthly Performance Review</a>
+        <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+        <a class="nav-item" href="/maintenance-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/maintenance-sfc-vs-agility">SFC vs Agility</a>
+        <a class="nav-item" href="/daily">Daily Check</a>
+        <a class="nav-item" href="/daily-trend">Daily Trend</a>
+        <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+        <a class="nav-item" href="/tpm-schedule">TPM Schedule</a>
+        <a class="nav-item" href="/maintenance-personnel">Personnel Performance</a>
+        <a class="nav-item active" href="/maintenance-open-jobs">Open Jobs</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-toolroom" onclick="toggleNavGroup('toolroom')">
+        <span>Toolroom</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-toolroom">
+        <a class="nav-item" href="/toolroom">Monthly Performance Review</a>
+        <a class="nav-item" href="/toolroom-trend">Trend Dashboard</a>
+        <a class="nav-item" href="/toolroom-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/toolroom-sfc-vs-agility">SFC vs Agility</a>
+      </div>
+    </div>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<script>
+function toggleNavGroup(name) {
+  var header = document.getElementById('nav-header-' + name);
+  var items = document.getElementById('nav-group-' + name);
+  var isOpen = items.classList.toggle('open');
+  header.classList.toggle('open', isOpen);
+}
+
+// Idle timeout — after 2 minutes with no mouse/keyboard/touch activity,
+// send everyone back to the splash/landing screen. Any of these events
+// firing resets the clock, so it only fires after a genuine 2-minute
+// gap with nobody touching the app at all.
+(function() {
+  var IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+  var idleTimer;
+  function goIdle() { window.location.href = '/splash'; }
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(goIdle, IDLE_TIMEOUT_MS);
+  }
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function(evt) {
+    document.addEventListener(evt, resetIdleTimer, { passive: true });
+  });
+  resetIdleTimer();
+})();
+</script>
+
+<div class="main">
+
+<div class="page-header">
+  <h1>Open Jobs</h1>
+  <p>Maintenance &amp; Electrician jobs still open in Agility — checked every Monday from the Selective Work Orders export</p>
+</div>
+
+<div class="container">
+
+  <div class="upload-section">
+    <h2>Upload This Week's Open-Jobs Export</h2>
+    <p>Run Check to see what's open, then Save. Saving clears the Monday reminder and adds this week to the trend below.</p>
+    <div class="upload-grid">
+      <div>
+        <div class="upload-card" id="card-xlsx">
+          <h3>📋 Selective Work Orders</h3>
+          <p>.xlsx export from Agility, e.g. Selective_Work_Orders_by_woJobTaskCraft.xlsx</p>
+          <label class="upload-btn" for="xlsx-file">Choose File</label>
+          <input type="file" id="xlsx-file" accept=".xlsx" onchange="handleFile(this)">
+          <div class="file-status" id="xlsx-status"></div>
+        </div>
+        <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Check</button>
+        <div class="error-box" id="error-box"></div>
+      </div>
+      <div class="how-to">
+        <h4>Run it in Agility like this</h4>
+        <table>
+          <tr><td>Report</td><td>Selective Work Orders</td></tr>
+          <tr><td>Job Type</td><td>(NULL) — every type</td></tr>
+          <tr><td>Job Status</td><td>(NULL) — every status</td></tr>
+          <tr><td>Start Date</td><td>Not Set</td></tr>
+          <tr><td>Due Date</td><td>01/01/2025 to <span id="due-to">31/12</span></td></tr>
+          <tr><td>Comp. Date</td><td>Not Set</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel"></div>
+
+  <div class="card">
+    <h3>Open &amp; Overdue — Weekly Trend</h3>
+    <div class="canvas-wrap" id="chart-wrap"><canvas id="trendChart"></canvas></div>
+    <div class="trend-empty" id="trend-empty" style="display:none;">No weeks saved yet. Upload this week's export above and Save, and the trend starts here.</div>
+  </div>
+
+  <div class="card" id="weeks-card" style="display:none;">
+    <h3>Saved Weeks</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Week</th><th>Checked</th><th class="num">Open</th><th class="num">Overdue</th>
+            <th class="num">Due ≤ 14 days</th><th class="num">Unallocated</th><th class="num">Open PPMs</th><th>Oldest overdue</th>
+          </tr>
+        </thead>
+        <tbody id="weeks-tbody"></tbody>
+      </table>
+    </div>
+    <p class="note">Click a week to see its job list again.</p>
+  </div>
+
+</div>
+
+<footer>Clamason Maintenance — Internal Tool</footer>
+
+</div>
+
+<script>
+const NAVY = '#243547', LIME = '#95C11F', RED = '#dc2626';
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+let file = null;
+let weeks = [];          // every saved week's figures, oldest first
+let chart = null;
+
+document.getElementById('due-to').textContent = '31/12/' + new Date().getFullYear();
+
+// --- small helpers -----------------------------------------------------------
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// 'YYYY-MM-DD' -> a local date, without the timezone shift new Date(iso) gives.
+function parseIso(iso) {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function fmtDate(iso, withYear) {
+  if (!iso) return '—';
+  const d = parseIso(iso);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}` + (withYear ? ` ${d.getFullYear()}` : '');
+}
+
+function fmtDay(iso) {
+  if (!iso) return '—';
+  const d = parseIso(iso);
+  return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+function weekLabel(iso) { return 'w/c ' + fmtDate(iso); }
+
+function daysBetween(fromIso, toIso) {
+  return Math.round((parseIso(toIso) - parseIso(fromIso)) / 86400000);
+}
+
+function plural(n, word) { return `${n} ${word}${n === 1 ? '' : 's'}`; }
+
+// Change against the previous saved week. For every figure on this page,
+// fewer is better.
+function delta(curr, prev) {
+  if (prev == null || curr == null) return '';
+  const diff = curr - prev;
+  if (diff === 0) return '<div class="delta same">same as last week</div>';
+  return `<div class="delta ${diff > 0 ? 'worse' : 'better'}">${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)} vs last week</div>`;
+}
+
+// --- the week panel: a fresh check (with Save) or a saved week -------------------
+
+// data: a check result or a saved week (same fields). opts.mode: 'check' | 'saved'.
+function renderPanel(data, opts) {
+  const panel = document.getElementById('panel');
+  const asOf = data.as_of;
+  const prev = previousWeek(data.week_start);
+  const jobs = data.jobs || [];
+  const people = data.by_person || [];
+  const yearOf = iso => iso ? iso.slice(0, 4) : '';
+
+  const title = opts.mode === 'check'
+    ? `<span class="badge navy">${weekLabel(data.week_start)}</span><span class="badge unsaved">Checked — not saved yet</span>`
+    : `<span class="badge navy">${weekLabel(data.week_start)}</span><span class="badge saved">Saved</span>`;
+  const sub = opts.mode === 'check'
+    ? `${esc(data.filename || '')} · ${data.jobs_in_file.toLocaleString()} jobs in the file, ${data.finished_in_file.toLocaleString()} finished · due dates ${fmtDate(data.due_from, true)} to ${fmtDate(data.due_to, true)}`
+    : `Checked ${fmtDay(asOf)} · ${esc(data.source_filename || '')}`;
+  const save = opts.mode === 'check'
+    ? `<div class="save-row"><button class="save-btn" id="save-btn" onclick="saveWeek()">💾 Save for ${weekLabel(data.week_start)}</button><span class="save-status" id="save-status"></span></div>`
+    : '';
+
+  const warnings = (data.warnings || []).map(w => `<div class="warn-box">⚠ ${esc(w)}</div>`).join('');
+
+  const rows = jobs.map(j => {
+    let when = '';
+    if (j.overdue) when = `<span class="when late">${plural(j.daysOverdue, 'day')} late</span>`;
+    else if (j.due && j.due === asOf) when = '<span class="when soon">due today</span>';
+    else if (j.dueSoon) when = `<span class="when soon">in ${plural(daysBetween(asOf, j.due), 'day')}</span>`;
+    const typeTag = j.ppm ? `<span class="tag ppm">${esc(j.jobType)}</span>` : `<span class="tag">${esc(j.jobType || '—')}</span>`;
+    const who = j.unallocated ? '<span class="tag unalloc">Unallocated</span>' : esc(j.people.join(', '));
+    return `
+      <tr class="${j.overdue ? 'overdue' : (j.dueSoon ? 'soon' : '')}">
+        <td class="job-no">${esc(j.jobNo)}</td>
+        <td class="due">${fmtDate(j.due, j.due && yearOf(j.due) !== yearOf(asOf))}${when}</td>
+        <td>${esc(j.assetName || j.asset || '—')}${j.assetName && j.asset ? `<span class="muted">${esc(j.asset)}</span>` : ''}</td>
+        <td>${esc(j.desc || '—')}</td>
+        <td>${typeTag}</td>
+        <td>${esc(j.status || '—')}</td>
+        <td>${who}</td>
+      </tr>`;
+  }).join('');
+
+  const nc = data.not_counted || {};
+  const notCounted = [];
+  if (nc.toolroom) notCounted.push(`${plural(nc.toolroom, 'open Toolroom job')} (Scott's)`);
+  if (nc.other) notCounted.push(`${plural(nc.other, 'open job')} for other crafts`);
+
+  panel.innerHTML = `
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">${title}</div>
+        <div class="panel-sub" style="margin-top:8px;">${sub}</div>
+      </div>
+      ${save}
+    </div>
+    ${warnings}
+    <div class="kpi-row">
+      <div class="kpi navy">
+        <label>Open jobs</label>
+        <div class="val">${data.open_total}</div>
+        <div class="sub">${plural(data.open_ppm || 0, 'PPM')} among them</div>
+        ${delta(data.open_total, prev && prev.open_total)}
+      </div>
+      <div class="kpi red">
+        <label>Overdue</label>
+        <div class="val ${data.overdue ? 'hot' : ''}">${data.overdue}</div>
+        <div class="sub">${data.oldest_overdue ? 'Oldest due ' + fmtDate(data.oldest_overdue, yearOf(data.oldest_overdue) !== yearOf(asOf)) : 'Nothing past its due date'}</div>
+        ${delta(data.overdue, prev && prev.overdue)}
+      </div>
+      <div class="kpi amber">
+        <label>Due in next 14 days</label>
+        <div class="val">${data.due_soon}</div>
+        <div class="sub">Due ${fmtDate(asOf)} to ${fmtDate(addDays(asOf, 14))}</div>
+      </div>
+      <div class="kpi green">
+        <label>Unallocated</label>
+        <div class="val">${data.unallocated}</div>
+        <div class="sub">Raised, but nobody on the task yet</div>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <h3>Open jobs — overdue first</h3>
+        ${jobs.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Job</th><th>Due</th><th>Asset</th><th>Work</th><th>Type</th><th>Status</th><th>Who</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>` : '<div class="empty">✓ No open Maintenance or Electrician jobs</div>'}
+        ${notCounted.length ? `<p class="note">Not counted here: ${notCounted.join(', ')}.</p>` : ''}
+      </div>
+      <div class="card">
+        <h3>Who has what</h3>
+        ${people.length ? `
+        <table>
+          <thead><tr><th>Person</th><th class="num">Open</th><th class="num">Late</th></tr></thead>
+          <tbody>${people.map(p => `
+            <tr><td>${esc(p.person)}</td><td class="num">${p.open}</td>
+            <td class="num" style="${p.overdue ? 'color:#dc2626;font-weight:bold;' : ''}">${p.overdue}</td></tr>`).join('')}
+          </tbody>
+        </table>
+        <p class="note">A job with two people on it counts for both.</p>` : '<div class="empty">Nobody has open jobs</div>'}
+      </div>
+    </div>
+  `;
+  panel.style.display = 'block';
+}
+
+function addDays(iso, n) {
+  const d = parseIso(iso);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// The saved week before this one, for the "vs last week" arrows.
+function previousWeek(weekStart) {
+  const earlier = weeks.filter(w => w.week_start < weekStart);
+  return earlier.length ? earlier[earlier.length - 1] : null;
+}
+
+// --- upload, check and save --------------------------------------------------------
+
+function handleFile(input) {
+  file = input.files[0] || null;
+  const status = document.getElementById('xlsx-status');
+  const card = document.getElementById('card-xlsx');
+  status.textContent = file ? '✓ ' + file.name : '';
+  card.classList.toggle('done', !!file);
+  document.getElementById('run-btn').disabled = !file;
+  document.getElementById('error-box').style.display = 'none';
+}
+
+function showError(msg) {
+  const box = document.getElementById('error-box');
+  box.textContent = msg;
+  box.style.display = 'block';
+}
+
+async function runCheck() {
+  if (!file) return;
+  const runBtn = document.getElementById('run-btn');
+  document.getElementById('error-box').style.display = 'none';
+  runBtn.disabled = true;
+  runBtn.textContent = 'Reading the export…';
+  try {
+    const fd = new FormData();
+    fd.append('selective_wo', file);
+    const res = await fetch('/api/open-jobs-check', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { showError(data.error); return; }
+    renderPanel(data, { mode: 'check' });
+    highlightWeek(null);
+    document.getElementById('panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    showError('Request failed: ' + e.message);
+  } finally {
+    runBtn.disabled = !file;
+    runBtn.textContent = '🔍 Run Check';
+  }
+}
+
+async function saveWeek() {
+  const btn = document.getElementById('save-btn');
+  const status = document.getElementById('save-status');
+  if (!file) {
+    status.textContent = 'Choose the file again above before saving';
+    status.className = 'save-status err';
+    return;
+  }
+  btn.disabled = true;
+  status.textContent = 'Saving…';
+  status.className = 'save-status';
+  try {
+    const fd = new FormData();
+    fd.append('selective_wo', file);
+    const res = await fetch('/api/save-open-jobs', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) {
+      status.textContent = data.error;
+      status.className = 'save-status err';
+      btn.disabled = false;
+      return;
+    }
+    // Clear the Monday reminder on the sidebar now, not on the next page load.
+    if (window.refreshReminders) window.refreshReminders();
+    await loadTrend(data.week_start);
+  } catch (e) {
+    status.textContent = 'Save failed: ' + e.message;
+    status.className = 'save-status err';
+    btn.disabled = false;
+  }
+}
+
+// --- trend ----------------------------------------------------------------------
+
+// showWeek: a week's Monday to show in the panel, or null for the latest.
+async function loadTrend(showWeek) {
+  let data;
+  try {
+    const url = '/api/open-jobs-trend' + (showWeek ? '?week=' + encodeURIComponent(showWeek) : '');
+    const res = await fetch(url, { cache: 'no-store' });
+    data = await res.json();
+    if (data.error) throw new Error(data.error);
+  } catch (e) {
+    document.getElementById('chart-wrap').style.display = 'none';
+    const empty = document.getElementById('trend-empty');
+    empty.textContent = 'Could not load saved weeks: ' + e.message;
+    empty.style.display = 'block';
+    return;
+  }
+  weeks = data.weeks || [];
+  renderTrend();
+  if (data.week) {
+    renderPanel(data.week, { mode: 'saved' });
+    highlightWeek(data.week.week_start);
+  }
+}
+
+async function showSavedWeek(weekStart) {
+  try {
+    const res = await fetch('/api/open-jobs-trend?week=' + encodeURIComponent(weekStart), { cache: 'no-store' });
+    const data = await res.json();
+    if (data.error || !data.week) return;
+    renderPanel(data.week, { mode: 'saved' });
+    highlightWeek(weekStart);
+    document.getElementById('panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) { /* the table stays as it is */ }
+}
+
+function highlightWeek(weekStart) {
+  document.querySelectorAll('tr.week-row').forEach(tr =>
+    tr.classList.toggle('selected', tr.dataset.week === weekStart));
+}
+
+function renderTrend() {
+  const has = weeks.length > 0;
+  document.getElementById('chart-wrap').style.display = has ? 'block' : 'none';
+  document.getElementById('trend-empty').style.display = has ? 'none' : 'block';
+  document.getElementById('weeks-card').style.display = has ? 'block' : 'none';
+  if (!has) return;
+
+  document.getElementById('weeks-tbody').innerHTML = weeks.slice().reverse().map(w => `
+    <tr class="week-row" data-week="${w.week_start}" onclick="showSavedWeek('${w.week_start}')">
+      <td><strong>${weekLabel(w.week_start)}</strong></td>
+      <td>${fmtDay(w.as_of)}</td>
+      <td class="num">${w.open_total}</td>
+      <td class="num" style="${w.overdue ? 'color:#dc2626;font-weight:bold;' : ''}">${w.overdue}</td>
+      <td class="num">${w.due_soon ?? '–'}</td>
+      <td class="num">${w.unallocated ?? '–'}</td>
+      <td class="num">${w.open_ppm ?? '–'}</td>
+      <td>${w.oldest_overdue ? fmtDate(w.oldest_overdue, true) : '—'}</td>
+    </tr>`).join('');
+
+  const cfg = {
+    data: {
+      labels: weeks.map(w => weekLabel(w.week_start)),
+      datasets: [
+        { type: 'bar', label: 'Open jobs', data: weeks.map(w => w.open_total),
+          backgroundColor: NAVY, borderRadius: 4, maxBarThickness: 46, order: 2 },
+        { type: 'line', label: 'Overdue', data: weeks.map(w => w.overdue),
+          borderColor: RED, backgroundColor: RED, pointRadius: 5, tension: 0.25, order: 1 },
+        { type: 'line', label: 'Due in next 14 days', data: weeks.map(w => w.due_soon),
+          borderColor: LIME, backgroundColor: LIME, pointRadius: 4, borderDash: [5, 4], tension: 0.25, order: 1 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11 } } } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } },
+    },
+  };
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('trendChart'), cfg);
+}
+
+loadTrend(null);
+</script>
+
+</body>
+</html>

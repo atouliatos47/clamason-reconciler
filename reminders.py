@@ -29,9 +29,11 @@ WEEKLY — each week should have a row for its Monday
 The Production Plan page snaps whatever day is picked to that week's
 Monday. "Due" on the week's first working day (normally Monday), "overdue"
 after that. A week with no working days at all (Christmas) is skipped.
-Reminders the hub can't check by itself — nothing is uploaded for them,
-like the Monday open-jobs check in Agility — have a "Mark as done" button
-instead; mark_done() records the click in reminder_acks.
+A reminder the hub can't check by itself, because nothing is uploaded for
+it, can have a "Mark as done" button instead ('ack': True); mark_done()
+records the click in reminder_acks. The Monday open-jobs check was the
+first, until it got its own upload page (Open Jobs, 20 Oct 2026) — none
+uses the button now, but it's kept for the next one.
 
 MONTHLY — last month should be saved by the Nth working day
 -----------------------------------------------------------
@@ -97,6 +99,26 @@ def _oee_production_day(row):
     return str(row.get('date'))[:10]
 
 
+def open_jobs_weeks(start_date, end_date):
+    """The Open Jobs reminder's saved_weeks: the Mondays from start_date to
+    end_date that count as checked.
+
+    A saved check covers its own week AND any earlier week that was skipped.
+    It's Agility as it is now, so checking on a Tuesday also answers "what's
+    open?" for a Monday that was missed — the same rule the old Mark as done
+    button had (see mark_done()). The skipped week still has no point on the
+    trend; only the reminder treats it as done. Clicks of that old button,
+    in reminder_acks, still count too."""
+    done = {r['period'] for r in db.get_reminder_acks('maintenance-open-jobs', start_date, end_date)}
+    latest = max((w['week_start'] for w in db.get_open_jobs_weeks(start_date=start_date)), default=None)
+    if latest:
+        monday = date.fromisoformat(start_date)
+        while monday.isoformat() <= min(end_date, latest):
+            done.add(monday.isoformat())
+            monday += timedelta(weeks=1)
+    return sorted(done)
+
+
 def oee_production_days(start_date, end_date):
     """The Daily OEE reminder's saved_days: one {'date': production day} per
     saved report. Asks the database for a few days past end_date, because a
@@ -154,16 +176,15 @@ WEEKLY_REMINDERS = [
             r['week_start'] for r in db.get_production_plan_weeks(start_date=start_date, end_date=end_date)],
     },
     {
-        # Weekly look at open and overdue jobs in Agility (Selective Work
-        # Orders, all statuses, due 01/01/2025 -> 31/12 this year). Nothing
-        # gets uploaded to the hub for it, so it's cleared by a button.
+        # Monday look at open and overdue jobs in Agility (Selective Work
+        # Orders, all statuses, due 01/01/2025 -> 31/12 this year), saved on
+        # the Open Jobs page. Same id as when it was a "Mark as done" button,
+        # so weeks marked done that way still count — see open_jobs_weeks().
         'id': 'maintenance-open-jobs',
         'dept': 'maintenance',
-        'label': 'Open-jobs check',
-        'href': None,                   # no menu link — gets its own line with a "Mark as done" button
-        'ack': True,
-        'saved_weeks': lambda start_date, end_date: [
-            r['period'] for r in db.get_reminder_acks('maintenance-open-jobs', start_date, end_date)],
+        'label': 'Open Jobs',
+        'href': '/maintenance-open-jobs',
+        'saved_weeks': lambda start_date, end_date: open_jobs_weeks(start_date, end_date),
     },
 ]
 
@@ -319,9 +340,9 @@ def check_weekly(reminder, today):
 
 def mark_done(reminder_id, today=None):
     """The "Mark as done" button: record every week this reminder is
-    currently missing as done. All of them, not just this week's — the
-    open-jobs check looks at Agility as it is NOW, so doing it today covers
-    a week that was skipped too.
+    currently missing as done. All of them, not just this week's — a check
+    of how things are NOW covers a week that was skipped too (the rule the
+    open-jobs check had, and still has on its page — see open_jobs_weeks()).
 
     Only reminders with 'ack': True can be marked done; anything else
     (a report reminder, or a made-up id) is refused — those clear

@@ -4,8 +4,9 @@
 //   - puts a number on the department tab: amber = due today, red = missed;
 //   - puts a dot on the menu item that needs doing, with a one-line reason
 //     underneath (visible when the tab is open);
-//   - a reminder with no menu item of its own (the Monday open-jobs check)
-//     gets its own line at the bottom of the tab, with a "Mark as done" button.
+//   - a reminder with no menu item of its own gets its own line at the bottom
+//     of the tab, with a "Mark as done" button if it's cleared by hand (none
+//     is right now — the Monday open-jobs check has its own page since Oct 2026).
 // Saving the report clears it on the next page load — or straight away, when
 // the page's save code calls window.refreshReminders() after a good save.
 // If the request fails, nothing is drawn — a reminder problem must never

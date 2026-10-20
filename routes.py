@@ -37,6 +37,7 @@ from daily_trend import (
 )
 from parsers.sfc_daily_downtime_pdf import parse_daily_downtime_pdf
 from parsers.production_plan_xlsx import parse_production_plan
+from parsers.open_jobs_parser import summarise_open_jobs
 import db
 
 bp = Blueprint('routes', __name__)
@@ -670,6 +671,70 @@ def maintenance_personnel_view():
     return send_from_directory('public', 'maintenance-personnel.html')
 
 
+# --- Open Jobs (Maintenance, weekly) ------------------------------------------
+# Same check-then-save shape as the Production Plan: /api/open-jobs-check
+# only reads the file and shows the result; /api/save-open-jobs is the only
+# route that writes, and reads the file again itself rather than trusting
+# what the browser already has. Both read it "as of" today at Clamason, and
+# the save goes under this week's Monday — the snapshot is Agility as it is
+# now, so it can't be filed under some other week.
+
+@bp.route('/maintenance-open-jobs')
+def maintenance_open_jobs_view():
+    return send_from_directory('public', 'maintenance-open-jobs.html')
+
+
+@bp.route('/api/open-jobs-check', methods=['POST'])
+def open_jobs_check():
+    try:
+        wo_file = request.files.get('selective_wo')
+        if not wo_file:
+            return jsonify({'error': 'Selective Work Orders file is required'})
+        with saved_upload(wo_file, 'open_jobs') as path:
+            result = summarise_open_jobs(path)
+        result['filename'] = wo_file.filename
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({'error': str(e)})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/api/save-open-jobs', methods=['POST'])
+def save_open_jobs():
+    try:
+        wo_file = request.files.get('selective_wo')
+        if not wo_file:
+            return jsonify({'error': 'Selective Work Orders file is required'})
+        with saved_upload(wo_file, 'open_jobs') as path:
+            result = summarise_open_jobs(path)
+        db.save_open_jobs_week(result, wo_file.filename)
+        return jsonify({
+            'saved': True, 'week_start': result['week_start'],
+            'open_total': result['open_total'], 'overdue': result['overdue'],
+        })
+    except ValueError as e:
+        return jsonify({'error': str(e)})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
+@bp.route('/api/open-jobs-trend')
+def open_jobs_trend():
+    """Every saved week's figures (oldest first) for the chart, plus one
+    week in full for the job list — ?week=YYYY-MM-DD (its Monday), or the
+    latest saved week when not given."""
+    try:
+        return jsonify({
+            'weeks': db.get_open_jobs_weeks(),
+            'week': db.get_open_jobs_week(request.args.get('week') or None),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+
 @bp.route('/splash')
 def splash_view():
     return send_from_directory('public', 'splash.html')
@@ -810,7 +875,8 @@ def api_reminders():
 @bp.route('/api/reminders/ack', methods=['POST'])
 def api_reminders_ack():
     """The "Mark as done" button on a reminder the hub can't check by itself
-    (the Monday open-jobs check). Body: {"id": "<reminder id>"}. Marks every
+    (none at the moment — the Monday open-jobs check used it until it got
+    its own Open Jobs page). Body: {"id": "<reminder id>"}. Marks every
     week that reminder is currently missing, then returns the updated list
     so the sidebar can redraw straight away. Only reminders built for a
     button can be marked — see reminders.mark_done()."""

@@ -1024,3 +1024,93 @@ def save_reminder_ack(reminder_id, period):
                 ON CONFLICT (reminder_id, period) DO NOTHING
             """, {'rid': reminder_id, 'period': period})
         conn.commit()
+
+
+# --- Open Jobs (weekly) -------------------------------------------------------
+
+# The figures the trend needs — everything except the full job list, which is
+# the bulk of each row and only wanted when one week is shown in detail.
+_OPEN_JOBS_FIGURES = ('week_start, as_of, source_filename, jobs_in_file, open_total, overdue, '
+                      'due_soon, open_ppm, overdue_ppm, unallocated, oldest_overdue, by_person, not_counted, saved_at')
+
+
+def _open_jobs_row(r):
+    row = dict(r)
+    for field in ('week_start', 'as_of', 'oldest_overdue', 'saved_at'):
+        if row.get(field) is not None:
+            row[field] = row[field].isoformat()
+    return row
+
+
+def save_open_jobs_week(summary, source_filename):
+    """Store one Open Jobs check. summary is the dict from
+    parsers.open_jobs_parser.summarise_open_jobs(); it carries its own
+    week_start (the Monday of the day it was checked). Saving again in the
+    same week replaces that week's row — the newest look at Agility wins."""
+    row = {k: summary.get(k) for k in (
+        'week_start', 'as_of', 'jobs_in_file', 'open_total', 'overdue', 'due_soon',
+        'open_ppm', 'overdue_ppm', 'unallocated', 'oldest_overdue')}
+    row['source_filename'] = source_filename
+    row['by_person'] = json.dumps(summary.get('by_person') or [])
+    row['not_counted'] = json.dumps(summary.get('not_counted') or {})
+    row['jobs'] = json.dumps(summary.get('jobs') or [])
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO open_jobs_weekly
+                    (week_start, as_of, source_filename, jobs_in_file, open_total, overdue,
+                     due_soon, open_ppm, overdue_ppm, unallocated, oldest_overdue, by_person, not_counted, jobs)
+                VALUES
+                    (%(week_start)s, %(as_of)s, %(source_filename)s, %(jobs_in_file)s,
+                     %(open_total)s, %(overdue)s, %(due_soon)s, %(open_ppm)s, %(overdue_ppm)s,
+                     %(unallocated)s, %(oldest_overdue)s, %(by_person)s, %(not_counted)s, %(jobs)s)
+                ON CONFLICT (week_start) DO UPDATE SET
+                    as_of = EXCLUDED.as_of,
+                    source_filename = EXCLUDED.source_filename,
+                    jobs_in_file = EXCLUDED.jobs_in_file,
+                    open_total = EXCLUDED.open_total,
+                    overdue = EXCLUDED.overdue,
+                    due_soon = EXCLUDED.due_soon,
+                    open_ppm = EXCLUDED.open_ppm,
+                    overdue_ppm = EXCLUDED.overdue_ppm,
+                    unallocated = EXCLUDED.unallocated,
+                    oldest_overdue = EXCLUDED.oldest_overdue,
+                    by_person = EXCLUDED.by_person,
+                    not_counted = EXCLUDED.not_counted,
+                    jobs = EXCLUDED.jobs,
+                    saved_at = now()
+            """, row)
+        conn.commit()
+
+
+def get_open_jobs_weeks(start_date=None, end_date=None):
+    """Saved weeks' figures for the trend, oldest first, without the job
+    lists. Optional start_date/end_date filter on week_start (inclusive,
+    'YYYY-MM-DD')."""
+    query = f"SELECT {_OPEN_JOBS_FIGURES} FROM open_jobs_weekly WHERE 1=1"
+    params = {}
+    if start_date:
+        query += " AND week_start >= %(start_date)s"
+        params['start_date'] = start_date
+    if end_date:
+        query += " AND week_start <= %(end_date)s"
+        params['end_date'] = end_date
+    query += " ORDER BY week_start ASC"
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, params)
+            return [_open_jobs_row(r) for r in cur.fetchall()]
+
+
+def get_open_jobs_week(week_start=None):
+    """One saved week in full, job list included — the given week
+    ('YYYY-MM-DD', its Monday), or the latest saved one. None if there
+    isn't one."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if week_start:
+                cur.execute("SELECT * FROM open_jobs_weekly WHERE week_start = %(w)s", {'w': week_start})
+            else:
+                cur.execute("SELECT * FROM open_jobs_weekly ORDER BY week_start DESC LIMIT 1")
+            r = cur.fetchone()
+    return _open_jobs_row(r) if r else None

@@ -491,3 +491,30 @@ CREATE TABLE IF NOT EXISTS reminder_acks (
     done_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (reminder_id, period)
 );
+
+-- open_jobs_weekly — the Monday Open Jobs check (Maintenance tab). One row
+-- per week, keyed by that week's Monday: what Maintenance had open in Agility
+-- on the day the Selective Work Orders export was saved. Re-saving in the
+-- same week replaces that week's row, because the latest look at Agility is
+-- the true one for the week. The headline counts are their own columns so
+-- the trend can read them without unpacking anything; by_person and jobs
+-- hold the detail behind them for showing a saved week again. Written and
+-- read only by db.save_open_jobs_week() / get_open_jobs_weeks() /
+-- get_open_jobs_week(). A brand-new table — nothing existing is touched.
+CREATE TABLE IF NOT EXISTS open_jobs_weekly (
+    week_start              DATE PRIMARY KEY,
+    as_of                   DATE NOT NULL,
+    source_filename         TEXT,
+    jobs_in_file            INTEGER,
+    open_total              INTEGER NOT NULL,
+    overdue                 INTEGER NOT NULL,
+    due_soon                INTEGER,
+    open_ppm                INTEGER,
+    overdue_ppm             INTEGER,
+    unallocated             INTEGER,
+    oldest_overdue          DATE,
+    by_person               JSONB,
+    not_counted             JSONB,
+    jobs                    JSONB,
+    saved_at                TIMESTAMPTZ NOT NULL DEFAULT now()
+);

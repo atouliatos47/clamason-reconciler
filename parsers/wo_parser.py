@@ -98,6 +98,9 @@ def _parse_all_maintenance_wos(filepath, craft_filter=MAINTENANCE_CRAFTS):
     caller behaves exactly as before. It exists so the same block-walk
     can also count Toolmaker WOs without a second copy of the parsing
     logic — the thing this module's docstring already warns about.
+    craft_filter=None keeps EVERY job, including ones with no task
+    rows at all (not allocated to anyone yet) — the Open Jobs page
+    needs those, and sorts the crafts out itself.
     Both parse_wo_file() (job-type-restricted, for the monthly board
     reconciliation) and parse_wo_file_all_types() (every job type, for
     the Daily View) build on this same walk, so there's only one place
@@ -137,7 +140,7 @@ def _parse_all_maintenance_wos(filepath, craft_filter=MAINTENANCE_CRAFTS):
         resources, block_crafts, next_i = _collect_block_crafts(rows, i + 1)
         i = next_i - 1  # resume scan right after this job's block
 
-        if any(c in craft_filter for c in block_crafts):
+        if craft_filter is None or any(c in craft_filter for c in block_crafts):
             records.append({
                 'jobNo': job_no,
                 'asset': asset_code,
