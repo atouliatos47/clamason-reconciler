@@ -242,36 +242,45 @@ const TOOLROOM_CODES = ['TOOL FAILURE - PRODUCTION', 'TOOL FAILURE - SET UP',
   'TOOL UNAVAILABLE', 'WASTE IN THE TOOL',
   'TR-TOOL UNAVAILABLE', 'TR-TOOL FAILURE'];
 
-// Every uploaded month's machine_breakdown summed per press, rather than
-// just the currently-selected period — "which presses have cost us the
-// most tool downtime overall", not "this month only". A press that only
-// shows up in older months still counts here even if it's since been
-// retired or renamed, same reasoning as the per-period Pareto never
-// hiding a press just because it's not in the latest file.
-function allTimeToolTop5(runs) {
+// The Pareto, reason-code chart and the first three KPI tiles all work
+// on a "scope" — a list of runs. Pick a month in the dropdown and the
+// scope is just that one month; pick "All months (combined)" and it's
+// every uploaded month. Same functions either way, so the single-month
+// and combined figures are always worked out identically.
+//
+// These used to ALWAYS be all-time (every uploaded month summed), with
+// only Open WO Backlog following the dropdown. That made every month look
+// identical apart from one tile — the dropdown looked broken. The
+// all-time view still exists, it's now the "All months" option.
+
+// machine_breakdown summed per press across the scope. In "All months" a
+// press that only shows up in older months still counts even if it's
+// since been retired or renamed. Presses with 0h are left out — a Pareto
+// bar of nothing isn't a contributor.
+function toolTop5(scope) {
   const totals = {};
-  runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
+  scope.forEach(r => (r.machine_breakdown || []).forEach(m => {
     totals[m.machine] = (totals[m.machine] || 0) + (m.tool_hrs || 0);
   }));
   return Object.entries(totals)
     .map(([machine, tool_hrs]) => ({ machine, tool_hrs }))
+    .filter(r => r.tool_hrs > 0)
     .sort((a, b) => b.tool_hrs - a.tool_hrs)
     .slice(0, 5);
 }
 
-// Same all-time treatment as allTimeToolTop5 above, applied to the reason
-// codes instead of the presses — every uploaded month's hours per reason
-// summed together, not just whichever period is selected in the dropdown.
-function allTimeToolReasonTotals(runs) {
+// Same treatment as toolTop5 above, applied to the reason codes instead
+// of the presses — hours per reason summed across the scope.
+function toolReasonTotals(scope) {
   const totals = {};
-  runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
+  scope.forEach(r => (r.machine_breakdown || []).forEach(m => {
     Object.entries(m.reasons || {}).forEach(([reason, h]) => {
       if (TOOLROOM_CODES.includes((reason || '').toUpperCase().trim())) {
         totals[reason] = (totals[reason] || 0) + h;
       }
     });
   }));
-  return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+  return Object.entries(totals).filter(e => e[1] > 0).sort((a, b) => b[1] - a[1]);
 }
 
 // Scott's 2 priority reason codes, trended per month rather than summed
@@ -300,20 +309,20 @@ function reasonHrsForRun(r, codes) {
 }
 
 
-// Same all-time idea applied to the top KPI tiles — but only for the two
-// that are genuinely a running total (hours accumulate month over month).
-// toolroom_gap_pct is NOT averaged across months (averaging percentages
-// weights a slow month the same as a busy one and gives a misleading
-// figure) — it's recalculated from the two summed totals below, exactly
-// the way compute_toolroom_gap() derives it for a single month:
-// gap% = (sfc hours − agility-matched hours) / sfc hours. Open WO Backlog
-// deliberately has NO all-time version — it's a snapshot of what's
-// sitting in the queue right now, not a flow, so "summed across every
-// month" would just double-count the same lingering tickets. That tile
-// stays tied to whichever period is selected.
-function allTimeToolroomGap(runs) {
+// The first three KPI tiles, worked out over the same scope. With one
+// month in scope this is just that month's figures. With all months,
+// the hours are summed, and the gap % is NOT averaged across months
+// (averaging percentages weights a slow month the same as a busy one and
+// gives a misleading figure) — it's recalculated from the two summed
+// totals, exactly the way compute_toolroom_gap() derives it for a single
+// month: gap% = (sfc hours − agility-matched hours) / sfc hours.
+// Open WO Backlog is never summed — it's a snapshot of what's sitting in
+// the queue, not a flow, so adding months together would just
+// double-count the same lingering tickets. In "All months" it shows the
+// latest month's figure instead.
+function toolroomGap(scope) {
   let sfcSum = 0, agilitySum = 0, sawSfc = false;
-  runs.forEach(r => {
+  scope.forEach(r => {
     if (r.toolroom_sfc_hrs != null) { sfcSum += r.toolroom_sfc_hrs; sawSfc = true; }
     if (r.agility_toolroom_hrs != null) agilitySum += r.agility_toolroom_hrs;
   });
@@ -465,6 +474,9 @@ function reasonBarsSimple(id, entries, colour) {
 // ---------------------------------------------------------------------
 
 function fmt(n, d=1) { return (n === null || n === undefined) ? '—' : Number(n).toFixed(d); }
+// Same as fmt() but adds the unit — and leaves it off for a missing
+// value, so a month with no data shows "—" rather than "—h".
+function fmtUnit(n, unit, d=1) { return (n === null || n === undefined) ? '—' : Number(n).toFixed(d) + unit; }
 
 function deltaBadge(curr, prev, higherIsWorse) {
   if (prev === null || prev === undefined || curr === null || curr === undefined) return '';
@@ -574,19 +586,44 @@ async function load() {
   }
 
   const sel = document.getElementById('period-select');
-  // Newest first — that's the month you came here to review.
-  sel.innerHTML = RUNS.slice().reverse()
+  // "All months" on top, then newest first — that's the month you came
+  // here to review.
+  sel.innerHTML = `<option value="all">All months (combined)</option>` + RUNS.slice().reverse()
     .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
-  const savedLabel = localStorage.getItem('clamason-selected-period');
-  const savedIdx = savedLabel ? RUNS.findIndex(r => (r.period_label || r.period) === savedLabel) : -1;
-  const startIdx = savedIdx !== -1 ? savedIdx : RUNS.length - 1;
-  sel.value = startIdx;
-  selectPeriod(startIdx);
+
+  // "All months" is remembered under this page's own key, NOT the shared
+  // 'clamason-selected-period' key. Other pages read that shared key
+  // expecting a month name — writing "all" into it would quietly reset
+  // them to the latest month.
+  let start;
+  if (safeGet(ALL_MONTHS_KEY) === 'all') {
+    start = 'all';
+  } else {
+    const savedLabel = safeGet('clamason-selected-period');
+    const savedIdx = savedLabel ? RUNS.findIndex(r => (r.period_label || r.period) === savedLabel) : -1;
+    start = String(savedIdx !== -1 ? savedIdx : RUNS.length - 1);
+  }
+  sel.value = start;
+  selectPeriod(start);
 }
 
-function selectPeriod(i) {
-  const idx = Number(i);
-  localStorage.setItem('clamason-selected-period', (RUNS[idx].period_label || RUNS[idx].period));
+const ALL_MONTHS_KEY = 'clamason-toolroom-trend-view';
+
+// localStorage can throw (private windows, blocked site data) — the page
+// should still work, it just won't remember the choice.
+function safeGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function safeSet(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+function safeRemove(key) { try { localStorage.removeItem(key); } catch (e) {} }
+
+function selectPeriod(v) {
+  if (v === 'all') {
+    safeSet(ALL_MONTHS_KEY, 'all');
+    render(RUNS, 'all');
+    return;
+  }
+  const idx = Number(v);
+  safeRemove(ALL_MONTHS_KEY);
+  safeSet('clamason-selected-period', (RUNS[idx].period_label || RUNS[idx].period));
   render(RUNS, idx);
 }
 
@@ -619,36 +656,60 @@ function hasToolDowntime(runs) {
   return runs.some(r => siteToolHrs(r) !== null);
 }
 
-function render(runs, idx) {
+// sel is either 'all' (every uploaded month combined) or the index of
+// one month in runs.
+function render(runs, sel) {
+  const isAll = sel === 'all';
+  const idx = isAll ? runs.length - 1 : sel;
   const latest = runs[idx];
   const prev = idx > 0 ? runs[idx - 1] : null;
-  const gap = allTimeToolroomGap(runs);
-  const rangeNote = `${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined`;
+  const name = r => r.period_label || r.period;
+
+  // What the tiles and the two charts count: one month, or all of them.
+  const scope = isAll ? runs : [latest];
+  const gap = toolroomGap(scope);
+  // Prior month's figures, for the ▲/▼ badges. Only in single-month view
+  // — "All months" has no "prior month" to compare against.
+  const prevGap = (!isAll && prev) ? toolroomGap([prev]) : null;
+
+  const rangeNote = `${name(runs[0])} – ${name(runs[runs.length - 1])} combined`;
+  const scopeNote = isAll ? `${rangeNote} · all ${runs.length} uploaded months` : `${name(latest)} only`;
+  const badge = isAll ? `All months (${rangeNote.replace(' combined', '')})` : name(latest);
+
+  // ▲/▼ vs prior month when there is one, otherwise a plain note saying
+  // what period the number covers.
+  const tileSub = (curr, prevVal, higherIsWorse) =>
+    (!isAll && prevGap && deltaBadge(curr, prevVal, higherIsWorse)) || `<span class="sub">${isAll ? rangeNote : name(latest)}</span>`;
+
+  const top5 = toolTop5(scope);
+  const reasons = toolReasonTotals(scope);
+  const emptyNote = `<div class="state-msg">No SFC tool downtime recorded for ${isAll ? 'any uploaded month' : name(latest)}</div>`;
 
   const app = document.getElementById('app');
   app.innerHTML = `
-    <div class="period-badge">Period: ${latest.period_label || latest.period}</div>
+    <div class="period-badge">Period: ${badge}</div>
 
     <div class="kpi-row">
       <div class="kpi red">
         <label>Tool SFC Hours</label>
-        <div class="val">${fmt(gap.sfcSum)}h</div>
-        <span class="sub">${rangeNote}</span>
+        <div class="val">${fmtUnit(gap.sfcSum, 'h')}</div>
+        ${tileSub(gap.sfcSum, prevGap && prevGap.sfcSum, true)}
       </div>
       <div class="kpi green">
         <label>Agility Hours Matched</label>
-        <div class="val">${fmt(gap.agilitySum)}h</div>
-        <span class="sub">${rangeNote}</span>
+        <div class="val">${fmtUnit(gap.agilitySum, 'h')}</div>
+        ${tileSub(gap.agilitySum, prevGap && prevGap.agilitySum, false)}
       </div>
       <div class="kpi navy">
         <label>WO Coverage Gap</label>
-        <div class="val">${fmt(gap.gapPct, 1)}%</div>
-        <span class="sub">${rangeNote}</span>
+        <div class="val">${fmtUnit(gap.gapPct, '%')}</div>
+        ${tileSub(gap.gapPct, prevGap && prevGap.gapPct, true)}
       </div>
       <div class="kpi amber">
         <label>Open WO Backlog</label>
         <div class="val">${latest.toolroom_wo_open == null ? '—' : latest.toolroom_wo_open}</div>
         ${latest.toolroom_wo_count == null ? '<span class="sub">no WO file uploaded</span>'
+          : isAll ? `<span class="sub">latest month (${name(latest)}) · a snapshot, not a total</span>`
           : prev && prev.toolroom_wo_open != null ? deltaBadge(latest.toolroom_wo_open, prev.toolroom_wo_open, true)
           : `<span class="sub">target &lt;${TOOLROOM_BACKLOG_TARGET}</span>`}
       </div>
@@ -657,16 +718,16 @@ function render(runs, idx) {
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Downtime Pareto — Top 5 Presses</h3>
-        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months</div>
-        <div class="canvas-wrap short"><canvas id="paretoChart"></canvas></div>
+        <div class="chart-sub-note">${scopeNote}</div>
+        ${top5.length ? '<div class="canvas-wrap short"><canvas id="paretoChart"></canvas></div>' : emptyNote}
       </div>
     </div>
 
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Tool Downtime — Reason Codes</h3>
-        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months</div>
-        <div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>
+        <div class="chart-sub-note">${scopeNote}</div>
+        ${reasons.length ? '<div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>' : emptyNote}
       </div>
     </div>
 
@@ -745,8 +806,8 @@ function render(runs, idx) {
   });
   attachValuesTable('hoursChart');
 
-  pareto('paretoChart', allTimeToolTop5(runs), 'tool_hrs', TOOLROOM);
-  reasonBarsSimple('reasonChart', allTimeToolReasonTotals(runs), TOOLROOM);
+  if (top5.length) pareto('paretoChart', top5, 'tool_hrs', TOOLROOM);
+  if (reasons.length) reasonBarsSimple('reasonChart', reasons, TOOLROOM);
 
   new Chart(document.getElementById('toolAvailFailureChart'), {
     type: 'line',
