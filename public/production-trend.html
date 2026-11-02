@@ -265,37 +265,47 @@ function categorise(reason) {
   return 'production';
 }
 
-// Every uploaded month's machine_breakdown summed per press, rather than
-// just the currently-selected period — "which presses have cost us the
-// most production downtime overall", not "this month only". Uses each
-// press's raw production_hrs, unadjusted for breaks/idle — same as the
-// Pareto on production.html, which never subtracted them either; only
-// the reason-codes chart and headline total do that.
-function allTimeProductionTop5(runs) {
+// The Pareto and reason-code charts work on a "scope" — a list of runs.
+// Pick a month in the dropdown and the scope is just that one month;
+// pick "All months (combined)" and it's every uploaded month. Same
+// functions either way — same approach as toolroom-trend.html and
+// dashboard.html.
+//
+// These two charts used to ALWAYS be all-time (every uploaded month
+// summed), whatever the dropdown said, so changing month didn't move
+// them. The all-time view still exists, it's now the "All months" option.
+
+// machine_breakdown's production hours summed per press across the
+// scope. Uses each press's raw production_hrs, unadjusted for
+// breaks/idle — same as the Pareto on production.html, which never
+// subtracted them either; only the reason-codes chart and headline total
+// do that. Presses with 0h are left out — a Pareto bar of nothing isn't
+// a contributor.
+function productionTop5(scope) {
   const totals = {};
-  runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
+  scope.forEach(r => (r.machine_breakdown || []).forEach(m => {
     totals[m.machine] = (totals[m.machine] || 0) + (m.production_hrs || 0);
   }));
   return Object.entries(totals)
     .map(([machine, production_hrs]) => ({ machine, production_hrs }))
+    .filter(r => r.production_hrs > 0)
     .sort((a, b) => b.production_hrs - a.production_hrs)
     .slice(0, 5);
 }
 
-// Same all-time idea applied to the reason codes instead of the presses
-// — every uploaded month's hours per reason summed together, not just
-// whichever period is selected in the dropdown. Breaks/idle excluded,
-// same as production.html's own reason chart.
-function allTimeProductionReasonTotals(runs) {
+// Same treatment as productionTop5 above, applied to the reason codes
+// instead of the presses — hours per reason summed across the scope.
+// Breaks/idle excluded, same as production.html's own reason chart.
+function productionReasonTotals(scope) {
   const totals = {};
-  runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
+  scope.forEach(r => (r.machine_breakdown || []).forEach(m => {
     Object.entries(m.reasons || {}).forEach(([reason, h]) => {
       const key = (reason || '').toUpperCase().trim();
       if (EXCLUDED_FROM_PRODUCTION.includes(key)) return;
       if (categorise(reason) === 'production') totals[reason] = (totals[reason] || 0) + h;
     });
   }));
-  return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+  return Object.entries(totals).filter(e => e[1] > 0).sort((a, b) => b[1] - a[1]);
 }
 
 // Darker than Chart.js's default grey tick colour so it survives a
@@ -550,19 +560,44 @@ async function load() {
   }
 
   const sel = document.getElementById('period-select');
-  // Newest first — that's the month you came here to review.
-  sel.innerHTML = RUNS.slice().reverse()
+  // "All months" on top, then newest first — that's the month you came
+  // here to review.
+  sel.innerHTML = `<option value="all">All months (combined)</option>` + RUNS.slice().reverse()
     .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
-  const savedLabel = localStorage.getItem('clamason-selected-period');
-  const savedIdx = savedLabel ? RUNS.findIndex(r => (r.period_label || r.period) === savedLabel) : -1;
-  const startIdx = savedIdx !== -1 ? savedIdx : RUNS.length - 1;
-  sel.value = startIdx;
-  selectPeriod(startIdx);
+
+  // "All months" is remembered under this page's own key, NOT the shared
+  // 'clamason-selected-period' key. Other pages read that shared key
+  // expecting a month name — writing "all" into it would quietly reset
+  // them to the latest month.
+  let start;
+  if (safeGet(ALL_MONTHS_KEY) === 'all') {
+    start = 'all';
+  } else {
+    const savedLabel = safeGet('clamason-selected-period');
+    const savedIdx = savedLabel ? RUNS.findIndex(r => (r.period_label || r.period) === savedLabel) : -1;
+    start = String(savedIdx !== -1 ? savedIdx : RUNS.length - 1);
+  }
+  sel.value = start;
+  selectPeriod(start);
 }
 
-function selectPeriod(i) {
-  const idx = Number(i);
-  localStorage.setItem('clamason-selected-period', (RUNS[idx].period_label || RUNS[idx].period));
+const ALL_MONTHS_KEY = 'clamason-production-trend-view';
+
+// localStorage can throw (private windows, blocked site data) — the page
+// should still work, it just won't remember the choice.
+function safeGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function safeSet(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+function safeRemove(key) { try { localStorage.removeItem(key); } catch (e) {} }
+
+function selectPeriod(v) {
+  if (v === 'all') {
+    safeSet(ALL_MONTHS_KEY, 'all');
+    render(RUNS, 'all');
+    return;
+  }
+  const idx = Number(v);
+  safeRemove(ALL_MONTHS_KEY);
+  safeSet('clamason-selected-period', (RUNS[idx].period_label || RUNS[idx].period));
   render(RUNS, idx);
 }
 
@@ -597,15 +632,32 @@ function hasProductionDowntime(runs) {
   return runs.some(r => siteProductionHrs(r) !== null);
 }
 
-function render(runs, idx) {
+// sel is either 'all' (every uploaded month combined) or the index of
+// one month in runs.
+function render(runs, sel) {
+  const isAll = sel === 'all';
+  // The KPI tiles are always ONE month's figures — OEE and Run Time can't
+  // honestly be added up across months. In "All months" they show the
+  // latest month, and the badge says so.
+  const idx = isAll ? runs.length - 1 : sel;
   const latest = runs[idx];
   const prev = idx > 0 ? runs[idx - 1] : null;
   const prodHrs = siteProductionHrs(latest);
   const prevProdHrs = prev ? siteProductionHrs(prev) : null;
+  const name = r => r.period_label || r.period;
+
+  // What the Pareto and reason-code charts count: one month, or all.
+  const scope = isAll ? runs : [latest];
+  const scopeNote = isAll
+    ? `${name(runs[0])} – ${name(runs[runs.length - 1])} combined · all ${runs.length} uploaded months`
+    : `${name(latest)} only`;
+  const top5 = productionTop5(scope);
+  const reasons = productionReasonTotals(scope);
+  const emptyNote = `<div class="state-msg">No SFC production downtime recorded for ${isAll ? 'any uploaded month' : name(latest)}</div>`;
 
   const app = document.getElementById('app');
   app.innerHTML = `
-    <div class="period-badge">Period: ${latest.period_label || latest.period}</div>
+    <div class="period-badge">${isAll ? `Latest month: ${name(latest)}` : `Period: ${name(latest)}`}</div>
 
     <div class="kpi-row">
       <div class="kpi green">
@@ -632,16 +684,16 @@ function render(runs, idx) {
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Downtime Pareto — Top 5 Presses</h3>
-        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months</div>
-        <div class="canvas-wrap short"><canvas id="paretoChart"></canvas></div>
+        <div class="chart-sub-note">${scopeNote}</div>
+        ${top5.length ? '<div class="canvas-wrap short"><canvas id="paretoChart"></canvas></div>' : emptyNote}
       </div>
     </div>
 
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Production Reason Codes</h3>
-        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months · breaks and idle excluded</div>
-        <div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>
+        <div class="chart-sub-note">${scopeNote} · breaks and idle excluded</div>
+        ${reasons.length ? '<div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>' : emptyNote}
       </div>
     </div>
 
@@ -718,8 +770,8 @@ function render(runs, idx) {
     attachValuesTable('runTimeChart');
   }
 
-  pareto('paretoChart', allTimeProductionTop5(runs), 'production_hrs', PRODUCTION);
-  reasonBarsSimple('reasonChart', allTimeProductionReasonTotals(runs), PRODUCTION);
+  if (top5.length) pareto('paretoChart', top5, 'production_hrs', PRODUCTION);
+  if (reasons.length) reasonBarsSimple('reasonChart', reasons, PRODUCTION);
 
   if (hasProductionDowntime(runs)) {
     new Chart(document.getElementById('prodDowntimeChart'), {
