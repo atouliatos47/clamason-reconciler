@@ -244,35 +244,43 @@ const MAINTENANCE_FAULT_CODES = ['FAULT - PRESS', 'FAULT-FEEDER/DECOILER/STR',
   'FAULT-FEEDER/DECOILER/STRAIGHTENER', 'FAULT-SHAKER/CONVEYOR',
   'MA-FAULT PRESS', 'MA-FAULT-FEEDER/DECOILER/', 'MA-FAULT SHAKER/CONVEYOR'];
 
-// Every uploaded month's machine_breakdown summed per press, rather than
-// just the currently-selected period — "which presses have cost us the
-// most fault downtime overall", not "this month only". Same all-time
-// treatment as toolroom-trend.html's allTimeToolTop5, applied here to
-// Maintenance's own fault hours.
-function allTimeFaultTop5(runs) {
+// The Pareto and reason-code charts work on a "scope" — a list of runs.
+// Pick a month in the dropdown and the scope is just that one month;
+// pick "All months (combined)" and it's every uploaded month. Same
+// functions either way — same approach as toolroom-trend.html.
+//
+// These two charts used to ALWAYS be all-time (every uploaded month
+// summed), whatever the dropdown said, so changing month didn't move
+// them. The all-time view still exists, it's now the "All months" option.
+
+// machine_breakdown's fault hours summed per press across the scope. In
+// "All months" a press that only shows up in older months still counts
+// even if it's since been retired or renamed. Presses with 0h are left
+// out — a Pareto bar of nothing isn't a contributor.
+function faultTop5(scope) {
   const totals = {};
-  runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
+  scope.forEach(r => (r.machine_breakdown || []).forEach(m => {
     totals[m.machine] = (totals[m.machine] || 0) + (m.fault_hrs || 0);
   }));
   return Object.entries(totals)
     .map(([machine, fault_hrs]) => ({ machine, fault_hrs }))
+    .filter(r => r.fault_hrs > 0)
     .sort((a, b) => b.fault_hrs - a.fault_hrs)
     .slice(0, 5);
 }
 
-// Same all-time idea applied to the reason codes instead of the presses
-// — every uploaded month's hours per reason summed together, not just
-// whichever period is selected in the dropdown.
-function allTimeFaultReasonTotals(runs) {
+// Same treatment as faultTop5 above, applied to the reason codes instead
+// of the presses — hours per reason summed across the scope.
+function faultReasonTotals(scope) {
   const totals = {};
-  runs.forEach(r => (r.machine_breakdown || []).forEach(m => {
+  scope.forEach(r => (r.machine_breakdown || []).forEach(m => {
     Object.entries(m.reasons || {}).forEach(([reason, h]) => {
       if (MAINTENANCE_FAULT_CODES.includes((reason || '').toUpperCase().trim())) {
         totals[reason] = (totals[reason] || 0) + h;
       }
     });
   }));
-  return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+  return Object.entries(totals).filter(e => e[1] > 0).sort((a, b) => b[1] - a[1]);
 }
 
 // Same treatment as the Toolroom Trend Dashboard's Tool Unavailable vs
@@ -599,19 +607,44 @@ async function load() {
   }
 
   const sel = document.getElementById('period-select');
-  // Newest first — that's the month you came here to review.
-  sel.innerHTML = RUNS.slice().reverse()
+  // "All months" on top, then newest first — that's the month you came
+  // here to review.
+  sel.innerHTML = `<option value="all">All months (combined)</option>` + RUNS.slice().reverse()
     .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
-  const savedLabel = localStorage.getItem('clamason-selected-period');
-  const savedIdx = savedLabel ? RUNS.findIndex(r => (r.period_label || r.period) === savedLabel) : -1;
-  const startIdx = savedIdx !== -1 ? savedIdx : RUNS.length - 1;
-  sel.value = startIdx;
-  selectPeriod(startIdx);
+
+  // "All months" is remembered under this page's own key, NOT the shared
+  // 'clamason-selected-period' key. Other pages read that shared key
+  // expecting a month name — writing "all" into it would quietly reset
+  // them to the latest month.
+  let start;
+  if (safeGet(ALL_MONTHS_KEY) === 'all') {
+    start = 'all';
+  } else {
+    const savedLabel = safeGet('clamason-selected-period');
+    const savedIdx = savedLabel ? RUNS.findIndex(r => (r.period_label || r.period) === savedLabel) : -1;
+    start = String(savedIdx !== -1 ? savedIdx : RUNS.length - 1);
+  }
+  sel.value = start;
+  selectPeriod(start);
 }
 
-function selectPeriod(i) {
-  const idx = Number(i);
-  localStorage.setItem('clamason-selected-period', (RUNS[idx].period_label || RUNS[idx].period));
+const ALL_MONTHS_KEY = 'clamason-maintenance-trend-view';
+
+// localStorage can throw (private windows, blocked site data) — the page
+// should still work, it just won't remember the choice.
+function safeGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function safeSet(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+function safeRemove(key) { try { localStorage.removeItem(key); } catch (e) {} }
+
+function selectPeriod(v) {
+  if (v === 'all') {
+    safeSet(ALL_MONTHS_KEY, 'all');
+    render(RUNS, 'all');
+    return;
+  }
+  const idx = Number(v);
+  safeRemove(ALL_MONTHS_KEY);
+  safeSet('clamason-selected-period', (RUNS[idx].period_label || RUNS[idx].period));
   render(RUNS, idx);
 }
 
@@ -765,31 +798,49 @@ function ppmSection(latest, prev) {
     </div>`;
 }
 
-function render(runs, idx) {
+// sel is either 'all' (every uploaded month combined) or the index of
+// one month in runs.
+function render(runs, sel) {
+  const isAll = sel === 'all';
+  // The KPI cards at the bottom are always ONE month's figures — OEE,
+  // MTTR, PPM % and the rest can't honestly be added up across months.
+  // In "All months" they show the latest month, and the badge says so.
+  const idx = isAll ? runs.length - 1 : sel;
   const latest = runs[idx];
   const prev = idx > 0 ? runs[idx - 1] : null;
+  const name = r => r.period_label || r.period;
+
+  // What the Pareto and reason-code charts count: one month, or all.
+  const scope = isAll ? runs : [latest];
+  const scopeNote = isAll
+    ? `${name(runs[0])} – ${name(runs[runs.length - 1])} combined · all ${runs.length} uploaded months`
+    : `${name(latest)} only`;
+  const top5 = faultTop5(scope);
+  const reasons = faultReasonTotals(scope);
+  const emptyNote = `<div class="state-msg">No SFC fault downtime recorded for ${isAll ? 'any uploaded month' : name(latest)}</div>`;
 
   const app = document.getElementById('app');
-  // Trend charts come first — they're what this page is for. The selected
-  // month's KPI cards sit at the bottom, with the period badge moved down
-  // alongside them because it labels those cards, not the charts (every
-  // chart above covers all uploaded months, whatever the dropdown says).
+  // Trend charts come first — they're what this page is for. The first
+  // two (Pareto and reason codes) follow the dropdown; the monthly trend
+  // charts under them always show every month, that's what makes them a
+  // trend. The selected month's KPI cards sit at the bottom, with the
+  // period badge alongside them because it labels those cards.
   // Order in this template string is the order on screen; the Chart.js
   // code below finds each canvas by id, so it doesn't care where it sits.
   app.innerHTML = `
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Downtime Pareto — Top 5 Presses</h3>
-        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months</div>
-        <div class="canvas-wrap short"><canvas id="paretoChart"></canvas></div>
+        <div class="chart-sub-note">${scopeNote}</div>
+        ${top5.length ? '<div class="canvas-wrap short"><canvas id="paretoChart"></canvas></div>' : emptyNote}
       </div>
     </div>
 
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Fault Downtime — Reason Codes</h3>
-        <div class="chart-sub-note">${runs[0].period_label || runs[0].period} – ${runs[runs.length - 1].period_label || runs[runs.length - 1].period} combined · all ${runs.length} uploaded months</div>
-        <div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>
+        <div class="chart-sub-note">${scopeNote}</div>
+        ${reasons.length ? '<div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>' : emptyNote}
       </div>
     </div>
 
@@ -850,7 +901,7 @@ function render(runs, idx) {
       </div>
     </div>` : ''}
 
-    <div class="period-badge">Period: ${latest.period_label || latest.period}</div>
+    <div class="period-badge">${isAll ? `Latest month: ${name(latest)}` : `Period: ${name(latest)}`}</div>
 
     <div class="kpi-row">
       <div class="kpi red">
@@ -993,8 +1044,8 @@ function render(runs, idx) {
   });
   attachValuesTable('hoursChart');
 
-  pareto('paretoChart', allTimeFaultTop5(runs), 'fault_hrs', MAINTENANCE);
-  reasonBarsSimple('reasonChart', allTimeFaultReasonTotals(runs), MAINTENANCE);
+  if (top5.length) pareto('paretoChart', top5, 'fault_hrs', MAINTENANCE);
+  if (reasons.length) reasonBarsSimple('reasonChart', reasons, MAINTENANCE);
 
   new Chart(document.getElementById('faultLocationChart'), {
     type: 'line',
