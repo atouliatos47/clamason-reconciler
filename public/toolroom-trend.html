@@ -586,18 +586,21 @@ async function load() {
   }
 
   const sel = document.getElementById('period-select');
-  // "All months" on top, then newest first — that's the month you came
-  // here to review.
-  sel.innerHTML = `<option value="all">All months (combined)</option>` + RUNS.slice().reverse()
+  // The two combined views on top — "Last 2 months" for the monthly board
+  // review, "All months" for a yearly review — then each month, newest
+  // first. "Last 2 months" only appears once there are two months to add.
+  sel.innerHTML = (RUNS.length >= 2 ? `<option value="last2">Last 2 months (combined)</option>` : '')
+    + `<option value="all">All months (combined)</option>` + RUNS.slice().reverse()
     .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
 
-  // "All months" is remembered under this page's own key, NOT the shared
-  // 'clamason-selected-period' key. Other pages read that shared key
-  // expecting a month name — writing "all" into it would quietly reset
-  // them to the latest month.
+  // A combined view ("all" / "last2") is remembered under this page's own
+  // key, NOT the shared 'clamason-selected-period' key. Other pages read
+  // that shared key expecting a month name — writing "all" into it would
+  // quietly reset them to the latest month.
   let start;
-  if (safeGet(ALL_MONTHS_KEY) === 'all') {
-    start = 'all';
+  const savedView = safeGet(ALL_MONTHS_KEY);
+  if (savedView === 'all' || (savedView === 'last2' && RUNS.length >= 2)) {
+    start = savedView;
   } else {
     const savedLabel = safeGet('clamason-selected-period');
     const savedIdx = savedLabel ? RUNS.findIndex(r => (r.period_label || r.period) === savedLabel) : -1;
@@ -616,9 +619,9 @@ function safeSet(key, val) { try { localStorage.setItem(key, val); } catch (e) {
 function safeRemove(key) { try { localStorage.removeItem(key); } catch (e) {} }
 
 function selectPeriod(v) {
-  if (v === 'all') {
-    safeSet(ALL_MONTHS_KEY, 'all');
-    render(RUNS, 'all');
+  if (v === 'all' || v === 'last2') {
+    safeSet(ALL_MONTHS_KEY, v);
+    render(RUNS, v);
     return;
   }
   const idx = Number(v);
@@ -656,25 +659,48 @@ function hasToolDowntime(runs) {
   return runs.some(r => siteToolHrs(r) !== null);
 }
 
-// sel is either 'all' (every uploaded month combined) or the index of
-// one month in runs.
+// The months a combined view adds up: 'last2' = the two most recent
+// uploaded months (e.g. September + October, for the monthly board
+// review), 'all' = every uploaded month (for a yearly review).
+function combinedScope(runs, sel) {
+  return sel === 'last2' ? runs.slice(-2) : runs;
+}
+
+// "September 2026 – October 2026 combined · last 2 months", or
+// "... · all 4 uploaded months" — which months a combined figure covers.
+function combinedNote(scope, runs) {
+  const name = r => r.period_label || r.period;
+  const range = `${name(scope[0])} – ${name(scope[scope.length - 1])} combined`;
+  return scope.length === runs.length
+    ? `${range} · all ${runs.length} uploaded months`
+    : `${range} · last ${scope.length} months`;
+}
+
+// sel is 'last2' (the two most recent uploaded months combined), 'all'
+// (every uploaded month combined), or the index of one month in runs.
+//
+// isAll below means "a combined view" — true for both 'last2' and 'all'.
+// Only WHICH months get combined differs, and that's decided by
+// combinedScope(); everything else treats the two the same way.
 function render(runs, sel) {
-  const isAll = sel === 'all';
+  const isAll = sel === 'all' || sel === 'last2';
   const idx = isAll ? runs.length - 1 : sel;
   const latest = runs[idx];
   const prev = idx > 0 ? runs[idx - 1] : null;
   const name = r => r.period_label || r.period;
 
-  // What the tiles and the two charts count: one month, or all of them.
-  const scope = isAll ? runs : [latest];
+  // What the tiles and the two charts count: one month, or a combined view.
+  const scope = isAll ? combinedScope(runs, sel) : [latest];
   const gap = toolroomGap(scope);
   // Prior month's figures, for the ▲/▼ badges. Only in single-month view
-  // — "All months" has no "prior month" to compare against.
+  // — a combined view has no single "prior month" to compare against.
   const prevGap = (!isAll && prev) ? toolroomGap([prev]) : null;
 
-  const rangeNote = `${name(runs[0])} – ${name(runs[runs.length - 1])} combined`;
-  const scopeNote = isAll ? `${rangeNote} · all ${runs.length} uploaded months` : `${name(latest)} only`;
-  const badge = isAll ? `All months (${rangeNote.replace(' combined', '')})` : name(latest);
+  const rangeNote = `${name(scope[0])} – ${name(scope[scope.length - 1])} combined`;
+  const scopeNote = isAll ? combinedNote(scope, runs) : `${name(latest)} only`;
+  const badge = isAll
+    ? `${sel === 'last2' ? 'Last 2 months' : 'All months'} (${rangeNote.replace(' combined', '')})`
+    : name(latest);
 
   // ▲/▼ vs prior month when there is one, otherwise a plain note saying
   // what period the number covers.
@@ -683,7 +709,7 @@ function render(runs, sel) {
 
   const top5 = toolTop5(scope);
   const reasons = toolReasonTotals(scope);
-  const emptyNote = `<div class="state-msg">No SFC tool downtime recorded for ${isAll ? 'any uploaded month' : name(latest)}</div>`;
+  const emptyNote = `<div class="state-msg">No SFC tool downtime recorded for ${isAll ? 'these months' : name(latest)}</div>`;
 
   const app = document.getElementById('app');
   app.innerHTML = `
