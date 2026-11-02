@@ -271,12 +271,27 @@ function faultTop5(scope) {
 
 // Same treatment as faultTop5 above, applied to the reason codes instead
 // of the presses — hours per reason summed across the scope.
+//
+// SFC renamed the fault codes at the September 2026 boundary (FAULT -
+// PRESS -> MA-FAULT PRESS, etc.). Listed as-is, every fault showed up
+// twice — once under each name. The old names are merged into their
+// MA- name here, so there's one bar per fault type. Merged rather than
+// dropped: before September the old name is the ONLY name, so dropping it
+// would make July and August look almost fault-free.
+function faultReasonLabel(code) {
+  if (FAULT_PRESS_CODES.includes(code)) return 'MA-FAULT PRESS';
+  if (FAULT_FEEDER_CODES.includes(code)) return 'MA-FAULT-FEEDER/DECOILER/';
+  if (FAULT_SHAKER_CODES.includes(code)) return 'MA-FAULT SHAKER/CONVEYOR';
+  return code;
+}
 function faultReasonTotals(scope) {
   const totals = {};
   scope.forEach(r => (r.machine_breakdown || []).forEach(m => {
     Object.entries(m.reasons || {}).forEach(([reason, h]) => {
-      if (MAINTENANCE_FAULT_CODES.includes((reason || '').toUpperCase().trim())) {
-        totals[reason] = (totals[reason] || 0) + h;
+      const code = (reason || '').toUpperCase().trim();
+      if (MAINTENANCE_FAULT_CODES.includes(code)) {
+        const label = faultReasonLabel(code);
+        totals[label] = (totals[label] || 0) + h;
       }
     });
   }));
@@ -839,7 +854,7 @@ function render(runs, sel) {
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>Fault Downtime — Reason Codes</h3>
-        <div class="chart-sub-note">${scopeNote}</div>
+        <div class="chart-sub-note">${scopeNote} · old and new SFC-naming-era codes merged</div>
         ${reasons.length ? '<div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>' : emptyNote}
       </div>
     </div>
