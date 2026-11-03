@@ -34,6 +34,7 @@ from daily_trend import (
     sfc_daily_rollup, sfc_weekly_rollup, sfc_monthly_rollup,
     oee_daily_rollup, oee_weekly_rollup, oee_monthly_rollup,
     attach_production_plan,
+    apply_sfc_monthly_history, load_production_sfc_history,
 )
 from parsers.sfc_daily_downtime_pdf import parse_daily_downtime_pdf
 from parsers.production_plan_xlsx import parse_production_plan
@@ -536,15 +537,25 @@ def production_sfc_daily_trend():
     Same optional ?start=&end= window, same rollup functions (those
     just take a list of snapshot dicts, so no need for Production-
     specific rollup logic — only the saved rows themselves need to
-    stay apart)."""
+    stay apart).
+
+    The Monthly list also gets the whole-month history from
+    history/production_sfc_monthly.json (months taken from SFC's monthly
+    Downtime Summary instead of daily PDFs) — see
+    daily_trend.apply_sfc_monthly_history. Production only: Maintenance's
+    /api/sfc-daily-trend is unchanged."""
     try:
         start = request.args.get('start') or None
         end = request.args.get('end') or None
         snapshots = db.get_production_sfc_daily_snapshots(start_date=start, end_date=end)
+        monthly = apply_sfc_monthly_history(
+            sfc_monthly_rollup(snapshots), load_production_sfc_history(),
+            start_date=start, end_date=end,
+        )
         return jsonify({
             'daily': sfc_daily_rollup(snapshots),
             'weekly': sfc_weekly_rollup(snapshots),
-            'monthly': sfc_monthly_rollup(snapshots),
+            'monthly': monthly,
         })
     except Exception as e:
         import traceback

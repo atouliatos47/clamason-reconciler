@@ -14,6 +14,8 @@ work-order counts; sfc_daily_snapshots is SFC downtime hours. They come
 from different systems and either can be uploaded without the other, so
 they roll up independently and neither is required for the other to work.
 """
+import json
+import os
 from collections import OrderedDict
 from datetime import datetime, timedelta
 
@@ -276,6 +278,85 @@ def sfc_monthly_rollup(snapshots):
     """snapshots: output of db.get_sfc_daily_snapshots(), oldest first.
     Returns one row per calendar month, oldest first."""
     return _rollup(snapshots, _month_key, _sfc_empty_bucket, _sfc_add_row, _sfc_finalize)
+
+
+# ---------------------------------------------------------------------------
+# Whole-month SFC history (Production -> SFC Trend)
+# ---------------------------------------------------------------------------
+# Months from before the daily SFC PDFs were being saved, taken instead
+# from SFC's UK Monthly Downtime Summary — one export per month rather
+# than ~30 daily uploads. They live in a data file in the repo, not the
+# database: each month is added once (from a file sent over, checked,
+# then committed), and never edited after that.
+
+PRODUCTION_SFC_HISTORY_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'history', 'production_sfc_monthly.json'
+)
+
+
+def load_production_sfc_history():
+    """The 'months' list from history/production_sfc_monthly.json, or []
+    if the file isn't there. Read on every call rather than cached — it's
+    a few KB, and it means the page never shows a stale copy."""
+    if not os.path.exists(PRODUCTION_SFC_HISTORY_FILE):
+        return []
+    with open(PRODUCTION_SFC_HISTORY_FILE) as f:
+        return json.load(f).get('months', [])
+
+
+def _month_bounds(month):
+    """'2026-06' -> (date(2026, 6, 1), date(2026, 6, 30))."""
+    first = datetime.strptime(month + '-01', '%Y-%m-%d').date()
+    # Day 28 exists in every month; +4 days always lands in the next one.
+    next_first = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return first, next_first - timedelta(days=1)
+
+
+def _sfc_history_bucket(entry):
+    """One history entry -> a monthly bucket, built by feeding the month's
+    summary through the SAME _sfc_add_row/_sfc_finalize every other
+    bucket goes through — a monthly report is just one big 'day' to them,
+    so the percentages, unplanned hours and Pareto come out of the one
+    implementation and can't drift from the daily-built months.
+
+    Then the few things that differ: 'days' is the whole calendar month
+    (the report covers all of it, not 1 day), and 'source'/'source_note'
+    let the page show where the month came from."""
+    first, last = _month_bounds(entry['month'])
+    key, label = _month_key(first)
+    bucket = _sfc_empty_bucket(key, label)
+    _sfc_add_row(bucket, dict(entry['summary'], date=first.isoformat()))
+    bucket['days'] = (last - first).days + 1
+    bucket['first_date'] = first.isoformat()
+    bucket['last_date'] = last.isoformat()
+    bucket['source'] = 'monthly_report'
+    bucket['source_note'] = entry.get('note')
+    return _sfc_finalize(bucket)
+
+
+def apply_sfc_monthly_history(monthly, history, start_date=None, end_date=None):
+    """Merges whole-month history into a monthly rollup (sfc_monthly_rollup's
+    output), oldest first.
+
+    A history month REPLACES any month built from saved daily PDFs: the
+    monthly report covers the full month, whereas saved days might only
+    cover a few of them — and keeping both would count the month twice.
+    The Daily and Weekly tabs never see history, so any days that were
+    saved still show there.
+
+    start_date/end_date ('YYYY-MM-DD', both optional) are the same window
+    the route already applies to the saved days; a history month is kept
+    if any part of it falls inside the window."""
+    by_key = {b['key']: b for b in monthly}
+    for entry in history:
+        first, last = _month_bounds(entry['month'])
+        if start_date and last.isoformat() < start_date:
+            continue
+        if end_date and first.isoformat() > end_date:
+            continue
+        bucket = _sfc_history_bucket(entry)
+        by_key[bucket['key']] = bucket
+    return [by_key[k] for k in sorted(by_key)]
 
 
 # --- OEE Daily fields --------------------------------------------------
