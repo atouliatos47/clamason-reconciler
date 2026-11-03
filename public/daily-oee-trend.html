@@ -146,6 +146,13 @@
   tr:hover td { background: #fafafa; }
   .plan-col { display: none; }
   #detail-table.show-plan .plan-col { display: table-cell; }
+  /* Delete column — Monthly tab only, same show/hide trick as plan-col. */
+  .del-col { display: none; width: 1%; text-align: right; }
+  #detail-table.show-del .del-col { display: table-cell; }
+  .del-btn { padding: 4px 10px; background: white; color: #dc2626; border: 1px solid #f3b4b4; border-radius: 6px; font-size: 10.5px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+  .del-btn:hover { background: #dc2626; color: white; border-color: #dc2626; }
+  .del-btn:disabled { opacity: 0.5; cursor: wait; }
+  .delete-status { font-size: 11.5px; font-weight: bold; color: #3f6b1a; margin-bottom: 12px; display: none; }
   tbody tr.selectable { cursor: pointer; }
   tbody tr.selected td { background: #f2f7e4; font-weight: bold; }
   .num { text-align: right; }
@@ -329,12 +336,14 @@ function toggleNavGroup(name) {
       </div>
       <div class="card-body" id="detail-body">
         <p class="hint">Click any row to see that period's OEE by press below.</p>
+        <p class="delete-status" id="delete-status"></p>
         <table id="detail-table">
           <thead>
             <tr>
               <th>Period</th><th>Days</th><th class="num">OEE %</th><th class="num">Availability %</th>
               <th class="num">Quality %</th><th class="num">Run Time</th><th class="num">Machines</th><th class="num">Parts</th>
               <th class="num plan-col">Plan Quantity</th><th class="num plan-col">Plan Hours</th><th class="num plan-col">Plan Hit %</th>
+              <th class="del-col"></th>
             </tr>
           </thead>
           <tbody id="trend-tbody"></tbody>
@@ -420,9 +429,13 @@ async function load() {
 
     DATA = json;
     if (!DATA.daily.length) {
+      // Also reached after deleting the last saved month, so hide the
+      // charts and tables as well as showing the note.
+      document.getElementById('content').style.display = 'none';
       document.getElementById('empty-note').style.display = 'block';
       return;
     }
+    document.getElementById('empty-note').style.display = 'none';
     document.getElementById('content').style.display = 'block';
     populateMonthChooser();
     renderMonthParts();
@@ -625,6 +638,9 @@ function renderTable(list) {
   // in daily_trend.py only merges saved plans onto weekly, never daily/monthly),
   // so the columns only make sense — and only get shown — in the weekly view.
   document.getElementById('detail-table').classList.toggle('show-plan', granularity === 'weekly');
+  // The Delete button only on the Monthly tab — a month is the unit it
+  // deletes, so offering it on a day or week row would be misleading.
+  document.getElementById('detail-table').classList.toggle('show-del', granularity === 'monthly');
 
   const tbody = document.getElementById('trend-tbody');
   tbody.innerHTML = '';
@@ -644,9 +660,51 @@ function renderTable(list) {
       <td class="num">${b.total_parts != null ? Math.round(b.total_parts).toLocaleString() : '–'}</td>
       <td class="num plan-col">${b.plan_quantity != null ? Math.round(b.plan_quantity).toLocaleString() : '–'}</td>
       <td class="num plan-col">${b.plan_hours != null ? Number(b.plan_hours).toFixed(1) : '–'}</td>
-      <td class="num plan-col">${planHitPct(b)}</td>`;
+      <td class="num plan-col">${planHitPct(b)}</td>
+      <td class="del-col"><button type="button" class="del-btn">Delete</button></td>`;
+    // stopPropagation: without it, the click would ALSO reach the row
+    // underneath and select it, as if you'd clicked the row itself.
+    tr.querySelector('.del-btn').onclick = (e) => { e.stopPropagation(); deleteMonth(b, e.target); };
     tbody.appendChild(tr);
   });
+}
+
+// Deletes every saved day in one month (the Delete button on a Monthly
+// Detail row), via /api/delete-daily-oee-month. Asks first, because there's
+// no undo — getting the month back means re-saving its days on Daily OEE.
+async function deleteMonth(b, btn) {
+  const days = `${b.days} saved day${b.days === 1 ? '' : 's'}`;
+  const ok = confirm(
+    `Delete ${b.label}?\n\n` +
+    `This removes all ${days} for ${b.label} from the Daily OEE Trend — ` +
+    `they'll also disappear from the Daily and Weekly tabs.\n\n` +
+    `This can't be undone. To get them back you'd re-save those days on the Daily OEE page.`
+  );
+  if (!ok) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  try {
+    const res = await fetch('/api/delete-daily-oee-month', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ month: monthOf(b) }),
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+
+    // Reload everything from the server rather than just removing the row
+    // here, so the cards, chart, month chooser and tables all agree.
+    selectedIndex = null;
+    await load();
+    const status = document.getElementById('delete-status');
+    status.textContent = `✓ Deleted ${b.label} — ${json.deleted} day${json.deleted === 1 ? '' : 's'} removed`;
+    status.style.display = 'block';
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Delete';
+    showError('Could not delete ' + b.label + ': ' + e.message);
+  }
 }
 
 function oeePill(p) {
