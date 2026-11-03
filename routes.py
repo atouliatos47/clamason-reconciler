@@ -35,6 +35,7 @@ from daily_trend import (
     oee_daily_rollup, oee_weekly_rollup, oee_monthly_rollup,
     attach_production_plan,
     apply_sfc_monthly_history, load_production_sfc_history,
+    sfc_yearly_rollup_with_history,
 )
 from parsers.sfc_daily_downtime_pdf import parse_daily_downtime_pdf
 from parsers.production_plan_xlsx import parse_production_plan
@@ -548,14 +549,18 @@ def production_sfc_daily_trend():
         start = request.args.get('start') or None
         end = request.args.get('end') or None
         snapshots = db.get_production_sfc_daily_snapshots(start_date=start, end_date=end)
+        history = load_production_sfc_history()
         monthly = apply_sfc_monthly_history(
-            sfc_monthly_rollup(snapshots), load_production_sfc_history(),
+            sfc_monthly_rollup(snapshots), history,
             start_date=start, end_date=end,
         )
         return jsonify({
             'daily': sfc_daily_rollup(snapshots),
             'weekly': sfc_weekly_rollup(snapshots),
             'monthly': monthly,
+            'yearly': sfc_yearly_rollup_with_history(
+                snapshots, history, start_date=start, end_date=end,
+            ),
         })
     except Exception as e:
         import traceback
