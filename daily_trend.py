@@ -530,6 +530,61 @@ def oee_monthly_rollup(snapshots):
     return _rollup(snapshots, _month_key, _oee_empty_bucket, _oee_add_row, _oee_finalize)
 
 
+# ---------------------------------------------------------------------------
+# Whole-month OEE history (Production -> Daily OEE Trend)
+# ---------------------------------------------------------------------------
+# Same idea as the SFC history above, for the months before the Daily OEE
+# uploads started: one SFC Monthly UK OEE By Machine Tabular export per
+# month, parsed exactly as a Daily OEE save parses its file, kept in a
+# data file in the repo.
+
+DAILY_OEE_HISTORY_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'history', 'daily_oee_monthly.json'
+)
+
+
+def load_daily_oee_history():
+    """The 'months' list from history/daily_oee_monthly.json, or [] if the
+    file isn't there. Read on every call — see load_production_sfc_history."""
+    if not os.path.exists(DAILY_OEE_HISTORY_FILE):
+        return []
+    with open(DAILY_OEE_HISTORY_FILE) as f:
+        return json.load(f).get('months', [])
+
+
+def _oee_history_bucket(entry):
+    """One history entry -> a monthly OEE bucket. entry['snapshot'] has
+    the same raw fields as an oee_daily_snapshots row (hours, parts and a
+    per_machine list), so it goes through the SAME _oee_add_row and
+    _oee_finalize as a saved day: OEE, Availability, Performance, Quality
+    and the per-press table all come out of the one implementation.
+    Then, like _sfc_history_bucket: 'days' is the whole month, and
+    'source'/'source_note' say where it came from."""
+    first, last = _month_bounds(entry['month'])
+    key, label = _month_key(first)
+    bucket = _oee_empty_bucket(key, label)
+    _oee_add_row(bucket, dict(entry['snapshot'], date=first.isoformat()))
+    bucket['days'] = (last - first).days + 1
+    bucket['first_date'] = first.isoformat()
+    bucket['last_date'] = last.isoformat()
+    bucket['source'] = 'monthly_report'
+    bucket['source_note'] = entry.get('note')
+    return _oee_finalize(bucket)
+
+
+def apply_oee_monthly_history(monthly, history, start_date=None, end_date=None):
+    """Merges whole-month OEE history into oee_monthly_rollup's output,
+    oldest first. Same rules as apply_sfc_monthly_history: a history
+    month REPLACES any month built from saved days (no double counting),
+    the Daily and Weekly tabs never see history, and the start/end window
+    is applied the same way."""
+    by_key = {b['key']: b for b in monthly}
+    for entry in _history_in_window(history, start_date, end_date):
+        bucket = _oee_history_bucket(entry)
+        by_key[bucket['key']] = bucket
+    return [by_key[k] for k in sorted(by_key)]
+
+
 def attach_production_plan(weekly_buckets, plan_weeks):
     """Merges saved Production Plan weeks onto matching weekly OEE
     buckets, in place. plan_weeks is db.get_production_plan_weeks()'s

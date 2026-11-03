@@ -152,6 +152,7 @@
   .del-btn { padding: 4px 10px; background: white; color: #dc2626; border: 1px solid #f3b4b4; border-radius: 6px; font-size: 10.5px; font-weight: bold; cursor: pointer; white-space: nowrap; }
   .del-btn:hover { background: #dc2626; color: white; border-color: #dc2626; }
   .del-btn:disabled { opacity: 0.5; cursor: wait; }
+  .hist-tag { font-size: 10px; color: #667; background: #f3f4f6; border-radius: 10px; padding: 3px 9px; white-space: nowrap; cursor: help; }
   .delete-status { font-size: 11.5px; font-weight: bold; color: #3f6b1a; margin-bottom: 12px; display: none; }
   tbody tr.selectable { cursor: pointer; }
   tbody tr.selected td { background: #f2f7e4; font-weight: bold; }
@@ -484,10 +485,13 @@ function selectMonth(key) {
 // because it's the one list guaranteed to be exactly one row per saved
 // day — no risk of a day being counted twice.
 function renderMonthParts() {
-  const days = DATA.daily.filter(d => !endMonth || monthOf(d) === endMonth);
-  const totalParts = days.reduce((s, d) => s + (d.total_parts || 0), 0);
-  const scrapParts = days.reduce((s, d) => s + (d.scrap_parts || 0), 0);
   const month = DATA.monthly.find(b => monthOf(b) === endMonth);
+  // A month from the history file has no saved days to add up — its
+  // parts come from the monthly report itself, already totalled.
+  const days = DATA.daily.filter(d => !endMonth || monthOf(d) === endMonth);
+  const fromReport = month && month.source === 'monthly_report';
+  const totalParts = fromReport ? (month.total_parts || 0) : days.reduce((s, d) => s + (d.total_parts || 0), 0);
+  const scrapParts = fromReport ? (month.scrap_parts || 0) : days.reduce((s, d) => s + (d.scrap_parts || 0), 0);
   document.getElementById('c-parts').textContent = Math.round(totalParts).toLocaleString();
   document.getElementById('c-parts-sub').textContent =
     `${Math.round(totalParts - scrapParts).toLocaleString()} good · ${Math.round(scrapParts).toLocaleString()} scrap`
@@ -661,10 +665,17 @@ function renderTable(list) {
       <td class="num plan-col">${b.plan_quantity != null ? Math.round(b.plan_quantity).toLocaleString() : '–'}</td>
       <td class="num plan-col">${b.plan_hours != null ? Number(b.plan_hours).toFixed(1) : '–'}</td>
       <td class="num plan-col">${planHitPct(b)}</td>
-      <td class="del-col"><button type="button" class="del-btn">Delete</button></td>`;
+      <td class="del-col">${b.source === 'monthly_report'
+        ? `<span class="hist-tag" title="${b.source_note || ''}">Monthly report</span>`
+        : '<button type="button" class="del-btn">Delete</button>'}</td>`;
+    // History months (from SFC's monthly OEE report, in the repo's
+    // history file) have no Delete button: it only removes saved days,
+    // so on these it would do nothing. The tag says where the month came
+    // from instead; hovering it shows the month's note.
     // stopPropagation: without it, the click would ALSO reach the row
     // underneath and select it, as if you'd clicked the row itself.
-    tr.querySelector('.del-btn').onclick = (e) => { e.stopPropagation(); deleteMonth(b, e.target); };
+    const delBtn = tr.querySelector('.del-btn');
+    if (delBtn) delBtn.onclick = (e) => { e.stopPropagation(); deleteMonth(b, e.target); };
     tbody.appendChild(tr);
   });
 }
