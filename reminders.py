@@ -49,6 +49,8 @@ and the db function that reads what's been saved.
 """
 import calendar
 import re
+import threading
+import time
 from datetime import date, datetime, timedelta
 
 import db
@@ -407,3 +409,38 @@ def all_reminders(today=None):
             except Exception:
                 continue
     return {'today': today.isoformat(), 'reminders': out}
+
+
+# --- Remembering the answer for a minute -----------------------------------
+# Every page in the hub asks /api/reminders for its sidebar badges, and a
+# full check reads ~8 tables — on the live site that's ~8 trips to the
+# database on EVERY click, most of the wait when opening a tab. The answer
+# only changes when something is saved, so it's kept for CACHE_SECONDS and
+# thrown away early by clear_cache(), which routes.py calls after every
+# POST (every save in the hub is a POST) — a badge clears straight after
+# an upload, not a minute later. Also dropped when the London date
+# changes, since "today" decides what's due.
+CACHE_SECONDS = 60
+_cache = {'at': 0.0, 'result': None}
+_cache_lock = threading.Lock()   # the server can answer several requests at once
+
+
+def cached_reminders():
+    """all_reminders(), reusing the last answer if it's under
+    CACHE_SECONDS old and from the same London day."""
+    today = london_today().isoformat()
+    with _cache_lock:
+        hit = _cache['result']
+        if hit is not None and hit['today'] == today and time.monotonic() - _cache['at'] < CACHE_SECONDS:
+            return hit
+    result = all_reminders()
+    with _cache_lock:
+        _cache['at'] = time.monotonic()
+        _cache['result'] = result
+    return result
+
+
+def clear_cache():
+    """Forget the remembered answer — the next request does a full check."""
+    with _cache_lock:
+        _cache['result'] = None

@@ -917,15 +917,28 @@ def maintenance_sfc_vs_agility_view():
     return send_from_directory('public', 'maintenance-sfc-vs-agility.html')
 
 
+@bp.after_app_request
+def _forget_reminders_after_a_post(response):
+    """Every save in the hub is a POST, so after any POST the remembered
+    reminder answer is thrown away — the sidebar badges reflect an upload
+    on the very next page, not up to a minute later (reminders.clear_cache).
+    Checks that only read are POSTs too; clearing after those costs one
+    extra full check, nothing more."""
+    if request.method == 'POST':
+        from reminders import clear_cache
+        clear_cache()
+    return response
+
+
 @bp.route('/api/reminders')
 def api_reminders():
     """Which uploads are due or missed, per sidebar tab — read by
     public/reminders.js on every page. The rules live in reminders.py.
     Never errors at the page: if anything goes wrong it returns an empty
     list, so a problem here can only hide badges, never break a page."""
-    from reminders import all_reminders
+    from reminders import cached_reminders
     try:
-        return jsonify(all_reminders())
+        return jsonify(cached_reminders())
     except Exception as e:
         return jsonify({'reminders': [], 'error': str(e)})
 
