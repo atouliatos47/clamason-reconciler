@@ -250,6 +250,7 @@ function toggleNavGroup(name) {
           <button class="filter-tab active" onclick="event.stopPropagation(); setGranularity('daily', this)">Daily</button>
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('weekly', this)">Weekly</button>
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
+          <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('yearly', this)">Yearly</button>
         </div>
         <p class="hint">
           Planned Offline and No Production Planned are excluded — they're the biggest numbers in the report
@@ -318,7 +319,7 @@ function categorise(reason) {
   return 'other';
 }
 
-let DATA = { daily: [], weekly: [], monthly: [] };
+let DATA = { daily: [], weekly: [], monthly: [], yearly: [] };
 let granularity = 'daily';
 let selectedIndex = null;
 let chart = null;
@@ -441,7 +442,7 @@ function renderChart(list) {
 }
 
 function renderTable(list) {
-  const titles = { daily: 'Daily Detail', weekly: 'Weekly Detail', monthly: 'Monthly Detail' };
+  const titles = { daily: 'Daily Detail', weekly: 'Weekly Detail', monthly: 'Monthly Detail', yearly: 'Yearly Detail' };
   document.getElementById('table-title').textContent = titles[granularity];
 
   const tbody = document.getElementById('trend-tbody');

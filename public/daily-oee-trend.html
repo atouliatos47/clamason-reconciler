@@ -324,6 +324,7 @@ function toggleNavGroup(name) {
           <button class="filter-tab active" onclick="event.stopPropagation(); setGranularity('daily', this)">Daily</button>
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('weekly', this)">Weekly</button>
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
+          <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('yearly', this)">Yearly</button>
           <button class="trend-print-btn" id="trend-print-btn" style="display:none;" onclick="event.stopPropagation(); printTrend()">Print / PDF</button>
         </div>
         <div class="trend-wrap"><canvas id="trend-chart"></canvas></div>
@@ -378,7 +379,7 @@ function toggleNavGroup(name) {
 </div>
 
 <script>
-let DATA = { daily: [], weekly: [], monthly: [] };
+let DATA = { daily: [], weekly: [], monthly: [], yearly: [] };
 let granularity = 'daily';
 let selectedIndex = null;
 let chart = null;
@@ -635,7 +636,7 @@ function planHitPct(b) {
 }
 
 function renderTable(list) {
-  const titles = { daily: 'Daily Detail', weekly: 'Weekly Detail', monthly: 'Monthly Detail' };
+  const titles = { daily: 'Daily Detail', weekly: 'Weekly Detail', monthly: 'Monthly Detail', yearly: 'Yearly Detail' };
   document.getElementById('table-title').textContent = titles[granularity];
 
   // Plan Quantity/Plan Hours only exist on weekly buckets (attach_production_plan

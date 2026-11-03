@@ -374,40 +374,67 @@ def apply_sfc_monthly_history(monthly, history, start_date=None, end_date=None):
     return [by_key[k] for k in sorted(by_key)]
 
 
-def sfc_yearly_rollup_with_history(snapshots, history, start_date=None, end_date=None):
-    """One row per calendar year, oldest first — the Yearly tab on
-    Production -> SFC Trend.
+def _yearly_rollup(snapshots, empty_fn, add_fn, finalize_fn,
+                   history=(), history_row=None, start_date=None, end_date=None):
+    """One row per calendar year, oldest first — the Yearly tab on every
+    day-based trend page. Shared by all of them (Agility Daily Trend,
+    both SFC Trends, Daily OEE Trend) so every Yearly tab adds up the
+    same way; each just passes its own bucket functions.
 
     Built from the RAW rows, not by adding up the finished monthly rows:
     those are rounded to 2 decimals for display, and summing twelve
     rounded numbers drifts. Same "full precision for the maths, rounded
     only for display" rule as the rest of this module.
 
-    The rows are: every saved day, EXCEPT days in a month that has a
-    history entry (the history month replaces them, exactly as in the
-    Monthly view — otherwise that month would be counted twice), plus
-    each history month as one row. A history row counts as all the days
-    in its month for 'days', not as 1."""
-    history = _history_in_window(history, start_date, end_date)
+    history / history_row are for pages that also have whole-month
+    history (see apply_sfc_monthly_history): history_row(entry) returns
+    that month's raw row. Days saved in a month that has a history entry
+    are left out — the history month replaces them, exactly as in the
+    Monthly view, so no month is counted twice — and each history month
+    counts as its full length in 'days', not as 1."""
+    history = _history_in_window(history, start_date, end_date) if history else []
     history_months = {entry['month'] for entry in history}
 
     rows = [s for s in snapshots if str(s['date'])[:7] not in history_months]
-    history_days = {}
+    # year -> [how many history months, their total days, their last day]
+    per_year = {}
     for entry in history:
         first, last = _month_bounds(entry['month'])
-        rows.append(dict(entry['summary'], date=first.isoformat()))
-        history_days[first.year] = history_days.get(first.year, 0) + (last - first).days + 1
+        rows.append(dict(history_row(entry), date=first.isoformat()))
+        n, days, latest = per_year.get(first.year, (0, 0, None))
+        per_year[first.year] = (n + 1, days + (last - first).days + 1,
+                                max(latest, last.isoformat()) if latest else last.isoformat())
     rows.sort(key=lambda r: str(r['date']))
 
-    years = _rollup(rows, _year_key, _sfc_empty_bucket, _sfc_add_row, _sfc_finalize)
+    years = _rollup(rows, _year_key, empty_fn, add_fn, finalize_fn)
     for b in years:
-        year = int(b['key'])
-        if year in history_days:
-            # _sfc_add_row counted each history month as 1 day; swap
-            # those 1s for the month's real length.
-            n_history_months = sum(1 for e in history if e['month'].startswith(b['key']))
-            b['days'] = b['days'] - n_history_months + history_days[year]
+        if int(b['key']) in per_year:
+            n, days, latest = per_year[int(b['key'])]
+            # add_fn counted each history month as 1 day; swap those 1s
+            # for the months' real lengths.
+            b['days'] = b['days'] - n + days
+            # A history row is dated the 1st of its month; the year
+            # really runs to the END of that month.
+            if 'last_date' in b and (b['last_date'] is None or b['last_date'] < latest):
+                b['last_date'] = latest
     return years
+
+
+def yearly_rollup(snapshots):
+    """Agility Daily View (daily_snapshots) — one row per calendar year."""
+    return _yearly_rollup(snapshots, _empty_bucket, _add_row, _finalize)
+
+
+def sfc_yearly_rollup(snapshots):
+    """SFC daily snapshots, no history — Maintenance -> SFC Trend."""
+    return _yearly_rollup(snapshots, _sfc_empty_bucket, _sfc_add_row, _sfc_finalize)
+
+
+def sfc_yearly_rollup_with_history(snapshots, history, start_date=None, end_date=None):
+    """Production -> SFC Trend: saved days plus the whole-month history."""
+    return _yearly_rollup(snapshots, _sfc_empty_bucket, _sfc_add_row, _sfc_finalize,
+                          history=history, history_row=lambda e: e['summary'],
+                          start_date=start_date, end_date=end_date)
 
 
 # --- OEE Daily fields --------------------------------------------------
@@ -583,6 +610,16 @@ def apply_oee_monthly_history(monthly, history, start_date=None, end_date=None):
         bucket = _oee_history_bucket(entry)
         by_key[bucket['key']] = bucket
     return [by_key[k] for k in sorted(by_key)]
+
+
+def oee_yearly_rollup_with_history(snapshots, history, start_date=None, end_date=None):
+    """Production -> Daily OEE Trend: one row per calendar year from the
+    saved days plus the whole-month OEE history. OEE, Availability etc.
+    are computed once from the year's summed hours and parts (via
+    _oee_finalize), never averaged from monthly percentages."""
+    return _yearly_rollup(snapshots, _oee_empty_bucket, _oee_add_row, _oee_finalize,
+                          history=history, history_row=lambda e: e['snapshot'],
+                          start_date=start_date, end_date=end_date)
 
 
 def attach_production_plan(weekly_buckets, plan_weeks):

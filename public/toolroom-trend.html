@@ -590,7 +590,12 @@ async function load() {
   // review, "All months" for a yearly review — then each month, newest
   // first. "Last 2 months" only appears once there are two months to add.
   sel.innerHTML = (RUNS.length >= 2 ? `<option value="last2">Last 2 months (combined)</option>` : '')
-    + `<option value="all">All months (combined)</option>` + RUNS.slice().reverse()
+    + `<option value="all">All months (combined)</option>`
+    // One "2026 (combined)" per calendar year with uploaded months, newest
+    // year first — a yearly review that stays one year wide once a second
+    // year starts, unlike "All months".
+    + runYears(RUNS).map(y => `<option value="year:${y}">${y} (combined)</option>`).join('')
+    + RUNS.slice().reverse()
     .map((r, i) => `<option value="${RUNS.length - 1 - i}">${r.period_label || r.period}</option>`).join('');
 
   // A combined view ("all" / "last2") is remembered under this page's own
@@ -599,7 +604,8 @@ async function load() {
   // quietly reset them to the latest month.
   let start;
   const savedView = safeGet(ALL_MONTHS_KEY);
-  if (savedView === 'all' || (savedView === 'last2' && RUNS.length >= 2)) {
+  if (savedView === 'all' || (savedView === 'last2' && RUNS.length >= 2)
+      || (String(savedView).startsWith('year:') && runYears(RUNS).includes(savedView.slice(5)))) {
     start = savedView;
   } else {
     const savedLabel = safeGet('clamason-selected-period');
@@ -619,7 +625,7 @@ function safeSet(key, val) { try { localStorage.setItem(key, val); } catch (e) {
 function safeRemove(key) { try { localStorage.removeItem(key); } catch (e) {} }
 
 function selectPeriod(v) {
-  if (v === 'all' || v === 'last2') {
+  if (isCombined(v)) {
     safeSet(ALL_MONTHS_KEY, v);
     render(RUNS, v);
     return;
@@ -662,29 +668,61 @@ function hasToolDowntime(runs) {
 // The months a combined view adds up: 'last2' = the two most recent
 // uploaded months (e.g. September + October, for the monthly board
 // review), 'all' = every uploaded month (for a yearly review).
+// 'year:2026' = every uploaded month of that calendar year.
 function combinedScope(runs, sel) {
-  return sel === 'last2' ? runs.slice(-2) : runs;
+  if (sel === 'last2') return runs.slice(-2);
+  if (String(sel).startsWith('year:')) return runs.filter(r => yearOf(r) === sel.slice(5));
+  return runs;
+}
+
+// True for any combined view: 'all', 'last2' or 'year:YYYY'. Anything
+// else is one month's index in runs.
+function isCombined(sel) {
+  return sel === 'all' || sel === 'last2' || String(sel).startsWith('year:');
+}
+
+// The calendar year an uploaded month belongs to, from its label
+// ("June 2026"), or SFC's own period string if it has no label. null if
+// neither has a year in it (such a month just isn't in any year view).
+function yearOf(r) {
+  const m = String(r.period_label || r.period || '').match(/\b(20\d{2})\b/);
+  return m ? m[1] : null;
+}
+
+// Every year with an uploaded month, newest first.
+function runYears(runs) {
+  return [...new Set(runs.map(yearOf).filter(Boolean))].sort().reverse();
 }
 
 // "September 2026 – October 2026 combined · last 2 months", or
 // "... · all 4 uploaded months" — which months a combined figure covers.
-function combinedNote(scope, runs) {
+function combinedNote(scope, runs, sel) {
   const name = r => r.period_label || r.period;
-  const range = `${name(scope[0])} – ${name(scope[scope.length - 1])} combined`;
+  // One month on its own (e.g. a year with only January uploaded so far)
+  // reads as just that month, not "January 2027 – January 2027".
+  const range = scope.length === 1 ? name(scope[0])
+    : `${name(scope[0])} – ${name(scope[scope.length - 1])} combined`;
+  if (String(sel).startsWith('year:')) {
+    return `${range} · ${scope.length} uploaded month${scope.length === 1 ? '' : 's'} of ${sel.slice(5)}`;
+  }
   return scope.length === runs.length
     ? `${range} · all ${runs.length} uploaded months`
     : `${range} · last ${scope.length} months`;
 }
 
 // sel is 'last2' (the two most recent uploaded months combined), 'all'
-// (every uploaded month combined), or the index of one month in runs.
+// (every uploaded month combined), 'year:2026' (that year's months
+// combined), or the index of one month in runs.
 //
 // isAll below means "a combined view" — true for both 'last2' and 'all'.
 // Only WHICH months get combined differs, and that's decided by
 // combinedScope(); everything else treats the two the same way.
 function render(runs, sel) {
-  const isAll = sel === 'all' || sel === 'last2';
-  const idx = isAll ? runs.length - 1 : sel;
+  const isAll = isCombined(sel);
+  // In a combined view the "latest month" is the newest month IN that
+  // view — for "2026 (combined)" that's 2026's last uploaded month, not
+  // whatever was uploaded most recently overall.
+  const idx = isAll ? runs.lastIndexOf(combinedScope(runs, sel).slice(-1)[0]) : sel;
   const latest = runs[idx];
   const prev = idx > 0 ? runs[idx - 1] : null;
   const name = r => r.period_label || r.period;
@@ -696,10 +734,11 @@ function render(runs, sel) {
   // — a combined view has no single "prior month" to compare against.
   const prevGap = (!isAll && prev) ? toolroomGap([prev]) : null;
 
-  const rangeNote = `${name(scope[0])} – ${name(scope[scope.length - 1])} combined`;
-  const scopeNote = isAll ? combinedNote(scope, runs) : `${name(latest)} only`;
+  const rangeNote = scope.length === 1 ? name(scope[0])
+    : `${name(scope[0])} – ${name(scope[scope.length - 1])} combined`;
+  const scopeNote = isAll ? combinedNote(scope, runs, sel) : `${name(latest)} only`;
   const badge = isAll
-    ? `${sel === 'last2' ? 'Last 2 months' : 'All months'} (${rangeNote.replace(' combined', '')})`
+    ? `${sel === 'last2' ? 'Last 2 months' : String(sel).startsWith('year:') ? sel.slice(5) : 'All months'} (${rangeNote.replace(' combined', '')})`
     : name(latest);
 
   // ▲/▼ vs prior month when there is one, otherwise a plain note saying
