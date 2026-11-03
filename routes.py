@@ -656,6 +656,30 @@ def save_daily_oee():
         return jsonify({'error': str(e), 'trace': traceback.format_exc()})
 
 
+@bp.route('/api/delete-daily-oee-month', methods=['POST'])
+def delete_daily_oee_month():
+    """Deletes one month of saved Daily OEE days — the Delete button on
+    the Daily OEE Trend page's Monthly Detail table. Body: JSON
+    {"month": "YYYY-MM"}. Like /api/save-daily-oee, this is the only
+    way that page changes the database, and it's POST (not a link you
+    could open by accident) so nothing gets deleted just by visiting a URL.
+
+    The month is checked against a strict YYYY-MM pattern before it goes
+    near the database, so a typo or a blank can't turn into "delete
+    something unexpected". Months with nothing saved return deleted: 0."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        month = str(data.get('month', '')).strip()
+        if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', month):
+            return jsonify({'error': 'month is required as YYYY-MM (e.g. 2026-10)'})
+
+        deleted = db.delete_oee_daily_month(month)
+        return jsonify({'deleted': deleted, 'month': month})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
+
+
 @bp.route('/production-plan')
 def production_plan_view():
     return send_from_directory('public', 'production-plan.html')

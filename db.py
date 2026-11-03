@@ -824,6 +824,35 @@ def get_oee_daily_snapshots(start_date=None, end_date=None):
     return result
 
 
+def delete_oee_daily_month(month):
+    """Delete every saved Daily OEE day in one calendar month — what the
+    Delete button on the Daily OEE Trend page's Monthly Detail table
+    calls. month is a 'YYYY-MM' string (the route checks the format
+    before it gets here). Returns how many days were removed, so the
+    page can say "Deleted 29 days" — 0 just means nothing was saved for
+    that month, which isn't an error.
+
+    A month on the trend page is nothing more than the daily rows that
+    fall inside it (oee_monthly_rollup builds it on the fly), so deleting
+    those rows is the whole job — there's no separate monthly table to
+    tidy up. The same days disappear from the Daily and Weekly tabs too.
+
+    The range is first-of-month up to (not including) first of the NEXT
+    month, rather than "day 1 to day 31" — Postgres works out the month
+    length itself, so February and 30-day months need no special case."""
+    start = f"{month}-01"
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM oee_daily_snapshots
+                WHERE date >= %(start)s::date
+                  AND date <  (%(start)s::date + INTERVAL '1 month')
+            """, {'start': start})
+            deleted = cur.rowcount
+        conn.commit()
+    return deleted
+
+
 def save_production_plan_week(plan_result, week_start, source_filename):
     """Store one week's Production Plan import. plan_result is the dict
     returned by parsers.production_plan_xlsx.parse_production_plan();
