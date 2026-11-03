@@ -7,18 +7,114 @@ variable in Render's dashboard once deployed.
 """
 import os
 import json
+import threading
+import time
+from contextlib import contextmanager
+
 import psycopg2
+import psycopg2.extensions
 import psycopg2.extras
 
 
-def _get_conn():
+def _database_url():
     url = os.environ.get('DATABASE_URL')
     if not url:
         raise RuntimeError(
             'DATABASE_URL environment variable is not set. '
             'Set it to your Neon connection string before running this.'
         )
-    return psycopg2.connect(url)
+    return url
+
+
+# --- Reusing database connections -------------------------------------------
+# Opening a connection to Neon means a secure handshake and a login over the
+# internet — a noticeable part of a second, every time. This used to happen
+# for EVERY query (one page could open ten), which is most of why tabs felt
+# slow. Now connections are kept open in a small pool and lent out again.
+#
+# Neon's free plan pauses the database after a few idle minutes and drops
+# its connections, so one that's been sitting unused for IDLE_CHECK_SECONDS
+# gets a quick 'SELECT 1' before it's lent out — a dead one is thrown away
+# and replaced, never handed to a query. Ones used moments ago skip the check.
+POOL_MAX = 8                 # idle connections kept; more than the server ever runs at once
+IDLE_CHECK_SECONDS = 30
+_idle = []                   # [(connection, when it went back)] — most recent last
+_idle_pid = None             # connections must never be shared across processes
+_pool_lock = threading.Lock()
+
+
+def _close_quietly(conn):
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+
+def _usable(conn, last_used):
+    """False if the connection is closed, or has been idle a while and no
+    longer answers. Ones used moments ago are trusted without a check."""
+    if conn.closed:
+        return False
+    if time.monotonic() - last_used <= IDLE_CHECK_SECONDS:
+        return True
+    try:
+        with conn.cursor() as cur:
+            cur.execute('SELECT 1')
+        conn.rollback()      # leave no transaction open
+        return True
+    except Exception:
+        return False
+
+
+def _borrow():
+    """The most recently returned idle connection that still works, or a
+    brand-new one if there's none. Dead ones found on the way are closed."""
+    global _idle, _idle_pid
+    while True:
+        with _pool_lock:
+            if _idle_pid != os.getpid():
+                _idle, _idle_pid = [], os.getpid()   # inherited from a parent process: never touch
+            item = _idle.pop() if _idle else None
+        if item is None:
+            return psycopg2.connect(_database_url())
+        conn, last_used = item
+        if _usable(conn, last_used):
+            return conn
+        _close_quietly(conn)
+
+
+def _give_back(conn, failed):
+    """Back into the pool if it's healthy and not mid-transaction;
+    otherwise closed. Never more than POOL_MAX kept idle."""
+    if conn.closed:
+        return
+    if failed or conn.info.transaction_status != psycopg2.extensions.TRANSACTION_STATUS_IDLE:
+        try:
+            conn.rollback()
+        except Exception:
+            _close_quietly(conn)
+            return
+    with _pool_lock:
+        if _idle_pid == os.getpid() and len(_idle) < POOL_MAX:
+            _idle.append((conn, time.monotonic()))
+            return
+    _close_quietly(conn)
+
+
+@contextmanager
+def _get_conn():
+    """`with _get_conn() as conn:` — exactly as before: commits when the
+    block finishes, rolls back if it raises. The only difference is that
+    the connection is borrowed from the pool above (and handed back after)
+    instead of being opened from scratch every time."""
+    conn = _borrow()
+    try:
+        with conn:           # psycopg2: commit on success, rollback on error
+            yield conn
+    except BaseException:
+        _give_back(conn, failed=True)
+        raise
+    _give_back(conn, failed=False)
 
 
 def init_schema():
