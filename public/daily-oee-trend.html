@@ -93,52 +93,15 @@
   canvas { max-height: 320px; }
   /* Gives the trend chart an explicit height to fill (Chart.js's
      recommended setup) — 320px on screen, exactly what max-height above
-     already produced, so the screen view doesn't change. It's what lets
-     the print below hand the same chart a full A3 page instead. */
+     already produced. */
   .trend-wrap { position: relative; height: 320px; }
 
-  /* Only offered on the Monthly tab — see updatePrintButton(). Same look
-     as the Board Review's Print / PDF button. */
-  .trend-print-btn { margin-left: auto; padding: 6px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; }
-  .trend-print-btn:hover { background: #95C11F; color: #243547; }
-
-  /* --- Printing the month on one A3 sheet ----------------------------
-     The month pill, the five KPI cards and the OEE & Run Time Trend
-     chart — what's on screen at the top of the page.
-     printTrend() adds body.print-trend just before printing, and the
-     afterprint handler takes it off again. These first rules apply on
-     screen as well as on paper: they lay the page out at exactly the
-     printed width (A3 landscape is 420mm wide, minus the 8mm @page
-     margin each side = 404mm) so the chart can be redrawn at its real
-     paper size first — Chart.js won't resize for print by itself, and
-     would otherwise print at its 1012px screen width. */
-  body.print-trend .container { width: 404mm; max-width: none; padding: 0; margin: 0; }
-  body.print-trend #trend-card { padding: 0; margin: 0; border-radius: 0; }
-  /* 297mm tall minus 16mm of margin = 281mm of page. The pill, the card
-     row and the chart's title take ~55mm of that; 205mm of chart leaves
-     ~20mm spare so it can't spill onto a second sheet. */
-  body.print-trend .trend-wrap { height: 205mm; }
-  body.print-trend #trend-chart { max-height: none; }
-
-  @media print {
-    @page { size: A3 landscape; margin: 8mm; }
-    /* Left off the sheet: sidebar, page header, the two tables below the
-       chart, and the on-screen controls (tabs, Print button, collapse
-       arrow). */
-    body.print-trend { background: white; }
-    body.print-trend .sidebar, body.print-trend .page-header, body.print-trend footer,
-    body.print-trend .error-box, body.print-trend .empty-note,
-    body.print-trend .table-card:not(#trend-card),
-    body.print-trend .filter-tabs, body.print-trend .collapse-arrow { display: none !important; }
-    /* On screen the white cards stand out against the grey page; on a
-       white sheet they'd have no edges at all, so give them a thin one
-       (the coloured top border stays). */
-    body.print-trend .card { border: 1px solid #e2e5ea; border-top: 3px solid #95C11F; }
-    body.print-trend .card.run   { border-top-color: #d97706; }
-    body.print-trend .card.avail { border-top-color: #243547; }
-    body.print-trend .card.qual  { border-top-color: #dc2626; }
-    body.print-trend .card.parts { border-top-color: #0891b2; }
-  }
+  /* "Copy for Monthly Review" — took the place of the old Print / PDF
+     button. Same look as the copy buttons on the SFC Trend pages,
+     pushed to the right end of the tab row. */
+  .trend-copy-btn { margin-left: auto; padding: 6px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; }
+  .trend-copy-btn:hover { background: #95C11F; color: #243547; }
+  .trend-copy-btn:disabled { opacity: 0.6; cursor: wait; }
 
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th { background: #243547; color: white; padding: 10px 12px; text-align: left; font-size: 11px; }
@@ -325,7 +288,7 @@ function toggleNavGroup(name) {
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('weekly', this)">Weekly</button>
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('yearly', this)">Yearly</button>
-          <button class="trend-print-btn" id="trend-print-btn" style="display:none;" onclick="event.stopPropagation(); printTrend()">Print / PDF</button>
+          <button class="trend-copy-btn" id="trend-copy-btn" title="Copies the Monthly trend up to the month chosen at the top, ready to paste onto a slide" onclick="event.stopPropagation(); copyForReview(this)">Copy for Monthly Review</button>
         </div>
         <div class="trend-wrap"><canvas id="trend-chart"></canvas></div>
       </div>
@@ -385,7 +348,7 @@ let selectedIndex = null;
 let chart = null;
 // The month chooser's pick, as 'YYYY-MM'. It's the LAST month shown:
 // August shows just August, September shows August + September, and so
-// on — so a sheet printed in October for the board can stop at September.
+// on — so a chart copied in October for the board can stop at September.
 let endMonth = null;
 
 // Self-contained rather than a third-party plugin — draws each bar's
@@ -511,43 +474,11 @@ function setGranularity(g, btn) {
   document.querySelectorAll('#granularity-tabs .filter-tab')
     .forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  updatePrintButton();
   render();
 }
 
-// The Print / PDF button only appears on the Monthly tab.
-function updatePrintButton() {
-  document.getElementById('trend-print-btn').style.display = granularity === 'monthly' ? '' : 'none';
-}
-
-// Prints the month pill, the KPI cards and the OEE & Run Time Trend
-// chart on one A3 landscape sheet.
-// body.print-trend switches on the print-only layout in the CSS;
-// window.print() then fires 'beforeprint', where the chart is redrawn
-// at its A3 size, and 'afterprint' puts everything back.
-function printTrend() {
-  document.body.classList.add('print-trend');
-  window.print();
-}
-
-// Both handlers check for the class first, so Ctrl+P on its own (without
-// the button) still prints the page the way it always has.
-// chart.stop() first: Chart.js quietly postpones a resize while the chart
-// is still animating — so pressing Print within a second of clicking the
-// Monthly tab would otherwise print the chart at its small screen size.
-window.addEventListener('beforeprint', () => {
-  if (!document.body.classList.contains('print-trend') || !chart) return;
-  chart.stop();
-  chart.resize();
-});
-window.addEventListener('afterprint', () => {
-  if (!document.body.classList.contains('print-trend')) return;
-  document.body.classList.remove('print-trend');
-  if (chart) { chart.stop(); chart.resize(); }
-});
-
 // Everything on the page reads its periods through here, so the month
-// chooser's cut-off reaches the cards, chart, tables and print at once.
+// chooser's cut-off reaches the cards, chart and tables at once.
 function rows() {
   const all = DATA[granularity] || [];
   return endMonth ? all.filter(b => monthOf(b) <= endMonth) : all;
@@ -599,6 +530,33 @@ const lineOnOeeBars = {
   }
 };
 
+// The series on the OEE & Run Time Trend. Shared by the chart on screen
+// and the "Copy for Monthly Review" picture, so the two can never drift
+// apart (colours, order, which figure goes in which bar).
+function trendDatasets(list) {
+  return [
+    // All three as bars, not a line+bar mix — with only a handful
+    // of days saved so far, a line with one or two points just
+    // draws as a near-invisible dot next to a bar that fills the
+    // whole category. Three grouped bars read as three comparable
+    // figures from day one; once there's a real run of history,
+    // Chart.js still groups them the same way, just narrower as
+    // more days join the x-axis.
+    // OEE trend line drawn across the top of the bars, so the
+    // direction of OEE reads at a glance. Same values as the OEE
+    // bars; kept out of the legend so it doesn't show twice.
+    { type: 'line', label: 'OEE trend', data: list.map(b => b.oee_pct),
+      borderColor: '#243547', backgroundColor: '#243547', borderWidth: 2.5,
+      pointRadius: 3, tension: 0.25, spanGaps: true, yAxisID: 'y1', order: -1 },
+    { type: 'bar', label: 'OEE %', data: list.map(b => b.oee_pct),
+      backgroundColor: '#243547', yAxisID: 'y1' },
+    { type: 'bar', label: 'Availability %', data: list.map(b => b.availability_pct),
+      backgroundColor: '#95C11F', labelColor: '#5a7a12', yAxisID: 'y1' },
+    { type: 'bar', label: 'Run Time (h)', data: list.map(b => b.run_time_hrs),
+      backgroundColor: '#d97706', yAxisID: 'y' },
+  ];
+}
+
 function renderChart(list) {
   const ctx = document.getElementById('trend-chart');
   if (chart) chart.destroy();
@@ -607,27 +565,7 @@ function renderChart(list) {
     plugins: [lineOnOeeBars],
     data: {
       labels: list.map(b => b.label),
-      datasets: [
-        // All three as bars, not a line+bar mix — with only a handful
-        // of days saved so far, a line with one or two points just
-        // draws as a near-invisible dot next to a bar that fills the
-        // whole category. Three grouped bars read as three comparable
-        // figures from day one; once there's a real run of history,
-        // Chart.js still groups them the same way, just narrower as
-        // more days join the x-axis.
-        // OEE trend line drawn across the top of the bars, so the
-        // direction of OEE reads at a glance. Same values as the OEE
-        // bars; kept out of the legend so it doesn't show twice.
-        { type: 'line', label: 'OEE trend', data: list.map(b => b.oee_pct),
-          borderColor: '#243547', backgroundColor: '#243547', borderWidth: 2.5,
-          pointRadius: 3, tension: 0.25, spanGaps: true, yAxisID: 'y1', order: -1 },
-        { type: 'bar', label: 'OEE %', data: list.map(b => b.oee_pct),
-          backgroundColor: '#243547', yAxisID: 'y1' },
-        { type: 'bar', label: 'Availability %', data: list.map(b => b.availability_pct),
-          backgroundColor: '#95C11F', labelColor: '#5a7a12', yAxisID: 'y1' },
-        { type: 'bar', label: 'Run Time (h)', data: list.map(b => b.run_time_hrs),
-          backgroundColor: '#d97706', yAxisID: 'y' },
-      ]
+      datasets: trendDatasets(list)
     },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -655,6 +593,113 @@ function renderChart(list) {
       }
     }
   });
+}
+
+// --- Copy for Monthly Review --------------------------------------------
+// Took the place of the old Print / PDF button. Copies the Monthly OEE &
+// Run Time Trend as a picture, ready to paste onto a board review slide.
+// It stops at the month picked in "Show up to" at the top of the page —
+// which opens on LAST month by default (see populateMonthChooser), so in
+// November it stops at October without anyone touching it. It's always
+// the Monthly trend, whichever tab is showing, and the chart on screen
+// is not changed.
+
+function reviewMonths() {
+  return (DATA.monthly || []).filter(b => !endMonth || monthOf(b) <= endMonth);
+}
+
+// A chart canvas is see-through by default — pasted onto a dark slide,
+// the black text would disappear. This paints it white first.
+const whiteBackground = {
+  id: 'whiteBackground',
+  beforeDraw(c) {
+    const g = c.ctx;
+    g.save();
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, c.width, c.height);
+    g.restore();
+  }
+};
+
+async function copyForReview(btn) {
+  const months = reviewMonths();
+  if (!months.length) {
+    alert('There are no saved months to copy yet.');
+    return;
+  }
+  btn.disabled = true;
+
+  // Drawn off-screen at a fixed, slide-shaped size with bigger text than
+  // the screen chart, so it stays readable once shrunk onto a slide.
+  // devicePixelRatio 2 doubles the pixels for a sharper picture.
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed; left:-10000px; top:0;';
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = 560;
+  canvas.style.maxHeight = 'none';   // the page's canvas { max-height: 320px } would squash it
+  holder.appendChild(canvas);
+  document.body.appendChild(holder);
+
+  const font = { size: 15 };
+  const reviewChart = new Chart(canvas, {
+    plugins: [whiteBackground, lineOnOeeBars],   // lineOnOeeBars: dots on the OEE bars here too
+    data: {
+      labels: months.map(b => b.label),
+      datasets: trendDatasets(months)
+    },
+    options: {
+      responsive: false,
+      animation: false,          // draw it all at once — no half-grown bars in the picture
+      devicePixelRatio: 2,
+      layout: { padding: 16 },
+      scales: {
+        x: { grid: { display: false }, ticks: { font } },
+        y: { beginAtZero: true, position: 'left', ticks: { font },
+             title: { display: true, text: 'Run Time (hours)', font } },
+        // Same 40–80% range as the screen chart.
+        y1: { min: 40, max: 80, position: 'right', grid: { drawOnChartArea: false },
+              title: { display: true, text: '%', font },
+              ticks: { stepSize: 10, font, callback: v => v + '%' } },
+      },
+      plugins: {
+        legend: { labels: { boxWidth: 16, font,
+                            filter: (item, data) => data.datasets[item.datasetIndex].type !== 'line' } },
+        tooltip: { enabled: false }
+      }
+    }
+  });
+
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  reviewChart.destroy();
+  holder.remove();
+
+  try {
+    // Straight onto the clipboard — then Ctrl+V on the slide.
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    flashButton(btn, 'Copied ✓ — paste onto your slide');
+  } catch (e) {
+    // Some browsers won't let a page put a picture on the clipboard
+    // (or only on https). Download it as a PNG file instead.
+    const lastLabel = months[months.length - 1].label;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `OEE and Run Time Trend to ${lastLabel}.png`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    flashButton(btn, 'Saved as a picture ✓');
+  }
+}
+
+// Shows a short message on the button, then puts its normal label back.
+function flashButton(btn, message) {
+  const label = btn.dataset.label || btn.textContent;
+  btn.dataset.label = label;
+  btn.textContent = message;
+  setTimeout(() => {
+    btn.textContent = label;
+    btn.disabled = false;
+  }, 2500);
 }
 
 // Parts actually produced against the saved Plan Quantity for that week —
