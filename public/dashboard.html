@@ -9,6 +9,8 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<!-- html2canvas: turns a chart card into one picture for "Copy for Monthly Review" -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="/machine-names.js"></script>  <!-- displayName(): the press names, from config.py -->
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -82,7 +84,14 @@
   .period-badge { background: #243547; color: #95C11F; font-size: 11px; font-weight: bold; padding: 5px 14px; border-radius: 14px; display: inline-block; margin-bottom: 18px; }
 
   .chart-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 24px; }
-  .chart-card { background: white; border-radius: 10px; padding: 20px 22px; }
+  .chart-card { background: white; border-radius: 10px; padding: 20px 22px; position: relative; }
+  /* "Copy for Monthly Review" — one in the top-right corner of every
+     chart card, added by addCopyButtons(). The heading gets room on its
+     right so a long title can't run underneath the button. */
+  .card-copy-btn { position: absolute; top: 14px; right: 18px; padding: 4px 12px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 10.5px; font-weight: bold; cursor: pointer; }
+  .card-copy-btn:hover { background: #95C11F; color: #243547; }
+  .card-copy-btn:disabled { opacity: 0.6; cursor: wait; }
+  .chart-card.has-copy h3 { padding-right: 175px; }
   .chart-card h3 { font-size: 12.5px; font-weight: bold; color: #243547; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.4px; }
   .chart-card canvas { display: block; }
   /* Sits between an h3 and its canvas — pulled up against the heading's
@@ -1268,6 +1277,113 @@ function render(runs, sel) {
     });
     attachValuesTable('mttfChart');
   }
+
+  addCopyButtons();
+}
+
+// --- Copy for Monthly Review --------------------------------------------
+// A button on every chart card that copies that card — heading, note,
+// legend and chart — as one picture, ready to paste onto a slide. It's
+// exactly what's on screen, so it follows the month dropdown like the
+// charts do. Same idea as the button on the Monthly Performance Review.
+
+// Called at the end of render(). Every chart card gets a button, so a
+// chart added to the page later gets one too without any extra code.
+// A card showing "No SFC fault downtime recorded" has no chart in it,
+// so it gets no button.
+function addCopyButtons() {
+  document.querySelectorAll('#app .chart-card').forEach(card => {
+    if (!card.querySelector('canvas')) return;
+    card.classList.add('has-copy');
+    const btn = document.createElement('button');
+    btn.className = 'card-copy-btn';
+    btn.textContent = 'Copy for Monthly Review';
+    btn.title = 'Copies this chart as a picture, ready to paste onto a slide';
+    btn.addEventListener('click', () => copyCardForReview(card, btn));
+    card.appendChild(btn);
+  });
+}
+
+async function copyCardForReview(card, btn) {
+  if (typeof html2canvas === 'undefined') {
+    alert("The picture tool didn't load. Check the internet connection and reload the page.");
+    return;
+  }
+  btn.disabled = true;
+
+  // If the "monthly values" table is showing instead of the chart, flip
+  // back to the chart first (the hint line is what flips it) — the
+  // picture is always of the chart.
+  const wrap = card.querySelector('.canvas-wrap');
+  const hint = card.querySelector('.values-hint');
+  if (wrap && wrap.style.display === 'none' && hint) hint.click();
+
+  // Started straight away and handed to the clipboard as a "promise" —
+  // some browsers only allow clipboard writes right after a click, and
+  // the snapshot takes a moment, so this keeps the write inside that click.
+  const picture = makeCardPicture(card);
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': picture })]);
+    flashButton(btn, 'Copied ✓ — paste onto your slide');
+  } catch (e) {
+    try {
+      // Clipboard blocked by the browser: download the picture instead,
+      // named after the chart. Characters Windows won't allow in a file
+      // name become dashes.
+      const blob = await picture;
+      const title = card.querySelector('h3').textContent.trim().replace(/[\\/:*?"<>|]/g, '-');
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${title}.png`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      flashButton(btn, 'Saved as a picture ✓');
+    } catch (err) {
+      // The snapshot itself failed — nothing to copy or download.
+      alert("Sorry, the picture couldn't be made: " + err.message);
+      btn.disabled = false;
+    }
+  }
+}
+
+async function makeCardPicture(card) {
+  // The card's chart, redrawn at double resolution for the snapshot so
+  // it stays as sharp as the text, then put back.
+  const charts = [...card.querySelectorAll('canvas')].map(c => Chart.getChart(c)).filter(Boolean);
+  setChartResolution(charts, 2);
+  try {
+    const canvas = await html2canvas(card, {
+      scale: 2,                    // double-size picture: sharp once shrunk onto a slide
+      backgroundColor: '#ffffff',
+      logging: false,
+      // Left out of the picture: the button itself, and the "Click chart
+      // to view monthly values" line and its table under the chart.
+      ignoreElements: el => el.classList && (
+        el.classList.contains('card-copy-btn') ||
+        el.classList.contains('values-hint') ||
+        el.classList.contains('values-table')),
+    });
+    return await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  } finally {
+    setChartResolution(charts, undefined);   // undefined = back to the screen's own
+  }
+}
+
+// Chart.js draws at the screen's pixel ratio unless told otherwise;
+// resize() makes it redraw straight away at the new one.
+function setChartResolution(list, ratio) {
+  list.forEach(c => { c.options.devicePixelRatio = ratio; c.resize(); });
+}
+
+// Shows a short message on the button, then puts its normal label back.
+function flashButton(btn, message) {
+  const label = btn.dataset.label || btn.textContent;
+  btn.dataset.label = label;
+  btn.textContent = message;
+  setTimeout(() => {
+    btn.textContent = label;
+    btn.disabled = false;
+  }, 2500);
 }
 
 load();
