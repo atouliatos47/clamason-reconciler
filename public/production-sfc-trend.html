@@ -87,6 +87,11 @@
   .filter-tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
   .filter-tab { padding: 6px 14px; border-radius: 14px; font-size: 11px; font-weight: bold; cursor: pointer; background: #f3f4f6; color: #555; border: none; }
   .filter-tab.active { background: #243547; color: white; }
+  /* "Copy for Monthly Review" — same look as the Print / PDF button on
+     the OEE Trend page, pushed to the right end of the tab row. */
+  .trend-copy-btn { margin-left: auto; padding: 6px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; }
+  .trend-copy-btn:hover { background: #95C11F; color: #243547; }
+  .trend-copy-btn:disabled { opacity: 0.6; cursor: wait; }
 
   canvas { max-height: 320px; }
 
@@ -285,6 +290,7 @@ function toggleNavGroup(name) {
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('weekly', this)">Weekly</button>
           <button class="filter-tab" id="tab-monthly" onclick="event.stopPropagation(); setGranularity('monthly', this)">Monthly</button>
           <button class="filter-tab" onclick="event.stopPropagation(); setGranularity('yearly', this)">Yearly</button>
+          <button class="trend-copy-btn" id="trend-copy-btn" title="Copies the Monthly trend up to last month, ready to paste onto a slide" onclick="event.stopPropagation(); copyForReview(this)">Copy for Monthly Review</button>
         </div>
         <p class="hint">
           Planned Offline and No Production Planned are excluded — they're the biggest numbers in the report
@@ -486,6 +492,24 @@ function renderCards(b) {
     'Setting, changeover, labour, quality etc.';
 }
 
+// The four series on the Unplanned Downtime Trend. Shared by the chart
+// on screen and the "Copy for Monthly Review" picture, so the two can
+// never drift apart (colours, order, which figure goes in which bar).
+function trendDatasets(list) {
+  return [
+    { type: 'bar', label: 'Maintenance', data: list.map(b => b.maintenance_hrs),
+      backgroundColor: '#dc2626', stack: 's', order: 3 },
+    { type: 'bar', label: 'Toolroom', data: list.map(b => b.toolroom_hrs),
+      backgroundColor: '#f59e0b', stack: 's', order: 3 },
+    { type: 'bar', label: 'Production', data: list.map(b => b.other_unplanned_hrs),
+      backgroundColor: '#3d6491', stack: 's', order: 3 },
+    { type: 'line', label: '% of scheduled lost',
+      data: list.map(b => b.downtime_pct_of_scheduled),
+      borderColor: '#243547', backgroundColor: '#243547',
+      borderWidth: 2, pointRadius: 3, yAxisID: 'y1', order: 1 }
+  ];
+}
+
 function renderChart(list) {
   const ctx = document.getElementById('trend-chart');
   if (chart) chart.destroy();
@@ -493,18 +517,7 @@ function renderChart(list) {
   chart = new Chart(ctx, {
     data: {
       labels: list.map(b => b.label),
-      datasets: [
-        { type: 'bar', label: 'Maintenance', data: list.map(b => b.maintenance_hrs),
-          backgroundColor: '#dc2626', stack: 's', order: 3 },
-        { type: 'bar', label: 'Toolroom', data: list.map(b => b.toolroom_hrs),
-          backgroundColor: '#f59e0b', stack: 's', order: 3 },
-        { type: 'bar', label: 'Production', data: list.map(b => b.other_unplanned_hrs),
-          backgroundColor: '#3d6491', stack: 's', order: 3 },
-        { type: 'line', label: '% of scheduled lost',
-          data: list.map(b => b.downtime_pct_of_scheduled),
-          borderColor: '#243547', backgroundColor: '#243547',
-          borderWidth: 2, pointRadius: 3, yAxisID: 'y1', order: 1 }
-      ]
+      datasets: trendDatasets(list)
     },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -528,6 +541,114 @@ function renderChart(list) {
       }
     }
   });
+}
+
+// --- Copy for Monthly Review --------------------------------------------
+// The board review is always about the month that has just finished, so
+// the month we are in now (only part-done) is left off the picture — on
+// 6 November it stops at October, on 2 December at November. It's
+// always the Monthly trend, whichever tab is showing on screen, and the
+// chart on screen is not changed.
+
+// Every saved month before this calendar month. Month keys are
+// 'YYYY-MM' text (from _month_key in daily_trend.py), and text in that
+// shape sorts in date order, so a plain < comparison is enough.
+function reviewMonths() {
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return (DATA.monthly || []).filter(m => m.key < thisMonth);
+}
+
+// A chart canvas is see-through by default — pasted onto a dark slide,
+// the black text would disappear. This paints it white first.
+const whiteBackground = {
+  id: 'whiteBackground',
+  beforeDraw(c) {
+    const g = c.ctx;
+    g.save();
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, c.width, c.height);
+    g.restore();
+  }
+};
+
+async function copyForReview(btn) {
+  const months = reviewMonths();
+  if (!months.length) {
+    alert('There are no finished months to copy yet.');
+    return;
+  }
+  btn.disabled = true;
+
+  // Drawn off-screen at a fixed, slide-shaped size with bigger text than
+  // the screen chart, so it stays readable once shrunk onto a slide.
+  // devicePixelRatio 2 doubles the pixels for a sharper picture.
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed; left:-10000px; top:0;';
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = 560;
+  canvas.style.maxHeight = 'none';   // the page's canvas { max-height: 320px } would squash it
+  holder.appendChild(canvas);
+  document.body.appendChild(holder);
+
+  const font = { size: 15 };
+  const reviewChart = new Chart(canvas, {
+    plugins: [whiteBackground],
+    data: {
+      labels: months.map(m => m.label),
+      datasets: trendDatasets(months)
+    },
+    options: {
+      responsive: false,
+      animation: false,          // draw it all at once — no half-grown bars in the picture
+      devicePixelRatio: 2,
+      layout: { padding: 16 },
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { font } },
+        y: { stacked: true, beginAtZero: true, ticks: { font },
+             title: { display: true, text: 'Hours', font } },
+        y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false },
+              title: { display: true, text: '% of scheduled', font },
+              ticks: { font, callback: v => v + '%' } }
+      },
+      plugins: {
+        legend: { labels: { boxWidth: 16, font } },
+        tooltip: { enabled: false }
+      }
+    }
+  });
+
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  reviewChart.destroy();
+  holder.remove();
+
+  try {
+    // Straight onto the clipboard — then Ctrl+V on the slide.
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    flashButton(btn, 'Copied ✓ — paste onto your slide');
+  } catch (e) {
+    // Some browsers won't let a page put a picture on the clipboard
+    // (or only on https). Download it as a PNG file instead.
+    const lastLabel = months[months.length - 1].label;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Unplanned Downtime Trend to ${lastLabel}.png`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    flashButton(btn, 'Saved as a picture ✓');
+  }
+}
+
+// Shows a short message on the button, then puts its normal label back.
+function flashButton(btn, message) {
+  const label = btn.dataset.label || btn.textContent;
+  btn.dataset.label = label;
+  btn.textContent = message;
+  setTimeout(() => {
+    btn.textContent = label;
+    btn.disabled = false;
+  }, 2500);
 }
 
 function renderTable(list) {
