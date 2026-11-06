@@ -400,7 +400,7 @@ const barValueLabels = {
     const ctx = chart.ctx;
     chart.data.datasets.forEach((dataset, di) => {
       const meta = chart.getDatasetMeta(di);
-      if (meta.hidden) return;
+      if (meta.hidden || dataset.type === 'line') return;
       meta.data.forEach((bar, i) => {
         const value = dataset.data[i];
         if (value === null || value === undefined) return;
@@ -595,6 +595,12 @@ function renderChart(list) {
         // figures from day one; once there's a real run of history,
         // Chart.js still groups them the same way, just narrower as
         // more days join the x-axis.
+        // OEE trend line drawn across the top of the bars, so the
+        // direction of OEE reads at a glance. Same values as the OEE
+        // bars; kept out of the legend so it doesn't show twice.
+        { type: 'line', label: 'OEE trend', data: list.map(b => b.oee_pct),
+          borderColor: '#243547', backgroundColor: '#243547', borderWidth: 2.5,
+          pointRadius: 3, tension: 0.25, spanGaps: true, yAxisID: 'y1', order: -1 },
         { type: 'bar', label: 'OEE %', data: list.map(b => b.oee_pct),
           backgroundColor: '#243547', yAxisID: 'y1' },
         { type: 'bar', label: 'Availability %', data: list.map(b => b.availability_pct),
@@ -610,12 +616,16 @@ function renderChart(list) {
       scales: {
         x: { grid: { display: false } },
         y: { beginAtZero: true, position: 'left', title: { display: true, text: 'Run Time (hours)' } },
-        y1: { beginAtZero: true, max: 100, position: 'right', grid: { drawOnChartArea: false },
-              title: { display: true, text: '%' }, ticks: { callback: v => v + '%' } },
+        // 40–80% instead of 0–100% so month-to-month OEE and
+        // Availability changes are big enough to see.
+        y1: { min: 40, max: 80, position: 'right', grid: { drawOnChartArea: false },
+              title: { display: true, text: '%' }, ticks: { stepSize: 10, callback: v => v + '%' } },
       },
       plugins: {
-        legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+        legend: { labels: { boxWidth: 12, font: { size: 11 },
+                            filter: (item, data) => data.datasets[item.datasetIndex].type !== 'line' } },
         tooltip: {
+          filter: (c) => c.dataset.type !== 'line',
           callbacks: {
             label: (c) => c.dataset.yAxisID === 'y'
               ? `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}h`
