@@ -486,26 +486,88 @@ function pareto(id, rows, key, colour) {
   });
 }
 
-function reasonBarsSimple(id, entries, colour) {
+// Fault Downtime — Reason Codes by Month. One standing bar per month in
+// the scope (the dropdown's month, or every month of a combined view),
+// split into the three fault types: Press, Feeder/decoiler and
+// Shaker/conveyor. Replaced the lying-down bars, which added every month
+// together into one bar per code — this shows the same hours, but each
+// month gets its own bar so they can be compared side by side.
+// Uses the same FAULT_*_CODES groups as the Fault Locations chart below,
+// so old and new SFC code names are merged the same way in both.
+function faultByMonthChart(id, scope) {
+  const parts = [
+    { label: 'Press',           codes: FAULT_PRESS_CODES,  colour: MAINTENANCE },
+    { label: 'Feeder/decoiler', codes: FAULT_FEEDER_CODES, colour: LIME },
+    { label: 'Shaker/conveyor', codes: FAULT_SHAKER_CODES, colour: AMBER },
+  ];
   new Chart(document.getElementById(id), {
     type: 'bar',
     data: {
-      labels: uniqueShortLabels(entries.map(e => e[0]), MAX_TICK_H),
-      datasets: [{ data: entries.map(e => e[1]), backgroundColor: colour, borderRadius: 3, maxBarThickness: 28 }],
+      labels: scope.map(r => r.period_label || r.period),
+      datasets: parts.map(p => ({
+        label: p.label,
+        data: scope.map(r => faultCategoryHrsForRun(r, p.codes)),
+        backgroundColor: p.colour,
+        stack: 'fault',          // all three parts piled into one bar per month
+        maxBarThickness: 120,    // wide bars when there are only a few months
+      })),
     },
-    plugins: [barValues],
+    plugins: [stackLabels],
     options: {
-      indexAxis: 'y',
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { right: 36 } },
-      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      layout: { padding: { top: 18 } },   // room for the total above the tallest bar
+      plugins: {
+        legend: { position: 'top', align: 'start', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${Number(c.parsed.y).toFixed(1)}h` } },
+      },
       scales: {
-        x: { display: false },
-        y: { grid: { display: false }, ticks: { color: TICK, font: { size: 10.5 } } },
+        x: { stacked: true, grid: { display: false }, ticks: { color: TICK } },
+        y: { stacked: true, beginAtZero: true, ticks: { callback: v => v + 'h' } },
       },
     },
   });
 }
+
+// Writes the numbers on a stacked bar chart: each part's own hours in
+// white INSIDE the part (only when the part is tall enough to hold the
+// number — a thin sliver just shows its colour), and the month's total
+// above the top of the bar. A part hidden by clicking its legend entry is
+// left out of the total too, so the number always matches what's drawn.
+const stackLabels = {
+  id: 'stackLabels',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    chart.data.labels.forEach((_, i) => {
+      let total = 0, top = null, x = null;
+      chart.data.datasets.forEach((ds, di) => {
+        if (!chart.isDatasetVisible(di)) return;
+        const v = ds.data[i];
+        const el = chart.getDatasetMeta(di).data[i];
+        if (v === null || v === undefined || !el) return;
+        total += v;
+        x = el.x;
+        top = top === null ? el.y : Math.min(top, el.y);
+        if (Math.abs(el.base - el.y) >= 18) {
+          ctx.save();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '600 11px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(v.toFixed(1), el.x, (el.y + el.base) / 2);
+          ctx.restore();
+        }
+      });
+      if (top === null) return;   // no data at all for this month
+      ctx.save();
+      ctx.fillStyle = '#243547';
+      ctx.font = '600 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(total.toFixed(1) + 'h', x, top - 4);
+      ctx.restore();
+    });
+  },
+};
 // ---------------------------------------------------------------------
 
 function fmt(n, d=1) { return (n === null || n === undefined) ? '—' : Number(n).toFixed(d); }
@@ -913,8 +975,8 @@ function render(runs, sel) {
 
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
-        <h3>Fault Downtime — Reason Codes</h3>
-        <div class="chart-sub-note">${scopeNote} · old and new SFC-naming-era codes merged</div>
+        <h3>Fault Downtime — Reason Codes by Month</h3>
+        <div class="chart-sub-note">${scopeNote.replace(' combined', '')} · old and new SFC-naming-era codes merged</div>
         ${reasons.length ? '<div class="canvas-wrap short"><canvas id="reasonChart"></canvas></div>' : emptyNote}
       </div>
     </div>
@@ -1120,7 +1182,7 @@ function render(runs, sel) {
   attachValuesTable('hoursChart');
 
   if (top5.length) pareto('paretoChart', top5, 'fault_hrs', MAINTENANCE);
-  if (reasons.length) reasonBarsSimple('reasonChart', reasons, MAINTENANCE);
+  if (reasons.length) faultByMonthChart('reasonChart', scope);
 
   new Chart(document.getElementById('faultLocationChart'), {
     type: 'line',
