@@ -7,6 +7,8 @@
 <meta name="theme-color" content="#243547">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<!-- html2canvas: turns the slide into one picture for "Copy for Monthly Review" -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="/machine-names.js"></script>  <!-- displayName(): the press names, from config.py -->
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -40,6 +42,7 @@
   select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 12.5px; }
   .print-btn { padding: 8px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; margin-left: 8px; }
   .print-btn:hover { background: #95C11F; color: #243547; }
+  .print-btn:disabled { opacity: 0.6; cursor: wait; }
 
   .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
   .empty-note, .error-box { background: white; border-radius: 10px; padding: 24px; text-align: center; color: #888; font-size: 13px; display: none; }
@@ -274,6 +277,7 @@ function toggleNavGroup(name) {
   </div>
   <div>
     <select id="period-select" onchange="selectPeriod(this.value)"></select>
+    <button class="print-btn" id="copy-review-btn" title="Copies the slide as a picture, without Avg Downtime per Fault Stop, ready to paste onto a slide" onclick="copyForReview(this)">Copy for Monthly Review</button>
     <button class="print-btn" onclick="window.print()">Print / PDF</button>
     <button class="print-btn" onclick="window.print()">Save</button>
   </div>
@@ -1084,6 +1088,91 @@ function ring(id, pct, text, colour, target) {
     },
     plugins: [centre],
   }));
+}
+
+// --- Copy for Monthly Review --------------------------------------------
+// Copies the whole slide as one picture, ready to paste onto the board
+// review deck — but without the Avg Downtime per Fault Stop gauge, which
+// isn't part of the board slide. It's only left out of the PICTURE: the
+// page on screen still shows it. With it gone, MTTF and TPM Completion
+// sit side by side on one row, so there's no gap where it was.
+//
+// html2canvas (loaded in <head>) takes the snapshot. It works on a copy
+// of the page (onclone below), so the gauge can be taken out of that copy
+// without anything changing or flickering on screen.
+async function copyForReview(btn) {
+  const slide = document.getElementById('slide');
+  if (!current || slide.style.display === 'none') return;
+  if (typeof html2canvas === 'undefined') {
+    alert("The picture tool didn't load. Check the internet connection and reload the page.");
+    return;
+  }
+  btn.disabled = true;
+
+  // Started straight away and handed to the clipboard as a "promise" —
+  // the picture is still being made while the clipboard waits for it.
+  // Some browsers only allow clipboard writes right after a click, and
+  // the snapshot takes a moment, so this keeps the write inside that click.
+  const picture = makeReviewPicture(slide);
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': picture })]);
+    flashButton(btn, 'Copied ✓ — paste onto your slide');
+  } catch (e) {
+    try {
+      // Clipboard blocked by the browser: download the picture instead.
+      const blob = await picture;
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `Maintenance Review ${current.period_label || current.period}.png`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      flashButton(btn, 'Saved as a picture ✓');
+    } catch (err) {
+      // The snapshot itself failed — nothing to copy or download.
+      alert("Sorry, the picture couldn't be made: " + err.message);
+      btn.disabled = false;
+    }
+  }
+}
+
+async function makeReviewPicture(slide) {
+  // Every chart and gauge on the slide, redrawn at double resolution for
+  // the snapshot so they stay as sharp as the text, then put back.
+  const all = [...charts, byPressChart, otherChart].filter(Boolean);
+  setChartResolution(all, 2);
+  try {
+    const canvas = await html2canvas(slide, {
+      scale: 2,                    // double-size picture: sharp once shrunk onto a slide
+      backgroundColor: '#ffffff',
+      logging: false,
+      onclone: (doc) => {
+        // Take the Avg Downtime per Fault Stop gauge out of the copy.
+        const avg = doc.getElementById('g-fault');
+        const cell = avg && avg.closest('.gauges > div');
+        if (cell) cell.remove();
+      }
+    });
+    return await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  } finally {
+    setChartResolution(all, undefined);   // undefined = back to the screen's own
+  }
+}
+
+// Chart.js draws at the screen's pixel ratio unless told otherwise;
+// resize() makes it redraw straight away at the new one.
+function setChartResolution(list, ratio) {
+  list.forEach(c => { c.options.devicePixelRatio = ratio; c.resize(); });
+}
+
+// Shows a short message on the button, then puts its normal label back.
+function flashButton(btn, message) {
+  const label = btn.dataset.label || btn.textContent;
+  btn.dataset.label = label;
+  btn.textContent = message;
+  setTimeout(() => {
+    btn.textContent = label;
+    btn.disabled = false;
+  }, 2500);
 }
 
 load();
