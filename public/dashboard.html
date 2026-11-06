@@ -324,8 +324,9 @@ function faultCategoryHrsForRun(r, codes) {
 // The 3-month version of the Monthly Performance Review's "MA-FAULT
 // PRESS — by press" chart. Press-fault hours only (FAULT_PRESS_CODES, so
 // the same old/new code merge as the Fault Locations chart), per press,
-// per month. Top 5 is picked by the total across every uploaded month,
-// the same window as the Pareto, so the two charts cover the same period.
+// per month. Top 5 is picked by the total across the months it's given —
+// the months the dropdown shows (trendRuns in render()), so the presses
+// named are the worst ones in that window, not across all time.
 function pressFaultHrs(m) {
   return Object.entries(m.reasons || {}).reduce((sum, [reason, h]) =>
     FAULT_PRESS_CODES.includes((reason || '').toUpperCase().trim()) ? sum + (h || 0) : sum, 0);
@@ -956,12 +957,26 @@ function render(runs, sel) {
   const reasons = faultReasonTotals(scope);
   const emptyNote = `<div class="state-msg">No SFC fault downtime recorded for ${isAll ? 'these months' : name(latest)}</div>`;
 
+  // The months the TREND charts draw — Fault Locations down to TPM %.
+  // They used to always show every uploaded month, whatever the dropdown
+  // said; now they follow it like the two charts above:
+  //   a combined view ("Last 2 months", "2026", "All months") → exactly
+  //     its months, the same ones the Pareto adds up;
+  //   one month → every month UP TO it. On its own, one month would turn
+  //     each line into a single dot, so picking October shows Jan–Oct —
+  //     still a trend, and never the unfinished November.
+  // Number(): a single month's idx arrives as text ("3"), and "3" + 1
+  // would be "31", not 4.
+  const trendRuns = isAll ? scope : runs.slice(0, Number(idx) + 1);
+  const trendRange = trendRuns.length === 1 ? name(trendRuns[0])
+    : `${name(trendRuns[0])} – ${name(trendRuns[trendRuns.length - 1])}`;
+
   const app = document.getElementById('app');
-  // Trend charts come first — they're what this page is for. The first
-  // two (Pareto and reason codes) follow the dropdown; the monthly trend
-  // charts under them always show every month, that's what makes them a
-  // trend. The selected month's KPI cards sit at the bottom, with the
-  // period badge alongside them because it labels those cards.
+  // Trend charts come first — they're what this page is for. Every chart
+  // follows the dropdown: the Pareto and reason codes through `scope`,
+  // the monthly trend charts under them through `trendRuns` (above).
+  // The selected month's KPI cards sit at the bottom, with the period
+  // badge alongside them because it labels those cards.
   // Order in this template string is the order on screen; the Chart.js
   // code below finds each canvas by id, so it doesn't care where it sits.
   app.innerHTML = `
@@ -992,7 +1007,7 @@ function render(runs, sel) {
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>MA-FAULT PRESS by Press — Monthly Trend</h3>
-        <div class="chart-sub-note">Top 5 presses by press-fault hours across all ${runs.length} uploaded months · old and new SFC-naming-era codes merged</div>
+        <div class="chart-sub-note">Top 5 presses by press-fault hours across ${trendRange} · old and new SFC-naming-era codes merged</div>
         <div class="canvas-wrap short"><canvas id="pressFaultChart"></canvas></div>
       </div>
     </div>
@@ -1008,7 +1023,7 @@ function render(runs, sel) {
       </div>
     </div>
 
-    ${hasOee(runs) ? `
+    ${hasOee(trendRuns) ? `
     <div class="chart-grid">
       <div class="chart-card">
         <h3>OEE — Trend</h3>
@@ -1020,7 +1035,7 @@ function render(runs, sel) {
       </div>
     </div>` : ''}
 
-    ${hasMtbf(runs) ? `
+    ${hasMtbf(trendRuns) ? `
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>MTTF — Trend</h3>
@@ -1029,7 +1044,7 @@ function render(runs, sel) {
       </div>
     </div>` : ''}
 
-    ${hasPpm(runs) ? `
+    ${hasPpm(trendRuns) ? `
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>TPM Schedule Completion % — Trend</h3>
@@ -1068,9 +1083,9 @@ function render(runs, sel) {
     ${ppmSection(latest, prev)}
   `;
 
-  const labels = runs.map(r => r.period_label || r.period);
+  const labels = trendRuns.map(r => r.period_label || r.period);
 
-  if (hasOee(runs)) {
+  if (hasOee(trendRuns)) {
     // spanGaps lets a month with no OEE upload leave a break in the line
     // rather than being drawn as a drop to zero.
     new Chart(document.getElementById('oeeChart'), {
@@ -1078,11 +1093,11 @@ function render(runs, sel) {
       data: {
         labels,
         datasets: [
-          { label: 'OEE %', data: runs.map(r => r.oee_pct), borderColor: '#95C11F',
+          { label: 'OEE %', data: trendRuns.map(r => r.oee_pct), borderColor: '#95C11F',
             backgroundColor: '#95C11F', borderWidth: 2.5, pointRadius: 4, spanGaps: true },
-          { label: 'Availability %', data: runs.map(r => r.oee_availability_pct), borderColor: '#243547',
+          { label: 'Availability %', data: trendRuns.map(r => r.oee_availability_pct), borderColor: '#243547',
             backgroundColor: '#243547', borderWidth: 1.5, borderDash: [5, 3], pointRadius: 3, spanGaps: true },
-          { label: 'Performance %', data: runs.map(r => r.oee_performance_pct), borderColor: '#d97706',
+          { label: 'Performance %', data: trendRuns.map(r => r.oee_performance_pct), borderColor: '#d97706',
             backgroundColor: '#d97706', borderWidth: 1.5, borderDash: [2, 2], pointRadius: 3, spanGaps: true },
         ],
       },
@@ -1100,8 +1115,8 @@ function render(runs, sel) {
       data: {
         labels,
         datasets: [
-          { label: 'MTTR (repair)', data: runs.map(r => r.mtbf_mttr_hrs), backgroundColor: '#95C11F' },
-          { label: 'Wait (before start)', data: runs.map(r => r.mtbf_wait_hrs), backgroundColor: '#dc2626' },
+          { label: 'MTTR (repair)', data: trendRuns.map(r => r.mtbf_mttr_hrs), backgroundColor: '#95C11F' },
+          { label: 'Wait (before start)', data: trendRuns.map(r => r.mtbf_wait_hrs), backgroundColor: '#dc2626' },
         ],
       },
       options: {
@@ -1119,7 +1134,7 @@ function render(runs, sel) {
     data: {
       labels,
       datasets: [{
-        label: 'Gap %', data: runs.map(r => r.gap_pct),
+        label: 'Gap %', data: trendRuns.map(r => r.gap_pct),
         borderColor: NAVY, backgroundColor: NAVY + '15', fill: true, tension: 0.25,
         pointBackgroundColor: NAVY, pointRadius: 5,
       }],
@@ -1132,7 +1147,7 @@ function render(runs, sel) {
   });
   attachValuesTable('gapChart');
 
-  if (hasPpm(runs)) {
+  if (hasPpm(trendRuns)) {
     // spanGaps: same reasoning as the OEE chart above — a month with no
     // Due Date Performance file uploaded leaves a break in the line rather
     // than reading as a real 0% completion.
@@ -1141,13 +1156,13 @@ function render(runs, sel) {
       data: {
         labels,
         datasets: [
-          { label: 'TPM Schedule Completion %', data: runs.map(r => r.ppm_completion_pct),
+          { label: 'TPM Schedule Completion %', data: trendRuns.map(r => r.ppm_completion_pct),
             borderColor: LIME, backgroundColor: LIME + '15', fill: true, tension: 0.25,
             pointBackgroundColor: LIME, pointRadius: 5, spanGaps: true },
           // Same dashed-target treatment as the MTTF chart below. The
           // values table is built from the chart's datasets, so this line
           // is also what gives the table its Target row.
-          { label: 'Target', data: Array(runs.length).fill(90), borderColor: '#999',
+          { label: 'Target', data: Array(trendRuns.length).fill(90), borderColor: '#999',
             borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, order: 0, fill: false },
         ],
       },
@@ -1169,8 +1184,8 @@ function render(runs, sel) {
     data: {
       labels,
       datasets: [
-        { label: 'SFC fault hours', data: runs.map(r => r.maintenance_hrs), borderColor: RED, backgroundColor: RED + '15', fill: true, tension: 0.25, pointRadius: 5 },
-        { label: 'Agility hours matched', data: runs.map(r => r.agility_maintenance_hrs), borderColor: LIME, backgroundColor: LIME + '25', fill: true, tension: 0.25, pointRadius: 5 },
+        { label: 'SFC fault hours', data: trendRuns.map(r => r.maintenance_hrs), borderColor: RED, backgroundColor: RED + '15', fill: true, tension: 0.25, pointRadius: 5 },
+        { label: 'Agility hours matched', data: trendRuns.map(r => r.agility_maintenance_hrs), borderColor: LIME, backgroundColor: LIME + '25', fill: true, tension: 0.25, pointRadius: 5 },
       ],
     },
     options: {
@@ -1189,13 +1204,13 @@ function render(runs, sel) {
     data: {
       labels,
       datasets: [
-        { label: 'Press', data: runs.map(r => faultCategoryHrsForRun(r, FAULT_PRESS_CODES)),
+        { label: 'Press', data: trendRuns.map(r => faultCategoryHrsForRun(r, FAULT_PRESS_CODES)),
           borderColor: MAINTENANCE, backgroundColor: MAINTENANCE + '15', fill: true, tension: 0.25,
           pointBackgroundColor: MAINTENANCE, pointRadius: 5, spanGaps: true },
-        { label: 'Feeder/Decoiler/Straightener', data: runs.map(r => faultCategoryHrsForRun(r, FAULT_FEEDER_CODES)),
+        { label: 'Feeder/Decoiler/Straightener', data: trendRuns.map(r => faultCategoryHrsForRun(r, FAULT_FEEDER_CODES)),
           borderColor: RED, backgroundColor: RED + '15', fill: true, tension: 0.25,
           pointBackgroundColor: RED, pointRadius: 5, spanGaps: true },
-        { label: 'Shaker/Conveyor', data: runs.map(r => faultCategoryHrsForRun(r, FAULT_SHAKER_CODES)),
+        { label: 'Shaker/Conveyor', data: trendRuns.map(r => faultCategoryHrsForRun(r, FAULT_SHAKER_CODES)),
           borderColor: AMBER, backgroundColor: AMBER + '15', fill: true, tension: 0.25,
           pointBackgroundColor: AMBER, pointRadius: 5, spanGaps: true },
       ],
@@ -1215,7 +1230,7 @@ function render(runs, sel) {
       labels,
       // fill: false here, unlike Fault Locations above: five shaded areas
       // stacked on top of each other turn into one muddy block.
-      datasets: pressFaultTopByMonth(runs).map((p, i) => ({
+      datasets: pressFaultTopByMonth(trendRuns).map((p, i) => ({
         label: displayName(p.machine), data: p.hrs,   // summed by stored name, shown by new name
         borderColor: PRESS_COLOURS[i], backgroundColor: PRESS_COLOURS[i],
         fill: false, tension: 0.25, pointBackgroundColor: PRESS_COLOURS[i],
@@ -1231,16 +1246,16 @@ function render(runs, sel) {
   });
   attachValuesTable('pressFaultChart');
 
-  if (hasMtbf(runs)) {
+  if (hasMtbf(trendRuns)) {
     new Chart(document.getElementById('mttfChart'), {
       type: 'line',
       data: {
         labels,
         datasets: [
-          { label: 'MTTF (h)', data: runs.map(mttfOf), borderColor: MAINTENANCE,
+          { label: 'MTTF (h)', data: trendRuns.map(mttfOf), borderColor: MAINTENANCE,
             backgroundColor: MAINTENANCE + '15', fill: true, tension: 0.25,
             pointBackgroundColor: MAINTENANCE, pointRadius: 5, spanGaps: true },
-          { label: 'Target', data: Array(runs.length).fill(400), borderColor: '#999',
+          { label: 'Target', data: Array(trendRuns.length).fill(400), borderColor: '#999',
             borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, order: 0, fill: false },
         ],
       },
