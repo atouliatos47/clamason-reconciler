@@ -580,11 +580,31 @@ function renderCards(b) {
   document.getElementById('c-qual-sub').textContent = b.scrap_parts != null ? `${Math.round(b.scrap_parts).toLocaleString()} scrap logged` : '';
 }
 
+// Chart.js puts a line's dots in the middle of each group of bars —
+// and the middle bar is Availability. This moves each dot of the OEE
+// trend line across so it sits on top of its own OEE bar instead.
+// It runs just before the line is drawn, every frame, so the dots
+// follow the bars during the opening animation and on resize too.
+const lineOnOeeBars = {
+  id: 'lineOnOeeBars',
+  beforeDatasetDraw(chart, args) {
+    if (chart.data.datasets[args.index].type !== 'line') return;
+    const oeeIndex = chart.data.datasets.findIndex(d => d.type === 'bar' && d.label === 'OEE %');
+    // OEE bars hidden from the legend: leave the dots where Chart.js put them.
+    if (oeeIndex < 0 || !chart.isDatasetVisible(oeeIndex)) return;
+    const bars = chart.getDatasetMeta(oeeIndex).data;
+    args.meta.data.forEach((point, i) => {
+      if (bars[i]) point.x = bars[i].x;
+    });
+  }
+};
+
 function renderChart(list) {
   const ctx = document.getElementById('trend-chart');
   if (chart) chart.destroy();
 
   chart = new Chart(ctx, {
+    plugins: [lineOnOeeBars],
     data: {
       labels: list.map(b => b.label),
       datasets: [
