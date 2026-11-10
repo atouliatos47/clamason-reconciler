@@ -562,21 +562,36 @@ function renderMtbf(d) {
     <td>${s.mtbf_days === null ? '–' : s.mtbf_days + 'd'}<span style="color:#999;font-size:10px;"> (${s.mtbf_assets}/${s.asset_count})</span></td>
     <td style="color:#888;font-size:10.5px;">${note}</td></tr>`;
 
+  // Headline = the 19 SFC presses against the hours they actually ran.
+  // This is what Save to Trend Dashboard stores and the board gauge shows.
+  const p = m.presses || {};
+  const headline = p.mttf_hrs != null
+    ? `<b>Saved headline — SFC presses:</b> ${p.run_hrs.toLocaleString()} running hours ÷ ${p.jobs} breakdowns
+       = <b>MTTF ${Math.round(p.mttf_hrs).toLocaleString()}h</b> · MTTR ${p.mttr_hrs}h
+       · ${p.presses_down} of ${p.asset_count} presses had a breakdown`
+    : p.jobs === 0
+      ? `<b>Saved headline — SFC presses:</b> no breakdowns on the ${p.asset_count} presses this period.`
+      : `<b>Saved headline — SFC presses:</b> MTTR ${p.mttr_hrs ?? '–'}h on ${p.jobs} breakdowns.
+         <span style="color:#dc2626;">Attach the SFC OEE file too — MTTF needs the presses' running hours.</span>`;
+
   box.innerHTML = `
     <h3>Reliability — Agility MTBF ${m.breakdown_range ? '· ' + m.breakdown_range : ''}</h3>
+    <div style="font-size:12.5px;margin:4px 0 12px;line-height:1.6;">${headline}</div>
     <table>
       <thead><tr><th>Scope</th><th>Assets</th><th>Jobs</th><th>Downtime</th><th>MTTR</th><th>Wait</th><th>MTBF</th><th></th></tr></thead>
       <tbody>
+        ${m.presses ? row('SFC presses', m.presses, 'headline — running hours method') : ''}
         ${row('Plant only', m.plant, 'presses and equipment')}
         ${row('Tools', m.tools, 'toolroom assets')}
         ${row('All assets', m.all, 'unfiltered — mixes both')}
       </tbody>
     </table>
     <div style="font-size:11px;color:#888;margin-top:10px;line-height:1.6;">
-      This export has no craft column, so plant and tools are split by asset code.
-      Use the plant row for a maintenance figure — the unfiltered row is dominated by toolroom work.
-      MTBF counts in brackets are the assets Agility could calculate it for; the rest had too few
-      jobs to measure an interval between failures.
+      The SFC presses row is the headline: the same 19 presses every month, so months compare fairly.
+      Its bracket shows how many of them ran this period.
+      The other rows use Agility's own MTBF, kept for reference: it only counts assets with 2+ jobs,
+      and only from their first to last breakdown, so it reads much lower.
+      Plant and tools are split by asset code, because this export has no craft column.
     </div>`;
   box.style.display = 'block';
 }

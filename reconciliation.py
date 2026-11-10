@@ -364,3 +364,115 @@ def reconcile(sfc_summary, downtime_data, wo_data, asset_lookup, wo_file_provide
         'repair_times_all': repair_times_all,
         **gap,
     }
+
+
+def _code_key(code):
+    """'00044' and '044' are the same Agility asset — compare without
+    the zero-padding, which Agility isn't consistent about (Heenan 2 is
+    '000040' while most presses are five digits)."""
+    return str(code).strip().lstrip('0')
+
+
+def summarise_press_reliability(mtbf_records, press_assets, oee_result):
+    """The headline MTBF / MTTR / MTTF for the board — SFC presses only,
+    measured against the hours those presses actually RAN.
+
+    WHY THIS REPLACED THE OLD 'PLANT' FIGURE
+    -----------------------------------------
+    The old headline used Agility's own per-asset MTBF, averaged across
+    plant assets. Three problems, all seen on real data:
+      1. Agility only gives an MTBF to assets with 2+ breakdowns, so
+         October 2026 rested on 2 of 9 assets.
+      2. Agility measures only from the FIRST to the LAST breakdown. Two
+         machines with one bad week each (Bruderer 25T: 4 breakdowns in
+         7.7 days) read as 'failing every 2 days' all month — 46h MTTF.
+      3. 'Plant' mixed presses with other equipment (902525, the Jones
+         Shipman grinder, the EDM, the Pero degreaser) and the MTTR was
+         averaged over a different set of assets than the MTBF.
+
+    THE METHOD NOW
+    --------------
+    The fleet is fixed: every press in config.SFC_TO_AGILITY (19), so
+    one month and the next measure the same thing. Then the textbook
+    definition:
+
+        MTTF = hours the presses ran / number of breakdowns on them
+        MTBF = MTTF + MTTR       (the full cycle: run, fail, repair)
+
+    Running hours come from the SFC OEE export uploaded in the same
+    Monthly Check, summed over the same 19 presses only. Calendar time
+    was the alternative, but it counts nights, weekends and presses that
+    sat idle (Bruderer 1 during its rebuild) as 'running without
+    failing', which would flatter the figure.
+
+    mtbf_days is stored so that the existing pages, which all compute
+    MTTF as (mtbf_days * 24) - mtbf_mttr_hrs, get exactly
+    run_hrs / breakdowns back — no page needs to change for the
+    headline to be right.
+
+    Returns the same keys as mtbf_parser.summarise_mtbf, so db.save_run
+    and the Monthly Check table can use it in its place, plus extra
+    audit fields. mtbf_days and mttf_hrs are None when no OEE file was
+    attached (no running hours to divide) or when there were no
+    breakdowns at all (nothing to divide by — good news, but not a
+    number).
+    """
+    code_to_press = {
+        _code_key(code): press
+        for press, codes in press_assets.items()
+        for code in codes
+    }
+    rows = [r for r in mtbf_records if _code_key(r['asset']) in code_to_press]
+
+    breakdowns = sum(r['jobs'] for r in rows)
+
+    def weighted(key):
+        pairs = [(r[key], r['jobs']) for r in rows
+                 if r.get(key) is not None and r['jobs']]
+        total = sum(j for _, j in pairs)
+        return round(sum(v * j for v, j in pairs) / total, 2) if total else None
+
+    mttr_hrs = weighted('mttr_hrs')
+
+    # Running hours for the same 19 presses. oee_parser already maps
+    # SFC's machine names to the canonical SFC_TO_AGILITY keys, so a
+    # straight name lookup is enough. Machines SFC tracks that aren't in
+    # the 19 are left out of the hours, the same way their breakdowns
+    # are left out above.
+    run_hrs = None
+    presses_ran = 0
+    if oee_result and oee_result.get('per_machine'):
+        ran = [m for m in oee_result['per_machine']
+               if m.get('machine') in press_assets]
+        run_hrs = round(sum(m.get('run_time_hrs') or 0 for m in ran), 2)
+        presses_ran = sum(1 for m in ran if (m.get('run_time_hrs') or 0) > 0)
+
+    mttf_hrs = None
+    mtbf_days = None
+    if run_hrs and breakdowns:
+        mttf_hrs = round(run_hrs / breakdowns, 2)
+        mtbf_days = round((mttf_hrs + (mttr_hrs or 0)) / 24, 4)
+
+    by_press = {}
+    for r in rows:
+        press = code_to_press[_code_key(r['asset'])]
+        by_press[press] = by_press.get(press, 0) + r['jobs']
+
+    return {
+        'asset_count': len(press_assets),
+        'jobs': breakdowns,
+        'downtime_hrs': round(sum(r['downtime_hrs'] or 0 for r in rows), 2),
+        'mttr_hrs': mttr_hrs,
+        'wait_hrs': weighted('wait_hrs'),
+        'mtbf_days': mtbf_days,
+        # The 'x of y' pair on the gauge: presses that actually ran this
+        # period, out of the fixed 19. A press that never ran adds no
+        # hours, so it can't be part of the figure.
+        'mtbf_assets': presses_ran,
+        'mtbf_insufficient': 0,
+        'method': 'run_hours',
+        'run_hrs': run_hrs,
+        'mttf_hrs': mttf_hrs,
+        'presses_down': len(by_press),
+        'by_press': dict(sorted(by_press.items(), key=lambda kv: -kv[1])),
+    }

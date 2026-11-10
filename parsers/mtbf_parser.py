@@ -132,6 +132,20 @@ def parse_mtbf_file(filepath):
         insufficient = (
             isinstance(raw_mtbf, str) and INSUFFICIENT in raw_mtbf.strip().lower()
         )
+        jobs = int(_num(cell(COL_JOBS)) or 0)
+        elapsed_days = _num(cell(COL_ELAPSED_DAYS))
+
+        # Agility writes '<1' instead of a number when an asset's
+        # breakdowns were less than a day apart. _num() can't read that,
+        # so it used to come back as None and the asset was dropped as if
+        # it had no data — the WORST assets silently vanished from the
+        # figure. Sept 2026 lost three this way (Jones Shipman 540,
+        # Bruderer BSTA 250, Amada TP200EX). The real value is easy to
+        # rebuild from the elapsed-days column Agility gives alongside:
+        # first-to-last W/O time divided by the gaps between jobs.
+        under_one_day = isinstance(raw_mtbf, str) and raw_mtbf.strip().startswith('<')
+        if under_one_day and jobs > 1 and elapsed_days is not None:
+            mtbf_days = round(elapsed_days / (jobs - 1), 4)
 
         mttr_mins = _num(cell(COL_MTTR_MINS))
         wait_mins = _num(cell(COL_AVG_WAIT_MINS))
@@ -141,7 +155,7 @@ def parse_mtbf_file(filepath):
             'description': re.sub(r'\s+', ' ', str(cell(COL_DESC) or '')).strip(),
 
             'downtime_hrs': _num(cell(COL_DOWNTIME_HRS)),
-            'jobs': int(_num(cell(COL_JOBS)) or 0),
+            'jobs': jobs,
 
             # Converted to hours to match the rest of the codebase.
             'mttr_hrs': round(mttr_mins / 60, 4) if mttr_mins is not None else None,
@@ -153,12 +167,15 @@ def parse_mtbf_file(filepath):
             'wait_mins': wait_mins,
             'avg_downtime_mins': _num(cell(COL_AVG_DOWNTIME_MINS)),
 
-            'elapsed_days': _num(cell(COL_ELAPSED_DAYS)),
+            'elapsed_days': elapsed_days,
             'mtbf_days': mtbf_days,
-            # True only where Agility gave a real number. An asset with
-            # one job has no measurable interval between failures.
+            # True only where there's a real number. An asset with one
+            # job has no measurable interval between failures.
             'has_mtbf': mtbf_days is not None and not insufficient,
             'mtbf_insufficient': insufficient,
+            # True where Agility printed '<1' and mtbf_days was rebuilt
+            # from elapsed_days above — kept so the figure can be traced.
+            'mtbf_under_one_day': under_one_day,
         })
 
     return records, breakdown_range

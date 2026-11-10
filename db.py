@@ -304,21 +304,24 @@ def save_run(result, period_label):
         'efacs_scrap_cost': efacs.get('total_cost'),
     })
 
-    # Flat columns carry the PLANT scope specifically — see schema.sql.
-    # All three scopes go into mtbf_scopes so a stored run can still be
-    # audited against the toolroom-inclusive figure it was derived from.
+    # Flat columns carry the PRESSES scope: the 19 SFC presses, measured
+    # against the hours they actually ran (see
+    # reconciliation.summarise_press_reliability). Months saved before
+    # Nov 2026 carry the old 'plant' figure until they're re-saved with
+    # their files. Every scope goes into mtbf_scopes so a stored run can
+    # still be audited against the figures it was derived from.
     mtbf = result.get('mtbf') or {}
-    plant = mtbf.get('plant') or {}
+    presses = mtbf.get('presses') or {}
     row.update({
-        'mtbf_days': plant.get('mtbf_days'),
-        'mtbf_assets': plant.get('mtbf_assets'),
-        'mtbf_asset_count': plant.get('asset_count'),
-        'mtbf_mttr_hrs': plant.get('mttr_hrs'),
-        'mtbf_wait_hrs': plant.get('wait_hrs'),
-        'mtbf_jobs': plant.get('jobs'),
-        'mtbf_downtime_hrs': plant.get('downtime_hrs'),
+        'mtbf_days': presses.get('mtbf_days'),
+        'mtbf_assets': presses.get('mtbf_assets'),
+        'mtbf_asset_count': presses.get('asset_count'),
+        'mtbf_mttr_hrs': presses.get('mttr_hrs'),
+        'mtbf_wait_hrs': presses.get('wait_hrs'),
+        'mtbf_jobs': presses.get('jobs'),
+        'mtbf_downtime_hrs': presses.get('downtime_hrs'),
         'mtbf_scopes': json.dumps({
-            k: mtbf[k] for k in ('all', 'plant', 'tools') if k in mtbf
+            k: mtbf[k] for k in ('presses', 'all', 'plant', 'tools') if k in mtbf
         }) if mtbf else None,
     })
 

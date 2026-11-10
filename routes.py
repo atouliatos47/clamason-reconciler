@@ -26,7 +26,11 @@ from parsers.due_date_performance_parser import (
     summarise_by_employee, detect_report_period,
 )
 from parsers.efacs_scrap_parser import parse_efacs_scrap_file
-from reconciliation import reconcile, enrich_and_filter, compute_toolroom_gap, compute_toolroom_machine_breakdown
+from reconciliation import (
+    reconcile, enrich_and_filter, compute_toolroom_gap, compute_toolroom_machine_breakdown,
+    summarise_press_reliability,
+)
+from config import SFC_TO_AGILITY
 from report_pdf import build_gap_pdf, build_personnel_pdf, build_personnel_yearly_pdf
 from daily import compute_daily_summary
 from daily_trend import (
@@ -281,10 +285,19 @@ def _parse_uploads():
     toolroom_gap = compute_toolroom_gap(sfc_summary, matched_toolroom_wos)
     toolroom_machine_breakdown = compute_toolroom_machine_breakdown(sfc_summary, matched_toolroom_wos)
 
+    # The board's headline reliability figure: the 19 SFC presses only,
+    # against the hours they actually ran (from the OEE file above). See
+    # reconciliation.summarise_press_reliability for why this replaced
+    # the old 'plant' average. plant/tools/all stay in the result for
+    # audit and for the Monthly Check table.
+    mtbf = _parse_mtbf_upload()
+    if mtbf:
+        mtbf['presses'] = summarise_press_reliability(mtbf['assets'], SFC_TO_AGILITY, oee_result)
+
     extras = {
         'oee': oee_result,
         'efacs_scrap': efacs_scrap,
-        'mtbf': _parse_mtbf_upload(),
+        'mtbf': mtbf,
         'toolroom_wos': toolroom_wos,
         'ppm_completion': _parse_ppm_completion_upload(),
         'toolroom_gap': toolroom_gap,
