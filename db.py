@@ -169,6 +169,8 @@ OPTIONAL_UPLOAD_COLUMNS = {
     ],
     'ppm_completion': [
         'ppm_total', 'ppm_completed', 'ppm_completion_pct',
+        'ppm_due_total', 'ppm_due_on_time', 'ppm_due_pct',
+        'ppm_carried_over', 'ppm_ahead',
     ],
 }
 
@@ -350,6 +352,13 @@ def save_run(result, period_label):
         'ppm_total': ppm.get('total'),
         'ppm_completed': ppm.get('completed'),
         'ppm_completion_pct': ppm.get('pct'),
+        # Due-this-month vs carried-over split. Absent (None) when the
+        # export's period header couldn't be read — see routes.py.
+        'ppm_due_total': ppm.get('due_total'),
+        'ppm_due_on_time': ppm.get('due_on_time'),
+        'ppm_due_pct': ppm.get('due_pct'),
+        'ppm_carried_over': ppm.get('carried_over'),
+        'ppm_ahead': ppm.get('ahead'),
     })
 
     with _get_conn() as conn:
@@ -369,6 +378,7 @@ def save_run(result, period_label):
                      mtbf_wait_hrs, mtbf_jobs, mtbf_downtime_hrs, mtbf_scopes,
                      toolroom_wo_count, toolroom_wo_completed, toolroom_wo_cancelled,
                      toolroom_wo_open, ppm_total, ppm_completed, ppm_completion_pct,
+                     ppm_due_total, ppm_due_on_time, ppm_due_pct, ppm_carried_over, ppm_ahead,
                      oee_quality_source, efacs_scrap_qty, efacs_scrap_cost,
                      oee_intended_hours, oee_utilization_vs_intended_pct,
                      oee_teep_vs_intended_pct, oee_intended_configured_count,
@@ -388,6 +398,7 @@ def save_run(result, period_label):
                      %(mtbf_wait_hrs)s, %(mtbf_jobs)s, %(mtbf_downtime_hrs)s, %(mtbf_scopes)s,
                      %(toolroom_wo_count)s, %(toolroom_wo_completed)s, %(toolroom_wo_cancelled)s,
                      %(toolroom_wo_open)s, %(ppm_total)s, %(ppm_completed)s, %(ppm_completion_pct)s,
+                     %(ppm_due_total)s, %(ppm_due_on_time)s, %(ppm_due_pct)s, %(ppm_carried_over)s, %(ppm_ahead)s,
                      %(oee_quality_source)s, %(efacs_scrap_qty)s, %(efacs_scrap_cost)s,
                      %(oee_intended_hours)s, %(oee_utilization_vs_intended_pct)s,
                      %(oee_teep_vs_intended_pct)s, %(oee_intended_configured_count)s,
@@ -428,7 +439,7 @@ def get_all_runs():
         # omission.
         'efacs_scrap_qty', 'efacs_scrap_cost',
         'oee_intended_hours', 'oee_utilization_vs_intended_pct',
-        'oee_teep_vs_intended_pct', 'ppm_completion_pct',
+        'oee_teep_vs_intended_pct', 'ppm_completion_pct', 'ppm_due_pct',
         'toolroom_sfc_hrs', 'agility_toolroom_hrs', 'toolroom_gap_hrs', 'toolroom_gap_pct',
     ]
     result = []

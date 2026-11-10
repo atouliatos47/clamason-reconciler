@@ -203,6 +203,11 @@ function toggleNavGroup(name) {
 const NAVY = '#243547', LIME = '#95C11F';
 
 function fmt(n, d = 1) { return (n === null || n === undefined) ? '—' : Number(n).toFixed(d); }
+function count(n) { return (n === null || n === undefined) ? '—' : n; }
+
+// True when a month was saved with the due-this-month / carried-over
+// split (Nov 2026 onwards, or an older month re-saved since).
+function hasSplit(r) { return r.ppm_due_total !== null && r.ppm_due_total !== undefined; }
 
 function deltaBadge(curr, prev) {
   if (prev === null || prev === undefined || curr === null || curr === undefined) return '';
@@ -257,21 +262,34 @@ function render(runs) {
 
     <div class="kpi-row">
       <div class="kpi green">
-        <label>On Time %</label>
+        <label>On Time % (official)</label>
         <div class="val">${fmt(latest.ppm_completion_pct, 1)}%</div>
         ${prev ? deltaBadge(latest.ppm_completion_pct, prev.ppm_completion_pct) : '<span class="sub">No prior month to compare</span>'}
-        <div class="sub">Comp Date vs Due Date</div>
+        <div class="sub">${count(latest.ppm_completed)} of ${count(latest.ppm_total)} jobs completed this month were on time</div>
       </div>
       <div class="kpi navy">
-        <label>Completed On Time</label>
-        <div class="val">${latest.ppm_completed == null ? '—' : latest.ppm_completed}</div>
-        <div class="sub">On or before due date</div>
+        <label>Due This Month</label>
+        ${hasSplit(latest) ? `
+          <div class="val">${fmt(latest.ppm_due_pct, 1)}%</div>
+          <div class="sub">${latest.ppm_due_on_time} of ${latest.ppm_due_total} jobs due this month were on time</div>`
+        : `
+          <div class="val">—</div>
+          <div class="sub">Re-save this month with its Due Date Performance file to see this</div>`}
       </div>
       <div class="kpi navy">
-        <label>Total PPM Jobs</label>
-        <div class="val">${latest.ppm_total == null ? '—' : latest.ppm_total}</div>
-        <div class="sub">Planned Service &amp; Maintenance, completed</div>
+        <label>Carried Over</label>
+        <div class="val">${hasSplit(latest) ? latest.ppm_carried_over : '—'}</div>
+        <div class="sub">${hasSplit(latest)
+          ? `Late jobs from earlier months, finished this month${latest.ppm_ahead ? ` · ${latest.ppm_ahead} done early` : ''}`
+          : 'Late jobs from earlier months, finished this month'}</div>
       </div>
+    </div>
+
+    <div class="table-card" style="margin-bottom:24px;font-size:12px;color:#555;line-height:1.6;">
+      <b>How to read this.</b> The official figure counts every job in the month it was <b>finished</b>.
+      So when jobs due last month are finished late this month, they lower <i>this</i> month's figure.
+      <b>Due This Month</b> only counts the jobs that were due this month, so it shows how this month's own work went.
+      <b>Carried Over</b> is how many of the late jobs were left over from earlier months.
     </div>
 
     <div class="chart-card">
@@ -284,7 +302,8 @@ function render(runs) {
       <table>
         <thead>
           <tr>
-            <th>Period</th><th class="num">On Time %</th><th class="num">Completed</th><th class="num">Total PPM Jobs</th>
+            <th>Period</th><th class="num">On Time % (official)</th><th class="num">Completed</th><th class="num">Total PPM Jobs</th>
+            <th class="num">Due This Month %</th><th class="num">Due This Month</th><th class="num">Carried Over</th>
           </tr>
         </thead>
         <tbody>
@@ -292,8 +311,11 @@ function render(runs) {
             <tr>
               <td>${r.period_label || r.period}</td>
               <td class="num">${fmt(r.ppm_completion_pct, 1)}%</td>
-              <td class="num">${r.ppm_completed == null ? '–' : r.ppm_completed}</td>
-              <td class="num">${r.ppm_total == null ? '–' : r.ppm_total}</td>
+              <td class="num">${count(r.ppm_completed)}</td>
+              <td class="num">${count(r.ppm_total)}</td>
+              <td class="num">${hasSplit(r) ? fmt(r.ppm_due_pct, 1) + '%' : '–'}</td>
+              <td class="num">${hasSplit(r) ? `${r.ppm_due_on_time} / ${r.ppm_due_total}` : '–'}</td>
+              <td class="num">${hasSplit(r) ? r.ppm_carried_over : '–'}</td>
             </tr>`).join('')}
         </tbody>
       </table>
@@ -305,14 +327,20 @@ function render(runs) {
     data: {
       labels,
       datasets: [{
-        label: 'On Time %', data: runs.map(r => r.ppm_completion_pct),
+        label: 'On Time % (official)', data: runs.map(r => r.ppm_completion_pct),
         borderColor: LIME, backgroundColor: LIME + '15', fill: true, tension: 0.25,
         pointBackgroundColor: LIME, pointRadius: 5,
+      }, {
+        // Months saved before Nov 2026 have no split yet — null leaves a
+        // gap in this line rather than drawing a false 0%.
+        label: 'Due This Month %', data: runs.map(r => hasSplit(r) ? r.ppm_due_pct : null),
+        borderColor: NAVY, backgroundColor: NAVY, borderDash: [6, 4], fill: false, tension: 0.25,
+        pointBackgroundColor: NAVY, pointRadius: 5, spanGaps: false,
       }],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      plugins: { legend: { display: true, position: 'bottom' } },
       scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } },
     },
   });

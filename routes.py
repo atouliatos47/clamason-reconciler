@@ -179,7 +179,14 @@ def _parse_ppm_completion_upload():
 
     with saved_upload(dd_file, 'due_date_performance') as path:
         records = parse_due_date_performance(path)
-    return summarise_due_date_performance(records)
+        # The period is only needed for the 'due this month vs carried
+        # over' split. If the header can't be read, the official figure
+        # still works exactly as before; only the split is left out.
+        try:
+            period = detect_report_period(path)
+        except ValueError:
+            period = None
+    return summarise_due_date_performance(records, period)
 
 
 def _parse_uploads():

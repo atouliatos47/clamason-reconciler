@@ -167,7 +167,7 @@ def parse_due_date_performance(filepath):
     return records
 
 
-def summarise_due_date_performance(records):
+def summarise_due_date_performance(records, period=None):
     """Of the 'Planned Service & Maintenance' jobs completed this
     period, what fraction were completed on or before their due date.
 
@@ -175,16 +175,51 @@ def summarise_due_date_performance(records):
     and completed at 08:26 the same day is on time, not "4 hours
     early" vs "late by a few hours" depending on which side of
     midnight a timestamp comparison would land on.
+
+    total/completed/pct are the board's official figure and are
+    unchanged: every PPM job COMPLETED in the period, whenever it was due.
+
+    DUE THIS MONTH vs CARRIED OVER (added Nov 2026)
+    ------------------------------------------------
+    Because the report is scoped by completion date, a job due in one
+    month but finished in the next counts against the NEXT month. October
+    2026 showed this clearly: 75.6% overall, but 7 of its 11 late jobs
+    were September's work closed in early October. The jobs actually due
+    in October were 32 of 36 on time (88.9%).
+
+    So when `period` (from detect_report_period) is given, the same jobs
+    are also split by their DUE date:
+      due_*         — due inside the period: the month's own work
+      carried_over  — due before the period started, finished in it
+                      (always late by definition)
+      ahead         — due after the period, finished early in it
+    due_total + carried_over + ahead == total. These are extra context;
+    they never replace the official pct.
     """
     ppm_jobs = [r for r in records if r['job_type'] == 'Planned Service & Maintenance']
-    on_time = sum(1 for r in ppm_jobs if r['comp_date'].date() <= r['due_date'].date())
+    is_on_time = lambda r: r['comp_date'].date() <= r['due_date'].date()
+    on_time = sum(1 for r in ppm_jobs if is_on_time(r))
     total = len(ppm_jobs)
 
-    return {
+    result = {
         'total': total,
         'completed': on_time,
         'pct': round(on_time / total * 100, 1) if total else None,
     }
+
+    if period:
+        start, end = period['from_date'], period['to_date']
+        due_in = [r for r in ppm_jobs if start <= r['due_date'].date() <= end]
+        due_on_time = sum(1 for r in due_in if is_on_time(r))
+        result.update({
+            'due_total': len(due_in),
+            'due_on_time': due_on_time,
+            'due_pct': round(due_on_time / len(due_in) * 100, 1) if due_in else None,
+            'carried_over': sum(1 for r in ppm_jobs if r['due_date'].date() < start),
+            'ahead': sum(1 for r in ppm_jobs if r['due_date'].date() > end),
+        })
+
+    return result
 
 
 def _is_real_employee(name):

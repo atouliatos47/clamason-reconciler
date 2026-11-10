@@ -143,6 +143,16 @@ CREATE TABLE IF NOT EXISTS monthly_runs (
     ppm_total                INTEGER,
     ppm_completed            INTEGER,
     ppm_completion_pct       NUMERIC,
+    -- The same PPM jobs split by DUE date (see
+    -- due_date_performance_parser.summarise_due_date_performance):
+    -- the month's own work vs late jobs carried in from earlier months.
+    -- Extra context only — ppm_completion_pct stays the official figure.
+    -- NULL on months saved before Nov 2026 until they're re-saved.
+    ppm_due_total            INTEGER,
+    ppm_due_on_time          INTEGER,
+    ppm_due_pct              NUMERIC,
+    ppm_carried_over         INTEGER,
+    ppm_ahead                INTEGER,
     oee_quality_source      TEXT,
     efacs_scrap_qty         NUMERIC,
     efacs_scrap_cost        NUMERIC,
@@ -220,6 +230,11 @@ ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS toolroom_machine_breakdown JSO
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_total                INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_completed            INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_completion_pct       NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_due_total            INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_due_on_time          INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_due_pct              NUMERIC;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_carried_over         INTEGER;
+ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS ppm_ahead                INTEGER;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS oee_quality_source      TEXT;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS efacs_scrap_qty         NUMERIC;
 ALTER TABLE monthly_runs ADD COLUMN IF NOT EXISTS efacs_scrap_cost        NUMERIC;
