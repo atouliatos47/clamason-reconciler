@@ -771,10 +771,21 @@ function hasPpm(runs) {
 // second definition of the same number. One function, called from both
 // the KPI tile and the trend chart below, so they can't quietly drift
 // apart from each other.
-function mttfOf(r) {
+function mttfRaw(r) {
   if (r.mtbf_days == null || r.mtbf_mttr_hrs == null) return null;
   return (r.mtbf_days * 24) - r.mtbf_mttr_hrs;
 }
+
+// Months saved before Nov 2026 used an older MTBF method (an average of
+// Agility's per-asset MTBF over all plant) that reads far lower than
+// the current one (19 SFC presses against their running hours). The
+// server labels each month — see db._mtbf_method. Old months are left
+// out of the trend charts and month-on-month changes, so the change of
+// method never shows up as a jump that looks real.
+function isOldMtbf(r) { return r.mtbf_method === 'old'; }
+
+// For the trend chart: null for old-method months (a gap, not a value).
+function mttfOf(r) { return isOldMtbf(r) ? null : mttfRaw(r); }
 
 function hasMtbf(runs) {
   return runs.some(r => mttfOf(r) !== null);
@@ -830,17 +841,22 @@ function reliabilitySection(latest, prev) {
   // calculate MTBF where an asset had more than one job, so the figure
   // often rests on a handful of assets. Stating the sample stops it
   // reading as fleet-wide.
-  const cover = (latest.mtbf_assets != null && latest.mtbf_asset_count != null)
-    ? `${latest.mtbf_assets} of ${latest.mtbf_asset_count} assets` : '';
+  const old = isOldMtbf(latest);
+  const cover = old
+    ? 'old method — re-save this month to update'
+    : (latest.mtbf_assets != null && latest.mtbf_asset_count != null)
+      ? `${latest.mtbf_assets} of ${latest.mtbf_asset_count} presses ran` : '';
+  // Month-on-month changes only against a month made the same way.
+  prev = (!old && prev && prev.mtbf_method === 'presses') ? prev : null;
   // MTTF leads the row — it's the number maintenance.html's own gauge
   // treats as the headline (with a confirmed 400h target), MTBF/MTTR are
   // kept alongside as the two figures it's built from, same as that
   // page's gauge note does.
-  const mttf = mttfOf(latest);
-  const prevMttf = prev ? mttfOf(prev) : null;
+  const mttf = mttfRaw(latest);
+  const prevMttf = prev ? mttfRaw(prev) : null;
   return `
     <div class="machine-card">
-      <h3>Reliability — plant only, tools excluded</h3>
+      <h3>Reliability — 19 SFC presses, running hours</h3>
       <div class="kpi-row" style="margin-bottom:0; grid-template-columns: repeat(5,1fr);">
         <div class="kpi green">
           <label>MTTF</label>
@@ -1045,6 +1061,7 @@ function render(runs, sel) {
       </div>
       <div class="chart-card">
         <h3>MTTR &amp; Response Time — Trend</h3>
+        ${trendRuns.some(isOldMtbf) ? '<div class="chart-sub-note">Months saved before Nov 2026 used an older method and are left out</div>' : ''}
         <div class="canvas-wrap short"><canvas id="mttrChart"></canvas></div>
       </div>
     </div>` : ''}
@@ -1053,7 +1070,7 @@ function render(runs, sel) {
     <div class="chart-grid">
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h3>MTTF — Trend</h3>
-        <div class="chart-sub-note">Dashed line is the 400h target · same formula as the Monthly Performance Review gauge</div>
+        <div class="chart-sub-note">Dashed line is the 400h target · same formula as the Monthly Performance Review gauge${trendRuns.some(isOldMtbf) ? ' · months saved before Nov 2026 used an older method and are left out' : ''}</div>
         <div class="canvas-wrap short"><canvas id="mttfChart"></canvas></div>
       </div>
     </div>` : ''}
@@ -1129,8 +1146,8 @@ function render(runs, sel) {
       data: {
         labels,
         datasets: [
-          { label: 'MTTR (repair)', data: trendRuns.map(r => r.mtbf_mttr_hrs), backgroundColor: '#95C11F' },
-          { label: 'Wait (before start)', data: trendRuns.map(r => r.mtbf_wait_hrs), backgroundColor: '#dc2626' },
+          { label: 'MTTR (repair)', data: trendRuns.map(r => isOldMtbf(r) ? null : r.mtbf_mttr_hrs), backgroundColor: '#95C11F' },
+          { label: 'Wait (before start)', data: trendRuns.map(r => isOldMtbf(r) ? null : r.mtbf_wait_hrs), backgroundColor: '#dc2626' },
         ],
       },
       options: {

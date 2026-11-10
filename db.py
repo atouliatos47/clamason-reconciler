@@ -450,8 +450,34 @@ def get_all_runs():
                 row[field] = float(row[field])
         if row.get('created_at') is not None:
             row['created_at'] = row['created_at'].isoformat()
+        row['mtbf_method'] = _mtbf_method(row)
         result.append(row)
     return result
+
+
+def _mtbf_method(row):
+    """Which method a saved month's MTBF/MTTR/MTTF figures were made with.
+
+    'presses' — the 19 SFC presses against their running hours (Nov 2026
+                onwards, or an older month re-saved since).
+    'old'     — the earlier average of Agility's own per-asset MTBF over
+                all plant assets. Not comparable with 'presses': it only
+                counted assets with 2+ breakdowns, from first to last
+                breakdown, so it reads far lower.
+    None      — no MTBF file was saved for that month.
+
+    Worked out from what's already stored rather than a new column:
+    every month saved with the new method has a 'presses' entry in
+    mtbf_scopes, and no month saved before it does. Pages use this to
+    leave old months out of trend charts and month-on-month changes,
+    so a jump caused by the change of method never reads as a real one.
+    """
+    if row.get('mtbf_mttr_hrs') is None and row.get('mtbf_days') is None:
+        return None
+    scopes = row.get('mtbf_scopes') or {}
+    if isinstance(scopes, str):
+        scopes = json.loads(scopes)
+    return 'presses' if 'presses' in scopes else 'old'
 
 
 def save_personnel_run(employee_rows, period, period_label):

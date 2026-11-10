@@ -328,12 +328,16 @@ function render(runs) {
   const hasOee = runs.some(r => r.oee_pct != null);
   const hasPpm = runs.some(r => r.ppm_completion_pct != null);
   const hasGap = runs.some(r => r.gap_pct != null);
-  const hasReliability = runs.some(r => r.mtbf_mttr_hrs != null);
+  // Months saved before Nov 2026 used an older MTBF method that isn't
+  // comparable with the current one (see db._mtbf_method), so they're
+  // left out of these charts rather than drawn as a false jump.
+  const relOk = r => r.mtbf_method !== 'old';
+  const hasReliability = runs.some(r => relOk(r) && r.mtbf_mttr_hrs != null);
   // MTTF isn't stored directly — board-review.html derives it the same
   // way (MTBF in hours, minus MTTR) for its own headline ring, so this
   // repeats that exact formula rather than introducing a second
   // definition of the same number.
-  const mttf = runs.map(r => (r.mtbf_days == null || r.mtbf_mttr_hrs == null)
+  const mttf = runs.map(r => (!relOk(r) || r.mtbf_days == null || r.mtbf_mttr_hrs == null)
     ? null : (r.mtbf_days * 24) - r.mtbf_mttr_hrs);
   const hasMttf = mttf.some(v => v != null);
 
@@ -403,7 +407,7 @@ function render(runs) {
     ${hasReliability ? `
     <div class="chart-card">
       <h3>Reliability — MTBF &amp; MTTR</h3>
-      <div class="chart-sub">Mean Time Between Failures (days, left axis) against Mean Time To Repair (hours, right axis) — plant only, tools excluded</div>
+      <div class="chart-sub">Mean Time Between Failures (days, left axis) against Mean Time To Repair (hours, right axis) — 19 SFC presses, running hours · months saved before Nov 2026 left out (older method)</div>
       <div class="canvas-wrap"><canvas id="reliabilityChart"></canvas></div>
     </div>` : ''}
     `}
@@ -519,14 +523,14 @@ function render(runs) {
       data: {
         labels,
         datasets: [
-          { type: 'line', label: 'MTBF (days)', data: runs.map(r => r.mtbf_days),
+          { type: 'line', label: 'MTBF (days)', data: runs.map(r => relOk(r) ? r.mtbf_days : null),
             borderColor: '#d97706', backgroundColor: '#d97706', borderWidth: 2.5,
             pointRadius: 4, spanGaps: true, yAxisID: 'y' },
           // Green, not red — matching /dashboard's own convention, where
           // plain MTTR (time spent actually repairing) is the neutral
           // figure and red is reserved for Response Wait specifically
           // (time before work starts, not charted on this page).
-          { type: 'bar', label: 'MTTR (hours)', data: runs.map(r => r.mtbf_mttr_hrs),
+          { type: 'bar', label: 'MTTR (hours)', data: runs.map(r => relOk(r) ? r.mtbf_mttr_hrs : null),
             backgroundColor: LIME, borderRadius: 3, yAxisID: 'y1' },
         ],
       },

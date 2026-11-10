@@ -541,7 +541,11 @@ function render() {
   const mtbfNote = d.mtbf_mttr_hrs == null ? 'not uploaded' : (() => {
     return `target ${TARGETS.mttf}h · tick on ring<br>`
       + `MTBF ${d.mtbf_days == null ? '–' : fmt(d.mtbf_days, 1) + 'd'} · MTTR ${fmt(d.mtbf_mttr_hrs, 2)}h`
-      + `<br>wait ${fmt(d.mtbf_wait_hrs, 1)}h · ${d.mtbf_assets} of ${d.mtbf_asset_count} assets`;
+      + (d.mtbf_method === 'old'
+        // Saved before Nov 2026 with the older plant-average method —
+        // not comparable with newer months (see db._mtbf_method).
+        ? `<br>wait ${fmt(d.mtbf_wait_hrs, 1)}h · old method, re-save to update`
+        : `<br>wait ${fmt(d.mtbf_wait_hrs, 1)}h · ${d.mtbf_assets} of ${d.mtbf_asset_count} presses ran`);
   })();
   const maintGauges =
     gauge('g-mtbf', 'MTTF', mtbfNote) +
