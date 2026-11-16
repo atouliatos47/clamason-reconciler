@@ -19,6 +19,8 @@ the date from the report itself (the 12->13 Oct report is saved as
     is when you'd normally upload it;
   - any earlier working day still missing is "overdue" (red);
   - today itself is never due yet: its data doesn't exist until tomorrow.
+A day whose report doesn't exist at all can be cleared with the "Ignore"
+button under the reminder (skip_day()) — one day at a time.
 Daily OEE is the one exception to "saved under the day it covers": its page
 fills the date in from the END of the report's period, so Wednesday's
 production can be saved as Thursday. Its reminder reads the production day
@@ -284,11 +286,19 @@ def describe(missing, status):
 
 
 def check(reminder, today):
-    """Status of one daily reminder: 'ok', 'due' or 'overdue'."""
+    """Status of one daily reminder: 'ok', 'due' or 'overdue'.
+
+    A day counts as done when its report is saved OR when someone pressed
+    "Ignore" for it (no report exists for that day — see skip_day()).
+    Ignored days are kept in reminder_acks, the same table as the weekly
+    "Mark as done" clicks, under this reminder's own id — so ignoring a day
+    on SFC Daily never clears that day on Daily Check, or Matt's copy."""
     window = [d for d in working_days_before(today, LOOKBACK_WORKING_DAYS) if d >= REMINDERS_START]
     if window:
-        rows = reminder['saved_days'](start_date=window[0].isoformat(), end_date=window[-1].isoformat())
+        start, end = window[0].isoformat(), window[-1].isoformat()
+        rows = reminder['saved_days'](start_date=start, end_date=end)
         saved = {str(r.get('date'))[:10] for r in rows}
+        saved |= {r['period'] for r in db.get_reminder_acks(reminder['id'], start, end)}
     else:
         saved = set()   # nothing to check yet
     missing = [d for d in window if d.isoformat() not in saved]
@@ -299,7 +309,33 @@ def check(reminder, today):
         status = 'due'                # only the latest working day — upload it today
     else:
         status = 'overdue'
-    return _result(reminder, status, [d.isoformat() for d in missing], describe(missing, status))
+    return _result(reminder, status, [d.isoformat() for d in missing], describe(missing, status),
+                   skip=True)
+
+
+def skip_day(reminder_id, day, today=None):
+    """The "Ignore" button on a daily reminder: there is no report for this
+    day (e.g. SFC didn't produce one), so it can never be cleared by
+    uploading — and a reminder that can never clear teaches everyone to
+    ignore the badges. Records the day in reminder_acks for this reminder.
+
+    Deliberately narrow, so a click can only ever hide a day nobody can fill:
+      * daily reminders only, by their real id;
+      * one day per click, never "everything missing";
+      * only a day this reminder is showing as missing RIGHT NOW — not any
+        date someone types into a request.
+    Saving the report for that day later still works as normal."""
+    today = today or london_today()
+    reminder = next((r for r in DAILY_REMINDERS if r['id'] == reminder_id), None)
+    if reminder is None:
+        raise ValueError(f'"{reminder_id}" is not a daily reminder')
+    try:
+        day = date.fromisoformat(day).isoformat()
+    except ValueError:
+        raise ValueError(f'"{day}" is not a date (YYYY-MM-DD)')
+    if day not in check(reminder, today)['missing']:
+        raise ValueError(f'{day} is not a missing day for {reminder["label"]}')
+    db.save_reminder_ack(reminder_id, day)
 
 
 # --- weekly -------------------------------------------------------------------
@@ -348,8 +384,9 @@ def mark_done(reminder_id, today=None):
 
     Only reminders with 'ack': True can be marked done; anything else
     (a report reminder, or a made-up id) is refused — those clear
-    themselves when the report is saved, and a button must never be able
-    to hide a missing report."""
+    themselves when the report is saved. The one exception is a daily
+    report that doesn't exist at all: that day can be ignored on its own,
+    one day at a time, with skip_day() below — never in bulk from here."""
     today = today or london_today()
     reminder = next((r for r in WEEKLY_REMINDERS if r['id'] == reminder_id and r.get('ack')), None)
     if reminder is None:

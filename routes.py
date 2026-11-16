@@ -989,6 +989,25 @@ def api_reminders_ack():
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/api/reminders/skip', methods=['POST'])
+def api_reminders_skip():
+    """The "Ignore" button under a daily reminder — for a day that has no
+    report at all (e.g. SFC never produced one), so it can never be
+    cleared by uploading. Body: {"id": "<reminder id>", "date": "YYYY-MM-DD"}.
+    Records that one day for that one reminder, then returns the updated
+    list so the sidebar redraws straight away. Only a day the reminder is
+    currently showing as missing can be ignored — see reminders.skip_day()."""
+    from reminders import skip_day, all_reminders
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        skip_day(str(data.get('id', '')), str(data.get('date', '')))
+        return jsonify(all_reminders())
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @bp.route('/machine-names.js')
 def machine_names_js():
     """The press display names for every page, built from config.py.

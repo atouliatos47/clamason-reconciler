@@ -4,6 +4,8 @@
 //   - puts a number on the department tab: amber = due today, red = missed;
 //   - puts a dot on the menu item that needs doing, with a one-line reason
 //     underneath (visible when the tab is open);
+//   - a daily reminder gets an "Ignore <day>" button per missing day, for a
+//     day that has no report at all (asks first; rules in skip_day());
 //   - a reminder with no menu item of its own gets its own line at the bottom
 //     of the tab, with a "Mark as done" button if it's cleared by hand (none
 //     is right now — the Monday open-jobs check has its own page since Oct 2026).
@@ -30,6 +32,11 @@
       color: #95C11F; background: transparent; border: 1px solid #95C11F; border-radius: 4px; cursor: pointer; }
     .rem-done:hover { background: rgba(149,193,31,0.15); }
     .rem-done:disabled { opacity: 0.6; cursor: wait; }
+    .rem-skips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .rem-skip { padding: 2px 7px; font-size: 10px; color: #c9d1d9; background: transparent;
+      border: 1px solid rgba(255,255,255,0.35); border-radius: 4px; cursor: pointer; }
+    .rem-skip:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .rem-skip:disabled { opacity: 0.6; cursor: wait; }
     @media (max-width: 768px) { .rem-note { display: none; } }
     @media print { .rem-badge, .rem-dot, .rem-note, .rem-item { display: none !important; } }
   `;
@@ -51,6 +58,41 @@
     note.className = 'rem-note ' + cls;
     note.textContent = item.detail;
     return note;
+  }
+
+  // 'Thu 12 Nov' from '2026-11-12'. T00:00:00 = local midnight, so the
+  // day can't slip back one in the browser's timezone.
+  function shortDay(iso) {
+    return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB',
+      { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  // One "Ignore" button per missing day, under a daily reminder's note —
+  // for a day with no report at all (so uploading can never clear it).
+  // Asks first, because it can't be undone from the page; the server only
+  // accepts days this reminder is really showing as missing.
+  function addSkipButtons(note, item) {
+    if (!item.skip || !Array.isArray(item.missing) || !item.missing.length) return;
+    const row = document.createElement('div');
+    row.className = 'rem-skips';
+    item.missing.forEach(day => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'rem-skip';
+      btn.textContent = '✕ Ignore ' + shortDay(day);
+      btn.title = 'No report for this day — stop reminding about it';
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const ok = window.confirm(
+          `Ignore ${shortDay(day)} for ${item.label}?\n\n` +
+          `Use this only when there is no report for that day. ` +
+          `The reminder will stop asking for it.`);
+        if (ok) skipDay(item.id, day, btn);
+      });
+      row.appendChild(btn);
+    });
+    note.appendChild(row);
   }
 
   function makeDot(item, cls) {
@@ -108,7 +150,9 @@
         if (!i.href) { addOwnLine(dept, i, cls); return; }
         document.querySelectorAll(`a.nav-item[href="${i.href}"]`).forEach(link => {
           link.appendChild(makeDot(i, cls));
-          link.insertAdjacentElement('afterend', makeNote(i, cls));
+          const note = makeNote(i, cls);
+          addSkipButtons(note, i);
+          link.insertAdjacentElement('afterend', note);
         });
       });
     });
@@ -122,6 +166,25 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error || !Array.isArray(data.reminders)) throw new Error(data.error || res.status);
+      clear();
+      draw(data.reminders);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = "Couldn't save — try again";
+    }
+  }
+
+  async function skipDay(id, day, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+      const res = await fetch('/api/reminders/skip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, date: day }),
       });
       const data = await res.json();
       if (!res.ok || data.error || !Array.isArray(data.reminders)) throw new Error(data.error || res.status);
