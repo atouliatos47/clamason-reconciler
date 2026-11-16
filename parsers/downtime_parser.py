@@ -100,6 +100,40 @@ def _elapsed_hours(start, end):
     return round(delta, 4)
 
 
+_RANGE_DATE_RE = re.compile(r'\d{1,2}/\d{1,2}/\d{4}')
+
+
+def detect_downtime_report_date(filepath):
+    """Which day(s) this Down Time Analysis export covers, read from its
+    own header — returns (from_date, to_date) as dates, or None.
+
+    The header is one cell pair near the top:
+
+        ' Date Range:'   '14/11/2026-14/11/2026'
+
+    (note the leading space Agility puts in the label — hence the strip).
+    Day/month/year, same as every other Agility export. Returns None,
+    never raises, when the header isn't there — the Daily check still
+    runs without it, and the WO file's own date is used instead."""
+    df = pd.read_excel(filepath, header=None, nrows=10)
+    for row in df.values.tolist():
+        for idx, cell in enumerate(row):
+            if str(cell).strip().strip("'").strip().lower() != 'date range:':
+                continue
+            for val in row[idx + 1:idx + 4]:
+                found = _RANGE_DATE_RE.findall(str(val))
+                if not found:
+                    continue
+                try:
+                    start = datetime.strptime(found[0], '%d/%m/%Y').date()
+                    end = datetime.strptime(found[-1], '%d/%m/%Y').date()
+                except ValueError:
+                    return None
+                return start, end
+            return None
+    return None
+
+
 def parse_downtime_file(filepath):
     df = pd.read_excel(filepath, header=None)
     records = []

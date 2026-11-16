@@ -391,6 +391,11 @@ function restorePersistedProgress() {
     if (state.result) {
       lastResult = state.result;
       activeFilter = state.activeFilter || 'all';
+      // Put the file's own date back too, not yesterday's default —
+      // otherwise a manual Save after a tab reload could use the wrong day.
+      if (state.result.detected_date) {
+        document.getElementById('save-date').value = state.result.detected_date;
+      }
       render(lastResult);
       document.getElementById('results').style.display = 'block';
     }
@@ -423,17 +428,40 @@ async function runCheck() {
     const d = await res.json();
     if (d.error) throw new Error(d.error);
     lastResult = d;
+    // The files say which day they cover — the WO export's 'Start Date
+    // From:' header and the Down Time export's 'Date Range:'. That beats
+    // whatever the box held (yesterday's default, or the last check), so
+    // a Monday catch-up of Fri/Sat/Sun files each land on their own day.
+    // Set BEFORE render(), because the print header reads this box.
+    // Still editable by hand afterwards if there's ever a reason to.
+    if (d.detected_date) {
+      document.getElementById('save-date').value = d.detected_date;
+    }
     render(d);
     document.getElementById('results').style.display = 'block';
+    // Clear any "Saved for ..." left over from the previous check.
+    document.getElementById('save-status').textContent = '';
+    document.getElementById('save-status').className = 'save-status';
     persistProgress();
 
     // Auto-save: a check that isn't saved never reaches Daily Trend, and
     // forgetting the Save click is how days go missing. Safe to do every
     // time because save_daily_snapshot() upserts on date — re-running
-    // overwrites that day, never duplicates it. Unlike the SFC PDF, the
-    // WO export doesn't say which day it covers, so this relies on the
-    // date box — which now defaults to yesterday (see defaultCheckDate).
-    await saveDaily();
+    // overwrites that day, never duplicates it.
+    //
+    // Only when the files told us their date, though — same rule as the
+    // SFC Daily page. No date, a multi-day export, or two files for
+    // different days all come back with detected_date empty and a
+    // date_warning saying which; then we stop and ask instead of filing
+    // a real day's WOs under the wrong date.
+    if (d.detected_date) {
+      await saveDaily();
+    } else {
+      const statusEl = document.getElementById('save-status');
+      statusEl.textContent = '⚠ Not saved — ' +
+        (d.date_warning || "couldn't read the date from the file. Check the date, then press Save.");
+      statusEl.className = 'save-status err';
+    }
   } catch (e) {
     const eb = document.getElementById('error-box');
     eb.style.display = 'block';
@@ -517,9 +545,10 @@ function clearCheck() {
   document.getElementById('save-date').value = defaultCheckDate();
 }
 
-// The Daily Check is run the NEXT morning, for the previous day's WOs,
-// and Run Check now auto-saves against whatever this box says — so it
-// defaults to yesterday, not today. Built from local date parts on
+// Only the starting value now — Run Check replaces it with the date the
+// files themselves carry (see runCheck). Kept as yesterday because the
+// Daily Check is run the NEXT morning, so it's the best guess for an
+// export whose header can't be read. Built from local date parts on
 // purpose: valueAsDate = new Date() uses the UTC date, which is a day
 // behind for the first hour after midnight during British Summer Time.
 function defaultCheckDate() {

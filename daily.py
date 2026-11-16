@@ -50,6 +50,47 @@ def _is_completed(job):
     return 'complet' in (job.get('status') or '').lower()
 
 
+def _uk(d):
+    return d.strftime('%d/%m/%Y')
+
+
+def resolve_check_date(wo_range, dt_range=None):
+    """Which day a Daily check should be saved under, from the dates the
+    files themselves carry. Returns (iso_date_or_None, warning_or_None).
+
+    wo_range / dt_range are (from_date, to_date) pairs from
+    detect_wo_report_date() / detect_downtime_report_date(), or None when
+    that file had no readable date (or, for dt_range, wasn't uploaded).
+
+    A date only comes back when it's certain — the page auto-saves on a
+    date, and a wrong date files a real day's WOs under another day with
+    nothing to show it happened. So every doubtful case returns None plus
+    a plain-English reason, and the page stops and asks instead:
+      * neither file has a readable date
+      * a file covers more than one day (the check is one day at a time)
+      * the two files are for different days (wrong file picked)
+    """
+    named = [(n, r) for n, r in (('Work Orders', wo_range), ('Down Time', dt_range)) if r]
+    if not named:
+        return None, "couldn't read the date from the file. Check the date, then press Save."
+
+    for name, (start, end) in named:
+        if start != end:
+            return None, (
+                f"the {name} file covers more than one day ({_uk(start)} to {_uk(end)}). "
+                "The Daily check is one day at a time — check the date, then press Save."
+            )
+
+    if len(named) == 2 and named[0][1][0] != named[1][1][0]:
+        return None, (
+            f"the two files are for different days (Work Orders {_uk(wo_range[0])}, "
+            f"Down Time {_uk(dt_range[0])}). Re-export the right day, or check the date "
+            "and press Save."
+        )
+
+    return named[0][1][0].isoformat(), None
+
+
 def compute_daily_summary(wo_data, downtime_data=None):
     """wo_data: output of parsers.wo_parser.parse_wo_file_all_types() —
     every Maintenance/Electrician-craft WO, any job type. Returns the

@@ -12,12 +12,95 @@ NOT happen here — that's reconciliation.py's job, same as in
 downtime_parser.py. This file only answers "is this a real Maintenance
 WO", not "does it matter for the press-fault gap report".
 """
+import re
+from datetime import date, datetime
+
 from config import MAINTENANCE_CRAFTS, MAINTENANCE_JOB_TYPES, TOOLROOM_CRAFTS, TOOLROOM_JOB_TYPES, PLANNED_JOB_TYPES_DAILY
 
 
 def _clean(val):
     s = str(val).strip().strip("'")
     return '' if s in ('nan', 'None', '') else s
+
+
+_DMY_RE = re.compile(r'(\d{1,2})/(\d{1,2})/(\d{4})')
+_ISO_RE = re.compile(r'(\d{4})-(\d{2})-(\d{2})')
+
+
+def cell_to_date(value):
+    """One header cell -> a date, or None if it isn't one.
+
+    Agility writes these header dates as TEXT ('14/11/2026 00:00:00'),
+    always day/month/year. A real Excel date cell is handled too, in case
+    a future export changes that — pandas hands those back as datetimes,
+    and str() of one is ISO 'YYYY-MM-DD', which is why _ISO_RE exists.
+    'Not Set' and blanks return None."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    s = str(value)
+    try:
+        m = _DMY_RE.search(s)
+        if m:
+            d, mth, y = (int(g) for g in m.groups())
+            return date(y, mth, d)
+        m = _ISO_RE.search(s)
+        if m:
+            y, mth, d = (int(g) for g in m.groups())
+            return date(y, mth, d)
+    except ValueError:
+        return None
+    return None
+
+
+def _raw_after(row, label):
+    """Like _find_in_row, but returns the raw cell rather than a cleaned
+    string — so a real datetime cell stays a datetime for cell_to_date."""
+    for idx, cell in enumerate(row):
+        if _clean(cell).lower() == label.lower():
+            for offset in range(1, 4):
+                if idx + offset < len(row) and _clean(row[idx + offset]):
+                    return row[idx + offset]
+    return None
+
+
+def detect_wo_report_date(filepath):
+    """Which day(s) this Selective Work Orders export covers, read from
+    its own header — returns (from_date, to_date) as dates, or None.
+
+    The header looks like this (one day, as run for the Daily check):
+
+        Start Date
+        From:  14/11/2026 00:00:00   To:  14/11/2026 00:00:00
+        Due Date
+        From:  Not Set               To:  Not Set
+
+    'Start Date' is the filter Andreas sets when exporting, so it IS the
+    day the file is about. Two traps this deliberately avoids:
+      * The date in the top-right corner (G2) is the day the export was
+        RUN — usually the next morning, or Monday for a weekend. Reading
+        that is how a whole weekend would all land on Monday.
+      * Due Date and Comp. Date have their own 'From:' rows, so this
+        only looks at the row straight after the 'Start Date' label
+        rather than the first 'From:' anywhere in the sheet.
+
+    Returns None, never raises, when the header isn't there — the Daily
+    check still runs, it just won't auto-save without a date."""
+    import pandas as pd
+    df = pd.read_excel(filepath, header=None, nrows=30)
+    rows = df.values.tolist()
+    for i, row in enumerate(rows):
+        if not row or _clean(row[0]).lower() != 'start date':
+            continue
+        for r in rows[i + 1:i + 3]:
+            if r and _clean(r[0]).lower() == 'from:':
+                start = cell_to_date(_raw_after(r, 'From:'))
+                end = cell_to_date(_raw_after(r, 'To:'))
+                if start:
+                    return start, (end or start)
+        return None
+    return None
 
 
 def _find_in_row(row, label):

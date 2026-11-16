@@ -11,7 +11,7 @@ from flask import Blueprint, request, jsonify, send_file, send_from_directory
 
 from file_utils import saved_upload
 from parsers.sfc_monthly_xlsx import parse_monthly_summary_xlsx
-from parsers.downtime_parser import parse_downtime_file
+from parsers.downtime_parser import parse_downtime_file, detect_downtime_report_date
 from parsers.oee_parser import parse_oee_file, aggregate_oee, apply_efacs_scrap_correction
 
 # Agility plant asset codes: numeric, zero-padded, at most 6 digits.
@@ -19,7 +19,7 @@ PLANT_ASSET_CODE = re.compile(r'^\d{1,6}$')
 from parsers.mtbf_parser import parse_mtbf_file, summarise_mtbf
 from parsers.wo_parser import (
     parse_wo_file, parse_wo_file_all_types, parse_toolroom_wo_file,
-    parse_wo_file_for_toolroom_gap,
+    parse_wo_file_for_toolroom_gap, detect_wo_report_date,
 )
 from parsers.due_date_performance_parser import (
     parse_due_date_performance, summarise_due_date_performance,
@@ -32,7 +32,7 @@ from reconciliation import (
 )
 from config import SFC_TO_AGILITY
 from report_pdf import build_gap_pdf, build_personnel_pdf, build_personnel_yearly_pdf
-from daily import compute_daily_summary
+from daily import compute_daily_summary, resolve_check_date
 from daily_trend import (
     weekly_rollup, monthly_rollup,
     sfc_daily_rollup, sfc_weekly_rollup, sfc_monthly_rollup,
@@ -372,17 +372,24 @@ def daily_check():
 
         with saved_upload(wo_file, 'daily_wo') as path:
             wo_data, asset_lookup = parse_wo_file_all_types(path)
+            wo_range = detect_wo_report_date(path)
 
         for w in wo_data:
             w['assetName'] = asset_lookup.get(w['asset'], '')
 
         downtime_data = None
+        dt_range = None
         dt_file = request.files.get('agility_downtime')
         if dt_file:
             with saved_upload(dt_file, 'daily_downtime') as path:
                 downtime_data = parse_downtime_file(path)
+                dt_range = detect_downtime_report_date(path)
 
         summary = compute_daily_summary(wo_data, downtime_data)
+        # Which day these files are for, read from their own headers —
+        # the same idea as the SFC PDF's detected_date. The page only
+        # auto-saves when detected_date is set; date_warning says why not.
+        summary['detected_date'], summary['date_warning'] = resolve_check_date(wo_range, dt_range)
         return jsonify(summary)
     except Exception as e:
         import traceback
