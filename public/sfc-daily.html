@@ -70,6 +70,9 @@
   .upload-btn { display: inline-block; padding: 8px 18px; background: #243547; color: white; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
   .upload-btn:hover { background: #95C11F; color: #243547; }
   .file-status { font-size: 11px; margin-top: 8px; color: #95C11F; font-weight: bold; min-height: 16px; }
+  .upload-grid { display: flex; gap: 16px; flex-wrap: wrap; }
+  .upload-grid .upload-card { flex: 1 1 300px; }
+  .optional-tag { font-size: 10px; color: #888; font-weight: normal; }
 
   .run-btn { padding: 14px 28px; background: #95C11F; color: #243547; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; margin-top: 20px; transition: opacity 0.2s; }
   .run-btn:hover { opacity: 0.9; }
@@ -121,6 +124,24 @@
   .pill-amber { background: #fef3c7; color: #92400e; }
   .pill-navy { background: #e3e8ee; color: #243547; }
   .pill-gray { background: #f3f4f6; color: #6b7280; }
+
+  /* MA reason rows that open a list of machines. The list comes from the
+     optional Daily Unplanned Downtime PDF — without it, rows don't open. */
+  .reason-row .chev { display: inline-block; width: 14px; font-size: 9px; color: #95C11F; transition: transform 0.15s; }
+  .reason-row.expandable { cursor: pointer; }
+  .reason-row.open .chev { transform: rotate(90deg); }
+  .reason-row.open td { background: #f9fbf4; }
+  .machines-row { display: none; }
+  .machines-row.open { display: table-row; }
+  .machines-row > td, .machines-row:hover > td { background: #f9fbf4; padding: 4px 12px 14px 38px; }
+  .machines-table { width: auto; min-width: 400px; font-size: 11.5px; }
+  .machines-table th { background: #e3e8ee; color: #243547; padding: 6px 12px; }
+  .machines-table td { padding: 6px 12px; border-bottom: 1px solid #e8ecf0; background: white; }
+  .table-hint { font-size: 11.5px; color: #888; margin: -6px 0 12px; }
+  .machine-note {
+    display: none; background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b;
+    border-radius: 6px; padding: 9px 12px; margin-bottom: 12px; font-size: 12px; color: #92400e;
+  }
 
   footer { text-align: center; color: #bbb; font-size: 11px; padding: 24px; }
 </style>
@@ -228,14 +249,23 @@ function toggleNavGroup(name) {
 <div class="container">
 
   <div class="upload-section">
-    <h2>Upload Today's SFC Downtime Summary</h2>
-    <p>The daily "SFC Downtime Summary" PDF export from ShopfloorConnect — whole site, one report per day.</p>
-    <div class="upload-card" id="card-pdf">
-      <h3>📄 SFC Daily Downtime Summary</h3>
-      <p>PDF export, whole site</p>
-      <label class="upload-btn" for="pdf-file">Choose File</label>
-      <input type="file" id="pdf-file" accept=".pdf" onchange="handleFile(this)">
-      <div class="file-status" id="pdf-status"></div>
+    <h2>Upload Today's SFC Reports</h2>
+    <p>The two PDFs ShopfloorConnect emails every morning. The Downtime Summary is needed. The Unplanned Downtime one is optional — add it to see which machines each MA fault came from.</p>
+    <div class="upload-grid">
+      <div class="upload-card" id="card-pdf">
+        <h3>📄 SFC Daily Downtime Summary</h3>
+        <p>PDF export, whole site</p>
+        <label class="upload-btn" for="pdf-file">Choose File</label>
+        <input type="file" id="pdf-file" accept=".pdf" onchange="handleFile(this)">
+        <div class="file-status" id="pdf-status"></div>
+      </div>
+      <div class="upload-card" id="card-unplanned">
+        <h3>📄 SFC Daily Unplanned Downtime <span class="optional-tag">(optional)</span></h3>
+        <p>PDF export, one page per machine</p>
+        <label class="upload-btn" for="unplanned-file">Choose File</label>
+        <input type="file" id="unplanned-file" accept=".pdf" onchange="handleUnplannedFile(this)">
+        <div class="file-status" id="unplanned-status"></div>
+      </div>
     </div>
     <div class="error-box" id="error-box"></div>
     <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>🔍 Run Check</button>
@@ -265,6 +295,8 @@ function toggleNavGroup(name) {
 
     <div class="table-card">
       <h3>Downtime Reasons — Sorted by Hours</h3>
+      <div class="table-hint" id="table-hint"></div>
+      <div class="machine-note" id="machine-note"></div>
       <table>
         <thead>
           <tr><th>Reason</th><th>Category</th><th># of Events</th><th>Hours</th><th>% of Total</th></tr>
@@ -283,6 +315,9 @@ function toggleNavGroup(name) {
 
 <script>
 let file = null;
+// Optional second PDF (Daily Unplanned Downtime) — only used to show which
+// machines each MA reason came from. Never needed for saving.
+let unplannedFile = null;
 let lastResult = null;
 let fileName = null;
 let checkedAt = null;
@@ -419,6 +454,14 @@ function handleFile(input) {
   document.getElementById('run-btn').disabled = false;
 }
 
+function handleUnplannedFile(input) {
+  const f = input.files[0];
+  if (!f) return;
+  unplannedFile = f;
+  document.getElementById('card-unplanned').classList.add('done');
+  document.getElementById('unplanned-status').textContent = '✓ ' + f.name;
+}
+
 async function runCheck() {
   document.getElementById('error-box').style.display = 'none';
   document.getElementById('run-btn').disabled = true;
@@ -427,6 +470,7 @@ async function runCheck() {
   try {
     const fd = new FormData();
     fd.append('sfc_daily_pdf', file);
+    if (unplannedFile) fd.append('sfc_unplanned_pdf', unplannedFile);
     const res = await fetch('/api/sfc-daily-check', { method: 'POST', body: fd });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
@@ -491,6 +535,36 @@ function render(d) {
   renderReasonsTable(d);
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// The new SFC maintenance codes all start with "MA-" (MA-FAULT PRESS,
+// MA-FAULT SHAKER/CONVEYOR...). Only these rows open a machine list.
+function isMaReason(reason) {
+  return reason.trim().toUpperCase().startsWith('MA-');
+}
+
+// The machines behind one reason, or null if we don't have them.
+// d.reason_machines only exists when the Unplanned Downtime PDF was
+// uploaded, and the server leaves a reason out if the two PDFs disagree.
+function machinesFor(d, reason) {
+  if (!isMaReason(reason) || !d.reason_machines) return null;
+  const list = d.reason_machines[reason];
+  return list && list.length ? list : null;
+}
+
+function machinesTable(machines) {
+  return `<table class="machines-table">
+    <thead><tr><th>Machine</th><th># of Events</th><th>Hours</th></tr></thead>
+    <tbody>${machines.map(m => `<tr>
+      <td>${escapeHtml(m.machine)}</td>
+      <td>${m.events}</td>
+      <td>${Number(m.hrs).toFixed(2)}h</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
 function renderReasonsTable(d) {
   const reasons = Object.entries(d.reasons || {}).sort((a, b) => b[1] - a[1]);
   const totalHrs = d.total_hrs || 1;
@@ -499,14 +573,53 @@ function renderReasonsTable(d) {
     const cat = categoryFor(reason);
     const events = (d.reason_events || {})[reason] ?? '—';
     const pct = ((hrs / totalHrs) * 100).toFixed(1);
-    return `<tr>
-      <td>${reason}</td>
+    const machines = machinesFor(d, reason);
+    const cells = `
+      <td><span class="chev">${machines ? '▶' : ''}</span>${escapeHtml(reason)}</td>
       <td>${categoryPill(cat)}</td>
       <td>${events}</td>
       <td>${hrs.toFixed(2)}h</td>
-      <td>${pct}%</td>
-    </tr>`;
+      <td>${pct}%</td>`;
+
+    if (!machines) return `<tr class="reason-row">${cells}</tr>`;
+
+    // Two rows: the reason itself (clickable), and a hidden row under it
+    // holding the machine list. toggleMachines() shows/hides the second one.
+    return `<tr class="reason-row expandable" onclick="toggleMachines(this)" title="Click to see which machines">${cells}</tr>
+      <tr class="machines-row"><td colspan="5">${machinesTable(machines)}</td></tr>`;
   }).join('') : '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px">No reasons parsed</td></tr>';
+
+  renderMachineHint(d, reasons.map(([reason]) => reason));
+}
+
+function toggleMachines(row) {
+  const detail = row.nextElementSibling;
+  const open = !detail.classList.contains('open');
+  detail.classList.toggle('open', open);
+  row.classList.toggle('open', open);
+}
+
+// One line above the table saying what you can do, plus an amber note if
+// the server had a problem with the Unplanned Downtime PDF.
+function renderMachineHint(d, reasons) {
+  const hint = document.getElementById('table-hint');
+  const note = document.getElementById('machine-note');
+
+  note.style.display = 'none';
+  if (d.machine_breakdown_warning) {
+    note.textContent = '⚠ ' + d.machine_breakdown_warning;
+    note.style.display = 'block';
+  }
+
+  const hasMa = reasons.some(isMaReason);
+  const anyOpenable = reasons.some(r => machinesFor(d, r));
+  if (anyOpenable) {
+    hint.textContent = 'Click an MA reason (▶) to see which machines it came from.';
+  } else if (hasMa && !d.reason_machines) {
+    hint.textContent = 'Tip: add the Daily Unplanned Downtime PDF as well, to see which machines each MA fault came from.';
+  } else {
+    hint.textContent = '';
+  }
 }
 
 function formatUKDate(isoDate) {
@@ -566,6 +679,11 @@ function clearCheck() {
   document.getElementById('pdf-file').value = '';
   document.getElementById('card-pdf').classList.remove('done');
   document.getElementById('pdf-status').textContent = '';
+
+  unplannedFile = null;
+  document.getElementById('unplanned-file').value = '';
+  document.getElementById('card-unplanned').classList.remove('done');
+  document.getElementById('unplanned-status').textContent = '';
 
   document.getElementById('run-btn').disabled = true;
   document.getElementById('error-box').style.display = 'none';
