@@ -35,6 +35,19 @@ ROW_RE = re.compile(r'^(.+?)\s+(\d+)\s+(\d{1,3}:\d{2}:\d{2})$')
 _DT = r'(\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[AP]M)'
 PERIOD_RE = re.compile(r'Report Period\s+' + _DT + r'\s+(?:To\s+)?' + _DT)
 SELECTED_MACHINES_RE = re.compile(r'Selected Machines:\s*(.+)', re.DOTALL)
+# SFC's OTHER morning PDF, "Daily Unplanned Downtime", has one page per
+# machine, each starting "Machine: Bruderer 1 - ...". This Summary report
+# never has that line (it says "All Selected Machines" instead). Without
+# this check, that PDF failed further down with "Could not find a Grand
+# Totals row — the PDF layout may have changed", which sounds like SFC
+# broke something when really it's just the wrong file in the box.
+UNPLANNED_PDF_RE = re.compile(r'^Machine:', re.MULTILINE)
+WRONG_PDF_MSG = (
+    'Wrong PDF: this is the SFC "Daily Unplanned Downtime" report (one page '
+    'per machine). This box needs the "Daily Downtime Summary" report (whole '
+    'site). On Maintenance → SFC Daily, the Unplanned report goes in the '
+    'second box.'
+)
 
 
 def _extract_pages(filepath):
@@ -143,6 +156,9 @@ def parse_daily_downtime_pdf(filepath):
     pages = _extract_pages(filepath)
     page1 = pages[0] if pages else ''
     all_text = '\n'.join(pages)
+
+    if UNPLANNED_PDF_RE.search(page1):
+        raise ValueError(WRONG_PDF_MSG)
 
     period, period_hrs, detected_date = _parse_period(page1)
     reasons, reason_events, grand_total_hrs, grand_total_events = _parse_reason_rows(page1)
