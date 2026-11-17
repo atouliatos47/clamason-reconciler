@@ -44,6 +44,7 @@ from daily_trend import (
     yearly_rollup, sfc_yearly_rollup, oee_yearly_rollup_with_history,
 )
 from parsers.sfc_daily_downtime_pdf import parse_daily_downtime_pdf
+from parsers.sfc_daily_unplanned_pdf import parse_daily_unplanned_pdf, merge_machine_breakdown
 from parsers.production_plan_xlsx import parse_production_plan
 from parsers.open_jobs_parser import summarise_open_jobs
 import db
@@ -498,6 +499,21 @@ def sfc_daily_check():
 
         with saved_upload(pdf_file, 'sfc_daily_pdf') as path:
             summary = parse_daily_downtime_pdf(path)
+
+        # Optional second file: SFC's "Daily Unplanned Downtime" PDF, one
+        # page per machine. It only adds the "which machines?" list under
+        # each reason. A problem with it becomes a warning on the page,
+        # never an error — the main check (and its auto-save) must still
+        # work exactly as before when this file is missing or wrong.
+        unplanned_file = request.files.get('sfc_unplanned_pdf')
+        if unplanned_file:
+            try:
+                with saved_upload(unplanned_file, 'sfc_unplanned_pdf') as path:
+                    unplanned = parse_daily_unplanned_pdf(path)
+                merge_machine_breakdown(summary, unplanned)
+            except ValueError as e:
+                summary['reason_machines'] = {}
+                summary['machine_breakdown_warning'] = str(e)
 
         return jsonify(summary)
     except ValueError as e:
