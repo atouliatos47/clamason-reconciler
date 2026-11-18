@@ -48,6 +48,7 @@ from parsers.sfc_daily_unplanned_pdf import parse_daily_unplanned_pdf, merge_mac
 from parsers.production_plan_xlsx import parse_production_plan
 from parsers.open_jobs_parser import summarise_open_jobs
 import db
+import quotes as quotes_rules  # PO Approvals rules; named so it isn't mistaken for a list of quotes
 
 bp = Blueprint('routes', __name__)
 
@@ -834,6 +835,51 @@ def open_jobs_trend():
         })
     except Exception as e:
         return jsonify({'error': str(e)})
+
+
+# --- PO Approvals (Maintenance) ----------------------------------------------
+# The quote tracker. quotes.py holds the rules (stages, chase date, checks);
+# these routes only pass data between the page and db.py.
+
+@bp.route('/maintenance-po-approvals')
+def maintenance_po_approvals_view():
+    return send_from_directory('public', 'maintenance-po-approvals.html')
+
+
+@bp.route('/api/quotes', methods=['GET'])
+def list_quotes():
+    """Every quote, newest first, plus the list of stages for the page's
+    status drop-down and the chase rule, so the page never has its own
+    copy of them. The stages go out as a list, not a dict: jsonify sorts
+    a dict's keys alphabetically, which would put 'Approved' first."""
+    try:
+        return jsonify({
+            'quotes': db.get_quotes(),
+            'statuses': [{'key': k, 'label': v} for k, v in quotes_rules.STATUSES.items()],
+            'chase_after_working_days': quotes_rules.CHASE_AFTER_WORKING_DAYS,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+
+@bp.route('/api/quotes', methods=['POST'])
+def add_quote():
+    """Save a new quote from the Add Quote form. Anything wrong with what
+    was typed comes back as 'problems' (a list of messages) with status 400
+    and nothing saved."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        quote, problems = quotes_rules.clean_quote(data)
+        if problems:
+            return jsonify({'error': ' '.join(problems), 'problems': problems}), 400
+        quote_id = db.add_quote(quote)
+        return jsonify({
+            'saved': True,
+            'id': quote_id,
+            'chase_date': quote['chase_date'].isoformat() if quote['chase_date'] else None,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @bp.route('/splash')

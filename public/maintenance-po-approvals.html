@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clamason — PO Approvals</title>
+<meta name="theme-color" content="#243547">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; display: flex; }
+
+  .sidebar { width: 220px; flex-shrink: 0; background: #243547; min-height: 100vh; display: flex; flex-direction: column; padding: 24px 0; border-right: 3px solid #95C11F; position: sticky; top: 0; align-self: flex-start; }
+  .sidebar-brand { padding: 0 24px 20px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .sidebar-logo { width: 100%; height: auto; display: block; }
+  .sidebar-brand p { color: #8fa0b3; font-size: 11px; margin-top: 10px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-group-header { display: flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: none; color: #cfd8e3; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 24px; cursor: pointer; }
+  .nav-group-header:hover { color: white; }
+  .nav-group-header .chevron { transition: transform 0.15s; font-size: 10px; }
+  .nav-group-header.open .chevron { transform: rotate(90deg); }
+  .nav-group-items { display: none; flex-direction: column; }
+  .nav-group-items.open { display: flex; }
+  .nav-item { color: #b7c2d0; text-decoration: none; font-size: 13px; padding: 8px 24px 8px 36px; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
+  .nav-item.active { background: rgba(149,193,31,0.15); color: #95C11F; border-right: 3px solid #95C11F; }
+  .sidebar-footer { color: #55647a; font-size: 10px; padding: 16px 24px 0; }
+
+  .main { flex: 1; padding: 28px 32px; min-width: 0; }
+  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; }
+  .page-header h1 { font-size: 20px; color: #243547; }
+  .page-header p { font-size: 12px; color: #666; margin-top: 4px; }
+  .print-btn { padding: 8px 16px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; margin-left: 8px; }
+  .print-btn:hover { background: #95C11F; color: #243547; }
+
+  .container { width: 100%; }
+  .dept-bar { color: #fff; padding: 10px 14px; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center; background: #2e6b4f; }
+  .dept-bar span.name { font-size: 13px; font-weight: bold; letter-spacing: 0.7px; }
+  .dept-bar span.num { font-size: 9.5px; opacity: 0.75; font-family: monospace; }
+  .panel { background: #f7f8fa; border-radius: 8px; padding: 22px; }
+  .panel.with-dept-bar { border-radius: 0 0 8px 8px; padding-top: 20px; }
+
+  [hidden] { display: none !important; }
+
+  .form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 14px; }
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .field.wide { grid-column: span 2; }
+  .field.full { grid-column: 1 / -1; }
+  .field label { font-size: 11px; font-weight: bold; color: #243547; text-transform: uppercase; letter-spacing: 0.5px; }
+  .field input, .field select, .field textarea {
+    padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px;
+    font-family: Arial, sans-serif; background: white; width: 100%;
+  }
+  .field textarea { resize: vertical; line-height: 1.4; }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: #95C11F; }
+  .hint { font-size: 11px; color: #888; }
+  .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+  .save-btn { padding: 9px 18px; background: #243547; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+  .save-btn:hover { background: #95C11F; color: #243547; }
+  .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .form-status { font-size: 12px; color: #999; }
+  .form-status.ok { color: #16a34a; }
+  .form-status.bad { color: #c0392b; }
+
+  .list-bar { margin-top: 24px; }
+  .table-wrap { overflow-x: auto; }
+  .quotes-table { width: 100%; border-collapse: collapse; font-size: 12.5px; background: white; border-radius: 6px; }
+  .quotes-table th { text-align: left; background: #eef1f5; color: #243547; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; padding: 8px 10px; border-bottom: 2px solid #d6dbe2; white-space: nowrap; }
+  .quotes-table td { padding: 8px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+  .quotes-table a { color: #243547; font-weight: bold; }
+  .num-col { text-align: right; white-space: nowrap; }
+  .note-col { max-width: 280px; }
+  .muted { color: #888; font-size: 11px; }
+  .empty { font-size: 13px; color: #888; }
+  .chase-due { color: #c0392b; font-weight: bold; }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; white-space: nowrap; }
+  .pill-received  { background: #e8edf3; color: #243547; }
+  .pill-sent      { background: #fff4d6; color: #8a5a00; }
+  .pill-approved  { background: #e3f4d6; color: #3d6b0f; }
+  .pill-po_raised { background: #d9ecff; color: #1d4f86; }
+  .pill-done      { background: #e6f6ea; color: #1a7f37; }
+  .pill-cancelled { background: #f1f1f1; color: #888; }
+
+  @media (max-width: 1000px) {
+    .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  @media print {
+    .sidebar, .page-header { display: none; }
+    body { background: white; }
+    .main { padding: 0; }
+    .container { max-width: none; }
+    @page { size: A4 portrait; margin: 15mm; }
+  }
+</style>
+<script src="/reminders.js" defer></script>  <!-- upload reminders on the sidebar tabs -->
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img class="sidebar-logo" src="/clamason-logo.png" alt="Clamason">
+    <p>Performance Hub</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-board-review" onclick="toggleNavGroup('board-review')">
+        <span>Board Review</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-board-review">
+        <a class="nav-item" href="/board-review">Total Monthly Performance Review</a>
+        <a class="nav-item" href="/">Monthly Check</a>
+        <a class="nav-item" href="/teep">TEEP</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-production" onclick="toggleNavGroup('production')">
+        <span>Production</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-production">
+        <a class="nav-item" href="/production">Monthly Performance Review</a>
+        <a class="nav-item" href="/production-trend">Trend Dashboard</a>
+        <a class="nav-item" href="/production-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/daily-oee">Daily OEE</a>
+        <a class="nav-item" href="/daily-oee-trend">Daily OEE Trend</a>
+        <a class="nav-item" href="/production-plan">Production Plan</a>
+        <a class="nav-item" href="/production-sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/production-sfc-trend">SFC Trend</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header open" id="nav-header-maintenance" onclick="toggleNavGroup('maintenance')">
+        <span>Maintenance</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items open" id="nav-group-maintenance">
+        <a class="nav-item" href="/maintenance">Monthly Performance Review</a>
+        <a class="nav-item" href="/dashboard">Trend Dashboard</a>
+        <a class="nav-item" href="/maintenance-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/maintenance-sfc-vs-agility">SFC vs Agility</a>
+        <a class="nav-item" href="/daily">Daily Check</a>
+        <a class="nav-item" href="/daily-trend">Daily Trend</a>
+        <a class="nav-item" href="/sfc-daily">SFC Daily</a>
+        <a class="nav-item" href="/sfc-daily-trend">SFC Trend</a>
+        <a class="nav-item" href="/tpm-schedule">TPM Schedule</a>
+        <a class="nav-item" href="/maintenance-personnel">Personnel Performance</a>
+        <a class="nav-item" href="/maintenance-open-jobs">Open Jobs</a>
+        <a class="nav-item active" href="/maintenance-po-approvals">PO Approvals</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <button type="button" class="nav-group-header" id="nav-header-toolroom" onclick="toggleNavGroup('toolroom')">
+        <span>Toolroom</span><span class="chevron">▸</span>
+      </button>
+      <div class="nav-group-items" id="nav-group-toolroom">
+        <a class="nav-item" href="/toolroom">Monthly Performance Review</a>
+        <a class="nav-item" href="/toolroom-trend">Trend Dashboard</a>
+        <a class="nav-item" href="/toolroom-notes">Notes and Action Plan</a>
+        <a class="nav-item" href="/toolroom-sfc-vs-agility">SFC vs Agility</a>
+      </div>
+    </div>
+  </nav>
+  <div class="sidebar-footer">Internal Tool</div>
+</div>
+
+<script>
+function toggleNavGroup(name) {
+  var header = document.getElementById('nav-header-' + name);
+  var items = document.getElementById('nav-group-' + name);
+  var isOpen = items.classList.toggle('open');
+  header.classList.toggle('open', isOpen);
+}
+
+(function() {
+  var IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+  var idleTimer;
+  function goIdle() { window.location.href = '/splash'; }
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(goIdle, IDLE_TIMEOUT_MS);
+  }
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function(evt) {
+    document.addEventListener(evt, resetIdleTimer, { passive: true });
+  });
+  resetIdleTimer();
+})();
+</script>
+
+<div class="main">
+
+<div class="page-header">
+  <div>
+    <h1>PO Approvals</h1>
+    <p>Quotes waiting for approval. Each one is chased <span id="chase-days">2</span> working days after it's sent.</p>
+  </div>
+</div>
+
+<div class="container">
+  <div class="dept-bar">
+    <span class="name">ADD A QUOTE</span><span class="num">MAINTENANCE</span>
+  </div>
+  <div class="panel with-dept-bar">
+    <form id="quote-form" autocomplete="off" onsubmit="saveQuote(event)">
+      <div class="form-grid">
+        <div class="field">
+          <label for="q-supplier">Supplier *</label>
+          <input type="text" id="q-supplier" required placeholder="e.g. Bruderer UK">
+        </div>
+        <div class="field wide">
+          <label for="q-description">What it's for *</label>
+          <input type="text" id="q-description" required placeholder="e.g. BSTA 250 clutch repair">
+        </div>
+        <div class="field">
+          <label for="q-asset">Asset No</label>
+          <input type="text" id="q-asset" placeholder="e.g. 00031">
+        </div>
+
+        <div class="field">
+          <label for="q-amount">Amount (£, net)</label>
+          <input type="text" id="q-amount" inputmode="decimal" placeholder="e.g. 1250.00">
+        </div>
+        <div class="field">
+          <label for="q-ref">Quote ref</label>
+          <input type="text" id="q-ref" placeholder="Supplier's quote number">
+        </div>
+        <div class="field">
+          <label for="q-received">Date received</label>
+          <input type="date" id="q-received">
+        </div>
+        <div class="field">
+          <label for="q-status">Status</label>
+          <select id="q-status" onchange="showStatusFields()"></select>
+        </div>
+
+        <div class="field full">
+          <label for="q-link">Quote file (OneDrive link)</label>
+          <input type="url" id="q-link" placeholder="https://...">
+          <div class="hint">In your Purchase Orders folder, right-click the quote file and choose <b>Copy link</b>, then paste it here.</div>
+        </div>
+
+        <div class="field sent-only">
+          <label for="q-sent-to">Sent to</label>
+          <input type="text" id="q-sent-to" placeholder="e.g. Paul Edwards / Purchasing">
+        </div>
+        <div class="field sent-only">
+          <label for="q-sent-date">Date sent</label>
+          <input type="date" id="q-sent-date">
+        </div>
+        <div class="field sent-only">
+          <label for="q-chase">Chase date</label>
+          <input type="date" id="q-chase">
+          <div class="hint">Leave empty for <span class="chase-days">2</span> working days after the date sent.</div>
+        </div>
+        <div class="field po-only">
+          <label for="q-po">PO number</label>
+          <input type="text" id="q-po" placeholder="e.g. P/100075">
+        </div>
+
+        <div class="field full">
+          <label for="q-note">Note (optional)</label>
+          <textarea id="q-note" rows="2" placeholder="What you've done with it, e.g. Emailed Paul for approval"></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="save-btn" id="save-btn">Save quote</button>
+        <span class="form-status" id="form-status"></span>
+      </div>
+    </form>
+  </div>
+
+  <div class="dept-bar list-bar">
+    <span class="name">QUOTES</span><span class="num" id="quote-count"></span>
+  </div>
+  <div class="panel with-dept-bar list-panel">
+    <div id="quotes-empty" class="empty">No quotes saved yet. Add your first one above.</div>
+    <div class="table-wrap">
+      <table id="quotes-table" class="quotes-table" hidden>
+        <thead>
+          <tr>
+            <th>Received</th><th>Supplier</th><th>What it's for</th><th>Asset</th>
+            <th class="num-col">Amount</th><th>Status</th><th>Sent to</th>
+            <th>Chase date</th><th>Quote</th><th>Latest note</th>
+          </tr>
+        </thead>
+        <tbody id="quotes-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+let STATUSES = {};
+
+// Today on this computer, as '2026-11-18'. Built from the local date on
+// purpose: toISOString() gives the UTC date, which is yesterday's date
+// between midnight and 1am in British Summer Time.
+function todayISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// Turns any text into safe HTML text, so a supplier called <b>Smith</b>
+// shows exactly that instead of turning bold — or worse, running code.
+function esc(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function ukDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function money(amount) {
+  if (amount == null || amount === '') return '';
+  return '£' + Number(amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Show "Sent to / Date sent / Chase date" once a quote has been sent,
+// and "PO number" once a PO exists. A just-received quote needs neither.
+function showStatusFields() {
+  const status = document.getElementById('q-status').value;
+  const sent = status !== 'received' && status !== 'cancelled';
+  const hasPo = status === 'po_raised' || status === 'done';
+  document.querySelectorAll('.sent-only').forEach(el => el.hidden = !sent);
+  document.querySelectorAll('.po-only').forEach(el => el.hidden = !hasPo);
+  if (sent && !document.getElementById('q-sent-date').value) {
+    document.getElementById('q-sent-date').value = todayISO();
+  }
+}
+
+function resetForm() {
+  document.getElementById('quote-form').reset();
+  document.getElementById('q-received').value = todayISO();
+  document.getElementById('q-status').value = 'received';
+  showStatusFields();
+}
+
+async function loadQuotes() {
+  try {
+    const res = await fetch('/api/quotes');
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+
+    // The status list comes from the server (quotes.py), so the page
+    // never has its own copy to forget to update.
+    // It arrives as an ordered list, so the drop-down follows the real
+    // order (received -> sent -> approved ...), not the alphabet.
+    if (!Object.keys(STATUSES).length) {
+      d.statuses.forEach(s => STATUSES[s.key] = s.label);
+      const select = document.getElementById('q-status');
+      select.innerHTML = d.statuses
+        .map(s => `<option value="${esc(s.key)}">${esc(s.label)}</option>`).join('');
+      document.querySelectorAll('#chase-days, .chase-days')
+        .forEach(el => el.textContent = d.chase_after_working_days);
+      resetForm();
+    }
+    renderQuotes(d.quotes);
+  } catch (e) {
+    document.getElementById('quotes-empty').textContent = 'Could not load quotes: ' + e.message;
+  }
+}
+
+function renderQuotes(quotes) {
+  const today = todayISO();
+  document.getElementById('quote-count').textContent = quotes.length ? `${quotes.length} saved` : '';
+  document.getElementById('quotes-empty').hidden = quotes.length > 0;
+  document.getElementById('quotes-table').hidden = quotes.length === 0;
+
+  document.getElementById('quotes-body').innerHTML = quotes.map(q => {
+    // A chase date only matters while we're waiting for approval.
+    let chaseClass = '';
+    if (q.status === 'sent' && q.chase_date) {
+      chaseClass = q.chase_date <= today ? 'chase-due' : 'chase-later';
+    }
+    // Only real web links become clickable (the server checks this too).
+    const link = /^https?:\/\//i.test(q.file_link || '')
+      ? `<a href="${esc(q.file_link)}" target="_blank" rel="noopener noreferrer">Open</a>` : '';
+    const notes = q.latest_note
+      ? esc(q.latest_note) + (q.note_count > 1 ? ` <span class="muted">(+${q.note_count - 1} more)</span>` : '')
+      : '';
+    return `<tr>
+      <td>${ukDate(q.received_date)}</td>
+      <td>${esc(q.supplier)}</td>
+      <td>${esc(q.description)}${q.quote_ref ? `<div class="muted">Ref: ${esc(q.quote_ref)}</div>` : ''}</td>
+      <td>${esc(q.asset_no)}</td>
+      <td class="num-col">${money(q.amount)}</td>
+      <td><span class="pill pill-${esc(q.status)}">${esc(STATUSES[q.status] || q.status)}</span>
+          ${q.po_number ? `<div class="muted">${esc(q.po_number)}</div>` : ''}</td>
+      <td>${esc(q.sent_to)}${q.sent_date ? `<div class="muted">${ukDate(q.sent_date)}</div>` : ''}</td>
+      <td class="${chaseClass}">${ukDate(q.chase_date)}</td>
+      <td>${link}</td>
+      <td class="note-col">${notes}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function saveQuote(event) {
+  event.preventDefault();
+  const btn = document.getElementById('save-btn');
+  const statusEl = document.getElementById('form-status');
+  const val = id => document.getElementById(id).value.trim();
+  const status = val('q-status');
+  const sent = status !== 'received' && status !== 'cancelled';
+
+  const body = {
+    supplier: val('q-supplier'),
+    description: val('q-description'),
+    asset_no: val('q-asset'),
+    amount: val('q-amount'),
+    quote_ref: val('q-ref'),
+    received_date: val('q-received'),
+    status: status,
+    file_link: val('q-link'),
+    sent_to: sent ? val('q-sent-to') : '',
+    sent_date: sent ? val('q-sent-date') : '',
+    chase_date: sent ? val('q-chase') : '',
+    po_number: (status === 'po_raised' || status === 'done') ? val('q-po') : '',
+    note: val('q-note'),
+  };
+
+  btn.disabled = true;
+  statusEl.textContent = 'Saving…';
+  statusEl.className = 'form-status';
+  try {
+    const res = await fetch('/api/quotes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    statusEl.textContent = '✓ Saved' + (d.chase_date ? ` — chase on ${ukDate(d.chase_date)}` : '');
+    statusEl.className = 'form-status ok';
+    resetForm();
+    loadQuotes();
+  } catch (e) {
+    statusEl.textContent = 'Not saved: ' + e.message;
+    statusEl.className = 'form-status bad';
+  }
+  btn.disabled = false;
+}
+
+loadQuotes();
+</script>
+
+</body>
+</html>

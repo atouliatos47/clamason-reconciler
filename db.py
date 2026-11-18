@@ -1279,3 +1279,70 @@ def get_open_jobs_week(week_start=None):
                 cur.execute("SELECT * FROM open_jobs_weekly ORDER BY week_start DESC LIMIT 1")
             r = cur.fetchone()
     return _open_jobs_row(r) if r else None
+
+
+# --- PO Approvals (quotes / quote_notes) -------------------------------------
+#
+# The quote tracker under Maintenance. quotes.py checks and tidies a quote
+# before it gets here (clean_quote), so these functions only read and write.
+
+_QUOTE_COLUMNS = ('supplier', 'description', 'asset_no', 'amount', 'quote_ref',
+                  'file_link', 'received_date', 'status', 'sent_to',
+                  'sent_date', 'chase_date', 'po_number')
+
+
+def add_quote(quote):
+    """Saves a new quote and returns its id. If the form had a note in it,
+    that becomes the quote's first entry in quote_notes, dated the day the
+    quote was sent (or received, if it hasn't been sent). Both are written
+    in one transaction: if the note fails, the quote isn't saved either."""
+    params = {col: quote.get(col) for col in _QUOTE_COLUMNS}
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                INSERT INTO quotes ({', '.join(_QUOTE_COLUMNS)})
+                VALUES ({', '.join('%(' + c + ')s' for c in _QUOTE_COLUMNS)})
+                RETURNING id
+            """, params)
+            quote_id = cur.fetchone()[0]
+            if quote.get('note'):
+                cur.execute("""
+                    INSERT INTO quote_notes (quote_id, note_date, note)
+                    VALUES (%(quote_id)s, %(note_date)s, %(note)s)
+                """, {
+                    'quote_id': quote_id,
+                    'note_date': quote.get('sent_date') or quote.get('received_date'),
+                    'note': quote['note'],
+                })
+        conn.commit()
+    return quote_id
+
+
+def get_quotes():
+    """Every quote, newest first, each with its latest note and how many
+    notes it has. Dates come back as ISO strings ('2026-11-18') and the
+    amount as a string ('3059.16'), so routes.py can jsonify the list as
+    it is — Flask would otherwise turn a date into a long web-style date."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT q.*,
+                       (SELECT count(*) FROM quote_notes n
+                         WHERE n.quote_id = q.id) AS note_count,
+                       (SELECT n.note FROM quote_notes n
+                         WHERE n.quote_id = q.id
+                         ORDER BY n.note_date DESC, n.id DESC LIMIT 1) AS latest_note
+                FROM quotes q
+                ORDER BY q.received_date DESC, q.id DESC
+            """)
+            rows = cur.fetchall()
+    result = []
+    for row in rows:
+        r = dict(row)
+        for key in ('received_date', 'sent_date', 'chase_date', 'created_at', 'updated_at'):
+            if r.get(key) is not None:
+                r[key] = r[key].isoformat()
+        if r.get('amount') is not None:
+            r['amount'] = str(r['amount'])
+        result.append(r)
+    return result

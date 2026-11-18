@@ -1,0 +1,160 @@
+"""
+PO Approvals — the rules for the quote tracker (Maintenance tab).
+
+A supplier quote arrives, gets sent to a director or Purchasing for
+approval, and then waits — sometimes for days. Each quote is one row in
+the `quotes` table (see schema.sql); this file holds the rules around
+those rows, so routes.py only has to pass data in and out:
+
+  - STATUSES: the stages a quote goes through, in order, with the label
+    the page shows for each.
+  - chase_date_after(): when to chase an approval — CHASE_AFTER_WORKING_DAYS
+    working days after it was sent, skipping weekends and the site's
+    non-working days (the same calendar the upload reminders use).
+  - clean_quote(): checks a quote typed into the form before it is saved,
+    and returns a list of plain-English problems if anything is wrong.
+
+The quote file itself is never uploaded. It stays in the Purchase Orders
+folder on Clamason's OneDrive, and the quote stores the "Copy link" web
+address to it (file_link).
+"""
+from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
+
+from reminders import is_working_day, london_today
+
+# How long to wait for an approval before chasing it. Set by Andreas,
+# 18 Nov 2026. Each quote's chase date can still be changed by hand.
+CHASE_AFTER_WORKING_DAYS = 2
+
+# Every stage a quote can be in, in the order it normally moves through
+# them. The key is what's saved in the database; the value is what the
+# page shows. 'cancelled' is for a quote that isn't going ahead.
+STATUSES = {
+    'received':  'Quote received',
+    'sent':      'Sent for approval',
+    'approved':  'Approved',
+    'po_raised': 'PO raised',
+    'done':      'Done',
+    'cancelled': 'Cancelled',
+}
+
+# Stages where we're still waiting on someone else's approval — the only
+# ones that get a chase date.
+WAITING_STATUSES = {'sent'}
+
+# Longest text accepted in each box, so a mistaken paste can't fill the
+# database. Generous for normal use.
+_MAX_LEN = {
+    'supplier': 120,
+    'description': 500,
+    'asset_no': 40,
+    'quote_ref': 80,
+    'file_link': 2000,
+    'sent_to': 120,
+    'po_number': 40,
+}
+
+
+def chase_date_after(sent_date, working_days=CHASE_AFTER_WORKING_DAYS):
+    """The date `working_days` working days after `sent_date`.
+
+    Sent on a Monday -> chase on Wednesday. Sent on a Friday -> the
+    weekend doesn't count, so chase on Tuesday.
+    """
+    d, counted = sent_date, 0
+    while counted < working_days:
+        d += timedelta(days=1)
+        if is_working_day(d):
+            counted += 1
+    return d
+
+
+def _text(data, key):
+    """The trimmed text from a form box, or None if it was left empty."""
+    value = data.get(key)
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def _date(data, key, problems, label):
+    """A date from the form ('2026-11-18'), or None if left empty."""
+    value = _text(data, key)
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        problems.append(f'{label} is not a valid date.')
+        return None
+
+
+def clean_quote(data):
+    """Check a quote from the form and tidy it up for saving.
+
+    Returns (quote, problems). `quote` is a dict ready for
+    db.add_quote(); `problems` is a list of messages to show the user.
+    If `problems` is not empty, nothing should be saved.
+    """
+    problems = []
+    quote = {key: _text(data, key) for key in _MAX_LEN}
+
+    if not quote['supplier']:
+        problems.append('Supplier is required.')
+    if not quote['description']:
+        problems.append('"What it\'s for" is required.')
+
+    for key, limit in _MAX_LEN.items():
+        if quote[key] and len(quote[key]) > limit:
+            problems.append(f'{key.replace("_", " ").capitalize()} is too long '
+                            f'(max {limit} characters).')
+
+    # Only web links are allowed. A link is shown on the page as something
+    # you can click, and a "link" starting with javascript: would run code
+    # when clicked instead of opening a file.
+    link = quote['file_link']
+    if link and not link.lower().startswith(('https://', 'http://')):
+        problems.append('File link must be a web link starting with https:// '
+                        '(right-click the file in OneDrive and choose Copy link).')
+
+    # Money: stored exactly (Decimal), never as a float. "£1,250.00" is fine.
+    amount = _text(data, 'amount')
+    quote['amount'] = None
+    if amount:
+        try:
+            value = Decimal(amount.replace('£', '').replace(',', ''))
+            if value < 0:
+                raise InvalidOperation
+            quote['amount'] = value.quantize(Decimal('0.01'))
+        except InvalidOperation:
+            problems.append('Amount must be a number, like 1250.00.')
+
+    status = _text(data, 'status') or 'received'
+    if status not in STATUSES:
+        problems.append(f'Unknown status "{status}".')
+    quote['status'] = status
+
+    quote['received_date'] = _date(data, 'received_date', problems,
+                                   'Date received') or london_today()
+    quote['sent_date'] = _date(data, 'sent_date', problems, 'Date sent')
+    quote['chase_date'] = _date(data, 'chase_date', problems, 'Chase date')
+
+    if status in WAITING_STATUSES:
+        # Sent for approval: if no date was typed, it was sent today, and
+        # if no chase date was typed, it's 2 working days after sending.
+        if quote['sent_date'] is None:
+            quote['sent_date'] = london_today()
+        if quote['chase_date'] is None:
+            quote['chase_date'] = chase_date_after(quote['sent_date'])
+    elif status == 'received':
+        # Not sent yet, so nothing to chase.
+        quote['chase_date'] = None
+
+    note = _text(data, 'note')
+    if note and len(note) > 1000:
+        problems.append('Note is too long (max 1000 characters).')
+    quote['note'] = note
+
+    return quote, problems
