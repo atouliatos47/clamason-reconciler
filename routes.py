@@ -858,6 +858,7 @@ def list_quotes():
             'files_usage': db.get_quote_files_usage(),
             'file_max_mb': QUOTE_FILE_MAX_MB,
             'po_stages': quotes_rules.PO_STAGES,
+            'finished_statuses': quotes_rules.FINISHED_STATUSES,
             'chase_after_working_days': quotes_rules.CHASE_AFTER_WORKING_DAYS,
         })
     except Exception as e:
@@ -877,6 +878,9 @@ def add_quote():
         quote, problems = quotes_rules.clean_quote(data)
         if problems:
             return jsonify({'error': ' '.join(problems), 'problems': problems}), 400
+        if quote['status'] in quotes_rules.PO_STAGES:
+            return jsonify({'error': 'Save the quote first, then use Update to add the PO PDF '
+                                     'and mark it "PO sent to supplier".'}), 400
         if not data.get('allow_duplicate'):
             match = _quote_match(quote['quote_ref'])
             if match:
@@ -938,14 +942,25 @@ def get_quote(quote_id):
 
 @bp.route('/api/quotes/<int:quote_id>', methods=['PUT'])
 def update_quote(quote_id):
-    """Save changes from the Update window. Same checks as a new quote.
-    If the status changed, that's logged as a note automatically, dated
-    today, so the notes show when each stage happened."""
+    """Save changes from the Update window. Same checks as a new quote,
+    and a quote can only be moved to "PO sent to supplier" once its PO PDF
+    is kept (answer 400 with needs_po, nothing saved). If the status
+    changed, that's logged as a note automatically, dated today, so the
+    notes show when each stage happened."""
     try:
         data = request.get_json(force=True, silent=True) or {}
         quote, problems = quotes_rules.clean_quote(data)
         if problems:
             return jsonify({'error': ' '.join(problems), 'problems': problems}), 400
+        # "PO sent to supplier" only once the PO PDF is kept with the quote.
+        # The page asks for it first; this makes sure it can't be skipped.
+        if quote['status'] in quotes_rules.PO_STAGES:
+            existing = db.get_quote(quote_id)
+            if existing is None:
+                return jsonify({'error': 'Quote not found.'}), 404
+            if existing['status'] not in quotes_rules.PO_STAGES and \
+                    not any(f['kind'] == 'po' for f in existing['files']):
+                return jsonify({'error': 'Add the PO PDF first.', 'needs_po': True}), 400
         old_status = db.update_quote(quote_id, quote)
         if old_status is None:
             return jsonify({'error': 'Quote not found.'}), 404

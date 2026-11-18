@@ -28,17 +28,19 @@ from reminders import is_working_day, london_today
 # 18 Nov 2026. Each quote's chase date can still be changed by hand.
 CHASE_AFTER_WORKING_DAYS = 2
 
-# Every stage a quote can be in, in the order it normally moves through
-# them. The key is what's saved in the database; the value is what the
-# page shows. 'cancelled' is for a quote that isn't going ahead.
+# Every stage a quote can be in, in order. The key is what's saved in the
+# database; the value is what the page shows. Cut to these three by
+# Andreas, 18 Nov 2026 (Approved, Done and Cancelled were removed — see
+# schema.sql for how saved quotes on those were moved). A quote that
+# isn't going ahead is deleted.
 STATUSES = {
     'received':  'Quote received',
     'sent':      'Sent for approval',
-    'approved':  'Approved',
     'po_sent':   'PO sent to supplier',
-    'done':      'Done',
-    'cancelled': 'Cancelled',
 }
+
+# Stages that mean the quote is finished — shown under the Done tab.
+FINISHED_STATUSES = ['po_sent']
 
 # The people quotes are sent to for approval — the "Sent to" drop-down.
 # Set by Andreas, 18 Nov 2026. The page also offers "Other…" for anyone
@@ -181,9 +183,9 @@ def clean_quote(data):
         if quote['chase_date'] is None:
             quote['chase_date'] = chase_date_after(quote['sent_date'])
     else:
-        # Not sent yet, or already past waiting (approved, PO sent, done,
-        # cancelled): nothing to chase, so no chase date. Moving a quote
-        # back to "sent" gives it a fresh one.
+        # Not sent yet, or already past waiting (PO sent to supplier):
+        # nothing to chase, so no chase date. Moving a quote back to
+        # "sent" gives it a fresh one.
         quote['chase_date'] = None
 
     note = _text(data, 'note')
@@ -406,9 +408,11 @@ def outlook_web_link(quote, hub_url):
 # Clamason's approved purchase order. Key = saved in quote_files.kind.
 FILE_KINDS = {'quote': 'Quote', 'po': 'PO'}
 
-# The stages that mean the PO has been approved — moving a quote to one of
-# these is when the page asks for the PO PDF, if there isn't one yet.
-PO_STAGES = ['approved', 'po_sent', 'done']
+# Stages a quote can only be moved to once its PO PDF is kept: the PO has
+# to be in the Hub before the quote can be marked as sent to the supplier
+# (Andreas, 18 Nov 2026). The page asks for it first; routes.py refuses
+# the change without one.
+PO_STAGES = ['po_sent']
 
 # Characters Windows doesn't allow in a file name ( \ / : * ? " < > | ),
 # plus control characters.

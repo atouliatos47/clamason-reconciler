@@ -77,10 +77,7 @@
   .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; white-space: nowrap; }
   .pill-received  { background: #e8edf3; color: #243547; }
   .pill-sent      { background: #fff4d6; color: #8a5a00; }
-  .pill-approved  { background: #e3f4d6; color: #3d6b0f; }
-  .pill-po_sent   { background: #d9ecff; color: #1d4f86; }
-  .pill-done      { background: #e6f6ea; color: #1a7f37; }
-  .pill-cancelled { background: #f1f1f1; color: #888; }
+  .pill-po_sent   { background: #e6f6ea; color: #1a7f37; }
 
   .bar-right { display: flex; align-items: center; gap: 16px; }
   .row-btn { padding: 4px 10px; background: white; border: 1px solid #ccc; border-radius: 5px; font-size: 11.5px; color: #243547; cursor: pointer; white-space: nowrap; }
@@ -361,9 +358,9 @@ function toggleNavGroup(name) {
     <div class="notes-section">
       <div class="field-title">PDFs &mdash; quote and PO</div>
       <div class="po-prompt" id="po-prompt" hidden>
-        <span><b>Got the PO?</b> Upload the approved PO here, so it's kept with the quote.</span>
+        <span><b>Add the PO PDF first.</b> A quote can only be marked "PO sent to supplier" once its PO is kept here. Upload it and the change saves straight away.</span>
         <button type="button" class="save-btn" onclick="pickPdf('po')">Upload PO PDF</button>
-        <button type="button" class="plain-btn" onclick="poNotNow()">Not now</button>
+        <button type="button" class="plain-btn" onclick="poCancel()">Cancel</button>
       </div>
       <ul class="notes-list" id="files-list"></ul>
       <button type="button" class="plain-btn" onclick="pickPdf('quote')">Attach quote PDF</button>
@@ -399,14 +396,15 @@ let APPROVERS = [];      // the "Sent to" names, from quotes.py
 let IMPORTED_FILE = null; // the PDF imported into the Add form, kept on Save
 let FILE_MAX_MB = 10;     // largest PDF the Hub keeps (from routes.py)
 let FILES_USAGE = null;   // how many PDFs are kept and their total size
-let PO_STAGES = ['approved', 'po_sent', 'done'];  // from quotes.py: the PO has been approved
+let PO_STAGES = ['po_sent'];  // from quotes.py: stages that need the PO PDF kept first
+let PENDING_PO_SAVE = false;  // Save is waiting for the PO PDF to be uploaded
 let CURRENT_QUOTE = null; // the quote open in the Update window, as last loaded
 let PICK_KIND = 'quote';  // which kind of PDF the file picker is choosing
 let DUP_MATCH = null;     // a saved quote with the same reference, if any
 let DUP_FROM_SAVE = false; // true if Save (not Import) found that match
 let ALLOW_DUP = false;    // you chose "Add as a new quote" anyway
 const OTHER = '__other'; // the "Other…" choice in that list
-const FINISHED = ['done', 'cancelled'];
+let FINISHED = ['po_sent'];  // from quotes.py: finished stages, shown under Done
 
 // Today on this computer, as '2026-11-18'. Built from the local date on
 // purpose: toISOString() gives the UTC date, which is yesterday's date
@@ -472,7 +470,11 @@ function setStatus(id, text, kind) {
 // (add-supplier, edit-supplier). Add a box here and it appears in both.
 // ---------------------------------------------------------------------------
 function fieldsHTML(p, withNote) {
-  const options = STATUS_LIST.map(s => `<option value="${esc(s.key)}">${esc(s.label)}</option>`).join('');
+  // A new quote can't start at "PO sent to supplier": the PO PDF is added
+  // to a saved quote through Update, so the Add form leaves those stages out.
+  const options = STATUS_LIST
+    .filter(s => p !== 'add' || !PO_STAGES.includes(s.key))
+    .map(s => `<option value="${esc(s.key)}">${esc(s.label)}</option>`).join('');
   return `
   <div class="form-grid">
     <div class="field">
@@ -589,7 +591,7 @@ function openPurposeList(p) {
   try { box.showPicker(); } catch (e) { /* typing still shows the list */ }
 }
 
-function isSent(status) { return status !== 'received' && status !== 'cancelled'; }
+function isSent(status) { return status !== 'received'; }
 // The PO number exists from the moment a quote is sent for approval — at
 // Clamason the PO is raised first and then waits for a director's or
 // Purchasing's approval ("PO Approval Required - P/100075"). So the box is
@@ -680,6 +682,8 @@ async function loadQuotes() {
       STATUS_LIST = d.statuses;
       d.statuses.forEach(s => STATUSES[s.key] = s.label);
       APPROVERS = d.approvers || [];
+      PO_STAGES = d.po_stages || PO_STAGES;
+      FINISHED = d.finished_statuses || FINISHED;
       document.getElementById('add-fields').innerHTML = fieldsHTML('add', true);
       document.getElementById('edit-fields').innerHTML = fieldsHTML('edit', false);
       document.querySelectorAll('.chase-days').forEach(el => el.textContent = d.chase_after_working_days);
@@ -690,7 +694,6 @@ async function loadQuotes() {
     ALL_QUOTES = d.quotes;
     FILES_USAGE = d.files_usage;
     FILE_MAX_MB = d.file_max_mb || FILE_MAX_MB;
-    PO_STAGES = d.po_stages || PO_STAGES;
     renderQuotes();
   } catch (e) {
     document.getElementById('quotes-empty').textContent = 'Could not load quotes: ' + e.message;
@@ -698,17 +701,15 @@ async function loadQuotes() {
 }
 
 // Which quotes the list shows. Each button is one of these; its test()
-// says whether a quote belongs in it. Done and cancelled quotes are never
-// deleted — they wait under their own buttons, for reference.
+// says whether a quote belongs in it. Finished quotes (PO sent to the
+// supplier) stay under Done, for reference.
 const VIEWS = [
   { key: 'open',      label: 'Open',      empty: 'No open quotes.',
     test: (q, today) => !FINISHED.includes(q.status) },
   { key: 'chase',     label: 'To chase',  empty: 'Nothing to chase today.',
     test: (q, today) => isToChase(q, today) },
   { key: 'done',      label: 'Done',      empty: 'No done quotes yet.',
-    test: (q, today) => q.status === 'done' },
-  { key: 'cancelled', label: 'Cancelled', empty: 'No cancelled quotes.',
-    test: (q, today) => q.status === 'cancelled' },
+    test: (q, today) => FINISHED.includes(q.status) },
   { key: 'all',       label: 'All',       empty: 'No quotes saved yet.',
     test: (q, today) => true },
 ];
@@ -799,7 +800,7 @@ function renderQuotes() {
       : '';
     const due = isToChase(q, today);
     // Finished quotes are greyed only on "All", where they're mixed with
-    // open ones; on "Done" or "Cancelled" they're the whole list.
+    // open ones; on "Done" they're the whole list.
     const rowClass = (FINISHED.includes(q.status) && view.key === 'all') ? 'finished' : (due ? 'row-chase' : '');
     const outlook = (q.status === 'sent' && q.chase_date)
       ? `<div><a class="small-link" href="/api/quotes/${Number(q.id)}/outlook-web" target="_blank" rel="noopener" title="Add a reminder for this chase date to your Outlook calendar">Outlook</a></div>` : '';
@@ -1030,6 +1031,7 @@ async function openEdit(id) {
   setStatus('note-msg', '');
   setStatus('file-msg', '');
   document.getElementById('po-prompt').hidden = true;
+  PENDING_PO_SAVE = false;
   document.getElementById('note-text').value = '';
   document.getElementById('note-date').value = todayISO();
   if (await loadEdit()) document.getElementById('edit-dialog').showModal();
@@ -1102,12 +1104,25 @@ async function chasedToday(id) {
   }
 }
 
-// "Not now" on the PO prompt: the changes are already saved, so just
-// close the window. The PO can be attached later with "Attach PO PDF".
-function poNotNow() {
+// Show the "Add the PO PDF first" box. Save then waits for the upload.
+function askForPo() {
+  PENDING_PO_SAVE = true;
+  setStatus('edit-msg', 'Not saved yet — add the PO PDF below.', 'bad');
+  const prompt = document.getElementById('po-prompt');
+  prompt.hidden = false;
+  prompt.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// "Cancel" on that box: don't move the quote on. The status goes back to
+// what's saved; anything else typed in the boxes is left as it is.
+function poCancel() {
+  PENDING_PO_SAVE = false;
   document.getElementById('po-prompt').hidden = true;
-  closeEdit();
-  setStatus('list-msg', '✓ Changes saved — add the PO later with Update → Attach PO PDF.', 'ok');
+  if (CURRENT_QUOTE) {
+    document.getElementById('edit-status').value = CURRENT_QUOTE.status;
+    showStatusFields('edit');
+  }
+  setStatus('edit-msg', '');
 }
 
 function renderFiles(files) {
@@ -1138,9 +1153,17 @@ async function attachPdf(file, kind) {
     if (d.po_number_filled) message += ` — PO number ${d.po_number_filled} filled in from the PDF`;
     setStatus('file-msg', message, 'ok');
     if (kind === 'po') document.getElementById('po-prompt').hidden = true;
-    // A PO number read from the PDF has to reach the box too, so the
-    // boxes are refilled from what's saved (Save changes has already run).
-    await loadEdit(!d.po_number_filled);
+    // A PO number read from the PDF goes into the PO number box (if it's
+    // empty), without touching anything else typed in the window.
+    const poBox = document.getElementById('edit-po_number');
+    if (d.po_number_filled && !poBox.value) poBox.value = d.po_number_filled;
+    await loadEdit(true);
+    // Save was waiting for this PO: finish it now.
+    if (kind === 'po' && PENDING_PO_SAVE) {
+      PENDING_PO_SAVE = false;
+      await saveEdit();
+      return;
+    }
     loadQuotes();
   } catch (e) {
     setStatus('file-msg', 'Not kept: ' + e.message, 'bad');
@@ -1172,8 +1195,20 @@ function renderNotes(notes) {
 }
 
 async function saveEdit(event) {
-  event.preventDefault();
+  if (event) event.preventDefault();
   const btn = document.getElementById('edit-save-btn');
+
+  // Moving to "PO sent to supplier" needs the PO PDF kept first. Nothing
+  // is saved yet: the prompt asks for the PO, and uploading it runs this
+  // save again (see attachPdf).
+  const before = CURRENT_QUOTE ? CURRENT_QUOTE.status : null;
+  const after = document.getElementById('edit-status').value;
+  const hasPoPdf = CURRENT_QUOTE && CURRENT_QUOTE.files.some(f => f.kind === 'po');
+  if (PO_STAGES.includes(after) && !PO_STAGES.includes(before) && !hasPoPdf) {
+    askForPo();
+    return;
+  }
+
   btn.disabled = true;
   setStatus('edit-msg', 'Saving…');
   try {
@@ -1183,26 +1218,13 @@ async function saveEdit(event) {
       body: JSON.stringify(readFields('edit')),
     });
     const d = await res.json();
+    if (d.needs_po) { askForPo(); btn.disabled = false; return; }   // the server's own check
     if (d.error) throw new Error(d.error);
-
-    // Moved to Approved / PO sent / Done and no PO kept yet? Keep the
-    // window open and ask for the PO, so the finished quote has both.
-    const before = CURRENT_QUOTE ? CURRENT_QUOTE.status : null;
-    const after = document.getElementById('edit-status').value;
-    const hasPoPdf = CURRENT_QUOTE && CURRENT_QUOTE.files.some(f => f.kind === 'po');
-    if (after !== before && PO_STAGES.includes(after) && !hasPoPdf) {
-      await loadEdit(false);
-      setStatus('edit-msg', '✓ Changes saved', 'ok');
-      const prompt = document.getElementById('po-prompt');
-      prompt.hidden = false;
-      prompt.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      loadQuotes();
-      btn.disabled = false;
-      return;
-    }
 
     closeEdit();
     if (d.chase_date) setStatusWithOutlook('list-msg', `✓ Changes saved — chase on ${ukDate(d.chase_date)}.`, 'ok', EDIT_ID);
+    else if (FINISHED.includes(after) && after !== before)
+      setStatus('list-msg', `✓ ${STATUSES[after]} — moved to the Done tab.`, 'ok');
     else setStatus('list-msg', '✓ Changes saved', 'ok');
     loadQuotes();
   } catch (e) {

@@ -623,3 +623,20 @@ CREATE INDEX IF NOT EXISTS idx_quote_files_quote ON quote_files (quote_id);
 -- both. Files kept before this column existed were all quotes, which is
 -- what the DEFAULT gives them.
 ALTER TABLE quote_files ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'quote';
+
+-- 18 Nov 2026: PO Approvals stages cut to three — Quote received, Sent for
+-- approval, PO sent to supplier (quotes.STATUSES). Saved quotes on a removed
+-- stage are moved: Done -> PO sent to supplier (both mean finished);
+-- Approved -> Sent for approval, with a note; Cancelled -> Quote received,
+-- with a note so it isn't mistaken for a live quote. Each note is written
+-- before its quote is moved, so after the first start none of these find
+-- anything and nothing changes.
+INSERT INTO quote_notes (quote_id, note_date, note)
+    SELECT id, CURRENT_DATE, 'Was "Cancelled" before the stages were cut to three (18/11/2026).'
+    FROM quotes WHERE status = 'cancelled';
+UPDATE quotes SET status = 'received', chase_date = NULL WHERE status = 'cancelled';
+INSERT INTO quote_notes (quote_id, note_date, note)
+    SELECT id, CURRENT_DATE, 'Was "Approved" before the stages were cut to three (18/11/2026).'
+    FROM quotes WHERE status = 'approved';
+UPDATE quotes SET status = 'sent' WHERE status = 'approved';
+UPDATE quotes SET status = 'po_sent' WHERE status = 'done';
