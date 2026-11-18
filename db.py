@@ -1318,11 +1318,23 @@ def add_quote(quote):
     return quote_id
 
 
+def _quote_row(row):
+    """One quote (or note) row from the database, ready for jsonify: dates
+    as ISO strings ('2026-11-18') and the amount as a string ('3059.16').
+    Flask would otherwise turn a date into a long web-style date."""
+    r = dict(row)
+    for key in ('received_date', 'sent_date', 'chase_date', 'note_date',
+                'created_at', 'updated_at'):
+        if r.get(key) is not None:
+            r[key] = r[key].isoformat()
+    if r.get('amount') is not None:
+        r['amount'] = str(r['amount'])
+    return r
+
+
 def get_quotes():
     """Every quote, newest first, each with its latest note and how many
-    notes it has. Dates come back as ISO strings ('2026-11-18') and the
-    amount as a string ('3059.16'), so routes.py can jsonify the list as
-    it is — Flask would otherwise turn a date into a long web-style date."""
+    notes it has."""
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
@@ -1335,14 +1347,90 @@ def get_quotes():
                 FROM quotes q
                 ORDER BY q.received_date DESC, q.id DESC
             """)
-            rows = cur.fetchall()
-    result = []
-    for row in rows:
-        r = dict(row)
-        for key in ('received_date', 'sent_date', 'chase_date', 'created_at', 'updated_at'):
-            if r.get(key) is not None:
-                r[key] = r[key].isoformat()
-        if r.get('amount') is not None:
-            r['amount'] = str(r['amount'])
-        result.append(r)
-    return result
+            return [_quote_row(r) for r in cur.fetchall()]
+
+
+def get_quote(quote_id):
+    """One quote with ALL its notes (oldest first, as a 'notes' list), or
+    None if there's no quote with that id."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM quotes WHERE id = %(id)s", {'id': quote_id})
+            row = cur.fetchone()
+            if not row:
+                return None
+            cur.execute("""
+                SELECT id, note_date, note, created_at FROM quote_notes
+                WHERE quote_id = %(id)s ORDER BY note_date, id
+            """, {'id': quote_id})
+            notes = cur.fetchall()
+    quote = _quote_row(row)
+    quote['notes'] = [_quote_row(n) for n in notes]
+    return quote
+
+
+def update_quote(quote_id, quote):
+    """Saves changes to an existing quote. Returns the status it had
+    BEFORE the change (so the caller can log a status change), or None
+    if there's no quote with that id. FOR UPDATE locks the row between
+    reading the old status and writing the new one, so two saves at the
+    same moment can't both read the same "before"."""
+    params = {col: quote.get(col) for col in _QUOTE_COLUMNS}
+    params['id'] = quote_id
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM quotes WHERE id = %(id)s FOR UPDATE",
+                        {'id': quote_id})
+            row = cur.fetchone()
+            if not row:
+                return None
+            cur.execute(f"""
+                UPDATE quotes SET
+                    {', '.join(c + ' = %(' + c + ')s' for c in _QUOTE_COLUMNS)},
+                    updated_at = now()
+                WHERE id = %(id)s
+            """, params)
+        conn.commit()
+    return row[0]
+
+
+def delete_quote(quote_id):
+    """Deletes a quote and (through ON DELETE CASCADE) all its notes.
+    Returns True if a quote was deleted, False if there was none."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM quotes WHERE id = %(id)s", {'id': quote_id})
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
+def add_quote_note(quote_id, note_date, note):
+    """Adds a note to a quote and marks the quote as updated. Returns the
+    new note's id, or None if there's no quote with that id."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE quotes SET updated_at = now() WHERE id = %(id)s",
+                        {'id': quote_id})
+            if cur.rowcount == 0:
+                return None
+            cur.execute("""
+                INSERT INTO quote_notes (quote_id, note_date, note)
+                VALUES (%(quote_id)s, %(note_date)s, %(note)s)
+                RETURNING id
+            """, {'quote_id': quote_id, 'note_date': note_date, 'note': note})
+            note_id = cur.fetchone()[0]
+        conn.commit()
+    return note_id
+
+
+def delete_quote_note(quote_id, note_id):
+    """Deletes one note. Both ids must match, so a note can only be
+    deleted through its own quote. Returns True if a note was deleted."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM quote_notes WHERE id = %(note_id)s AND quote_id = %(quote_id)s",
+                        {'note_id': note_id, 'quote_id': quote_id})
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted

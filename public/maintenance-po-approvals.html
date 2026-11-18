@@ -82,6 +82,42 @@
   .pill-done      { background: #e6f6ea; color: #1a7f37; }
   .pill-cancelled { background: #f1f1f1; color: #888; }
 
+  .bar-right { display: flex; align-items: center; gap: 16px; }
+  .toggle { font-size: 11px; display: flex; align-items: center; gap: 5px; cursor: pointer; opacity: 0.9; }
+  .row-btn { padding: 4px 10px; background: white; border: 1px solid #ccc; border-radius: 5px; font-size: 11.5px; color: #243547; cursor: pointer; white-space: nowrap; }
+  .row-btn:hover { border-color: #95C11F; background: #f2f8e8; }
+  .quotes-table tr.finished td { color: #999; }
+  #list-msg { margin-bottom: 8px; }
+  #list-msg:empty { display: none; }
+
+  .plain-btn { padding: 9px 14px; background: white; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; color: #243547; cursor: pointer; }
+  .plain-btn:hover { border-color: #243547; }
+  .danger-btn { margin-left: auto; padding: 9px 14px; background: white; border: 1px solid #e3b4ae; border-radius: 6px; font-size: 13px; color: #c0392b; cursor: pointer; }
+  .danger-btn:hover { background: #fdf0ee; border-color: #c0392b; }
+
+  .edit-dialog { width: min(980px, 94vw); max-height: 92vh; border: none; border-radius: 10px; padding: 0; box-shadow: 0 20px 60px rgba(0,0,0,0.35); margin: auto; }
+  .edit-dialog::backdrop { background: rgba(36,53,71,0.55); }
+  .dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: #243547; color: white; padding: 14px 20px; border-bottom: 3px solid #95C11F; position: sticky; top: 0; z-index: 1; }
+  .dialog-head h2 { font-size: 15px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dialog-close { background: none; border: none; color: #cfd8e3; font-size: 24px; line-height: 1; cursor: pointer; }
+  .dialog-close:hover { color: white; }
+  .dialog-body { padding: 20px; background: #f7f8fa; }
+
+  .notes-section { margin-top: 22px; padding-top: 16px; border-top: 1px solid #e2e6eb; }
+  .field-title { font-size: 11px; font-weight: bold; color: #243547; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .notes-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .notes-list li { display: flex; align-items: flex-start; gap: 12px; background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+  .notes-list li.muted { background: none; border: none; padding: 0; }
+  .note-date { color: #888; font-size: 12px; white-space: nowrap; min-width: 78px; }
+  .note-text { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
+  .note-del { background: none; border: none; color: #aaa; font-size: 16px; line-height: 1; cursor: pointer; }
+  .note-del:hover { color: #c0392b; }
+  .add-note { display: flex; gap: 8px; }
+  .add-note input { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; font-family: Arial, sans-serif; }
+  .add-note input[type=text] { flex: 1; min-width: 0; }
+  .add-note input:focus { outline: none; border-color: #95C11F; }
+  #note-msg { margin-top: 6px; }
+
   @media (max-width: 1000px) {
     .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
@@ -191,7 +227,7 @@ function toggleNavGroup(name) {
 <div class="page-header">
   <div>
     <h1>PO Approvals</h1>
-    <p>Quotes waiting for approval. Each one is chased <span id="chase-days">2</span> working days after it's sent.</p>
+    <p>Quotes waiting for approval. Each one is chased <span class="chase-days">2</span> working days after it's sent.</p>
   </div>
 </div>
 
@@ -200,78 +236,24 @@ function toggleNavGroup(name) {
     <span class="name">ADD A QUOTE</span><span class="num">MAINTENANCE</span>
   </div>
   <div class="panel with-dept-bar">
-    <form id="quote-form" autocomplete="off" onsubmit="saveQuote(event)">
-      <div class="form-grid">
-        <div class="field">
-          <label for="q-supplier">Supplier *</label>
-          <input type="text" id="q-supplier" required placeholder="e.g. Bruderer UK">
-        </div>
-        <div class="field wide">
-          <label for="q-description">What it's for *</label>
-          <input type="text" id="q-description" required placeholder="e.g. BSTA 250 clutch repair">
-        </div>
-        <div class="field">
-          <label for="q-asset">Asset No</label>
-          <input type="text" id="q-asset" placeholder="e.g. 00031">
-        </div>
-
-        <div class="field">
-          <label for="q-amount">Amount (£, net)</label>
-          <input type="text" id="q-amount" inputmode="decimal" placeholder="e.g. 1250.00">
-        </div>
-        <div class="field">
-          <label for="q-ref">Quote ref</label>
-          <input type="text" id="q-ref" placeholder="Supplier's quote number">
-        </div>
-        <div class="field">
-          <label for="q-received">Date received</label>
-          <input type="date" id="q-received">
-        </div>
-        <div class="field">
-          <label for="q-status">Status</label>
-          <select id="q-status" onchange="showStatusFields()"></select>
-        </div>
-
-        <div class="field full">
-          <label for="q-link">Quote file (OneDrive link)</label>
-          <input type="url" id="q-link" placeholder="https://...">
-          <div class="hint">In your Purchase Orders folder, right-click the quote file and choose <b>Copy link</b>, then paste it here.</div>
-        </div>
-
-        <div class="field sent-only">
-          <label for="q-sent-to">Sent to</label>
-          <input type="text" id="q-sent-to" placeholder="e.g. Paul Edwards / Purchasing">
-        </div>
-        <div class="field sent-only">
-          <label for="q-sent-date">Date sent</label>
-          <input type="date" id="q-sent-date">
-        </div>
-        <div class="field sent-only">
-          <label for="q-chase">Chase date</label>
-          <input type="date" id="q-chase">
-          <div class="hint">Leave empty for <span class="chase-days">2</span> working days after the date sent.</div>
-        </div>
-        <div class="field po-only">
-          <label for="q-po">PO number</label>
-          <input type="text" id="q-po" placeholder="e.g. P/100075">
-        </div>
-
-        <div class="field full">
-          <label for="q-note">Note (optional)</label>
-          <textarea id="q-note" rows="2" placeholder="What you've done with it, e.g. Emailed Paul for approval"></textarea>
-        </div>
-      </div>
+    <form id="add-form" autocomplete="off" onsubmit="saveNewQuote(event)">
+      <div id="add-fields"></div>
       <div class="form-actions">
-        <button type="submit" class="save-btn" id="save-btn">Save quote</button>
-        <span class="form-status" id="form-status"></span>
+        <button type="submit" class="save-btn" id="add-save-btn">Save quote</button>
+        <span class="form-status" id="add-msg"></span>
       </div>
     </form>
   </div>
 
   <div class="dept-bar list-bar">
-    <span class="name">QUOTES</span><span class="num" id="quote-count"></span>
+    <span class="name">QUOTES</span>
+    <span class="bar-right">
+      <label class="toggle"><input type="checkbox" id="show-finished" onchange="renderQuotes()"> Show done and cancelled</label>
+      <span class="num" id="quote-count"></span>
+    </span>
   </div>
   <div class="panel with-dept-bar list-panel">
+    <div class="form-status" id="list-msg"></div>
     <div id="quotes-empty" class="empty">No quotes saved yet. Add your first one above.</div>
     <div class="table-wrap">
       <table id="quotes-table" class="quotes-table" hidden>
@@ -279,7 +261,7 @@ function toggleNavGroup(name) {
           <tr>
             <th>Received</th><th>Supplier</th><th>What it's for</th><th>Asset</th>
             <th class="num-col">Amount</th><th>Status</th><th>Sent to</th>
-            <th>Chase date</th><th>Quote</th><th>Latest note</th>
+            <th>Chase date</th><th>Quote</th><th>Latest note</th><th></th>
           </tr>
         </thead>
         <tbody id="quotes-body"></tbody>
@@ -290,8 +272,43 @@ function toggleNavGroup(name) {
 
 </div>
 
+<!-- The Update window. A <dialog> is the browser's own pop-up window:
+     showModal() opens it on top of the page, and the Esc key closes it. -->
+<dialog id="edit-dialog" class="edit-dialog">
+  <div class="dialog-head">
+    <h2 id="edit-title">Update quote</h2>
+    <button type="button" class="dialog-close" onclick="closeEdit()" aria-label="Close">&times;</button>
+  </div>
+  <div class="dialog-body">
+    <form id="edit-form" autocomplete="off" onsubmit="saveEdit(event)">
+      <div id="edit-fields"></div>
+      <div class="form-actions">
+        <button type="submit" class="save-btn" id="edit-save-btn">Save changes</button>
+        <button type="button" class="plain-btn" onclick="closeEdit()">Cancel</button>
+        <span class="form-status" id="edit-msg"></span>
+        <button type="button" class="danger-btn" onclick="deleteQuote()">Delete quote</button>
+      </div>
+    </form>
+
+    <div class="notes-section">
+      <div class="field-title">Notes</div>
+      <ul class="notes-list" id="notes-list"></ul>
+      <div class="add-note">
+        <input type="date" id="note-date" aria-label="Note date">
+        <input type="text" id="note-text" placeholder="e.g. Chased Paul by email" onkeydown="if (event.key === 'Enter') { event.preventDefault(); addNote(); }">
+        <button type="button" class="save-btn" onclick="addNote()">Add note</button>
+      </div>
+      <div class="form-status" id="note-msg"></div>
+    </div>
+  </div>
+</dialog>
+
 <script>
-let STATUSES = {};
+let STATUSES = {};       // key -> label, e.g. 'sent' -> 'Sent for approval'
+let STATUS_LIST = [];    // the same, in order, for the drop-downs
+let ALL_QUOTES = [];     // everything from the server; the tick box filters it
+let EDIT_ID = null;      // the quote open in the Update window
+const FINISHED = ['done', 'cancelled'];
 
 // Today on this computer, as '2026-11-18'. Built from the local date on
 // purpose: toISOString() gives the UTC date, which is yesterday's date
@@ -320,70 +337,182 @@ function money(amount) {
   return '£' + Number(amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Show "Sent to / Date sent / Chase date" once a quote has been sent,
-// and "PO number" once a PO exists. A just-received quote needs neither.
-function showStatusFields() {
-  const status = document.getElementById('q-status').value;
-  const sent = status !== 'received' && status !== 'cancelled';
-  const hasPo = status === 'po_raised' || status === 'done';
-  document.querySelectorAll('.sent-only').forEach(el => el.hidden = !sent);
-  document.querySelectorAll('.po-only').forEach(el => el.hidden = !hasPo);
-  if (sent && !document.getElementById('q-sent-date').value) {
-    document.getElementById('q-sent-date').value = todayISO();
-  }
+function setStatus(id, text, kind) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'form-status' + (kind ? ' ' + kind : '');
 }
 
-function resetForm() {
-  document.getElementById('quote-form').reset();
-  document.getElementById('q-received').value = todayISO();
-  document.getElementById('q-status').value = 'received';
-  showStatusFields();
+// ---------------------------------------------------------------------------
+// The quote boxes. One function draws them for BOTH the Add form ('add')
+// and the Update window ('edit'); the prefix keeps their ids apart
+// (add-supplier, edit-supplier). Add a box here and it appears in both.
+// ---------------------------------------------------------------------------
+function fieldsHTML(p, withNote) {
+  const options = STATUS_LIST.map(s => `<option value="${esc(s.key)}">${esc(s.label)}</option>`).join('');
+  return `
+  <div class="form-grid">
+    <div class="field">
+      <label for="${p}-supplier">Supplier *</label>
+      <input type="text" id="${p}-supplier" required placeholder="e.g. Bruderer UK">
+    </div>
+    <div class="field wide">
+      <label for="${p}-description">What it's for *</label>
+      <input type="text" id="${p}-description" required placeholder="e.g. BSTA 250 clutch repair">
+    </div>
+    <div class="field">
+      <label for="${p}-asset_no">Asset No</label>
+      <input type="text" id="${p}-asset_no" placeholder="e.g. 00031">
+    </div>
+
+    <div class="field">
+      <label for="${p}-amount">Amount (£, net)</label>
+      <input type="text" id="${p}-amount" inputmode="decimal" placeholder="e.g. 1250.00">
+    </div>
+    <div class="field">
+      <label for="${p}-quote_ref">Quote ref</label>
+      <input type="text" id="${p}-quote_ref" placeholder="Supplier's quote number">
+    </div>
+    <div class="field">
+      <label for="${p}-received_date">Date received</label>
+      <input type="date" id="${p}-received_date">
+    </div>
+    <div class="field">
+      <label for="${p}-status">Status</label>
+      <select id="${p}-status" onchange="showStatusFields('${p}')">${options}</select>
+    </div>
+
+    <div class="field full">
+      <label for="${p}-file_link">Quote file (OneDrive link)</label>
+      <input type="url" id="${p}-file_link" placeholder="https://...">
+      <div class="hint">In your Purchase Orders folder, right-click the quote file and choose <b>Copy link</b>, then paste it here.</div>
+    </div>
+
+    <div class="field sent-only">
+      <label for="${p}-sent_to">Sent to</label>
+      <input type="text" id="${p}-sent_to" placeholder="e.g. Paul Edwards / Purchasing">
+    </div>
+    <div class="field sent-only">
+      <label for="${p}-sent_date">Date sent</label>
+      <input type="date" id="${p}-sent_date">
+    </div>
+    <div class="field chase-only">
+      <label for="${p}-chase_date">Chase date</label>
+      <input type="date" id="${p}-chase_date">
+      <div class="hint">Leave empty for <span class="chase-days">2</span> working days after the date sent.</div>
+    </div>
+    <div class="field po-only">
+      <label for="${p}-po_number">PO number</label>
+      <input type="text" id="${p}-po_number" placeholder="e.g. P/100075">
+    </div>
+    ${withNote ? `
+    <div class="field full">
+      <label for="${p}-note">Note (optional)</label>
+      <textarea id="${p}-note" rows="2" placeholder="What you've done with it, e.g. Emailed Paul for approval"></textarea>
+    </div>` : ''}
+  </div>`;
 }
 
+const FIELDS = ['supplier', 'description', 'asset_no', 'amount', 'quote_ref', 'received_date',
+                'status', 'file_link', 'sent_to', 'sent_date', 'chase_date', 'po_number'];
+
+function isSent(status) { return status !== 'received' && status !== 'cancelled'; }
+function hasPo(status) { return status === 'po_raised' || status === 'done'; }
+
+// Show "Sent to / Date sent" once a quote has been sent, "Chase date"
+// only while it's waiting for approval, and "PO number" once a PO exists.
+function showStatusFields(p) {
+  const status = document.getElementById(`${p}-status`).value;
+  const box = document.getElementById(`${p}-fields`);
+  box.querySelectorAll('.sent-only').forEach(el => el.hidden = !isSent(status));
+  box.querySelectorAll('.po-only').forEach(el => el.hidden = !hasPo(status));
+  box.querySelectorAll('.chase-only').forEach(el => el.hidden = status !== 'sent');
+  const sentDate = document.getElementById(`${p}-sent_date`);
+  if (isSent(status) && !sentDate.value) sentDate.value = todayISO();
+}
+
+// Read the boxes into what the server expects. Boxes that are hidden
+// for this status are sent empty, so a PO number typed and then hidden
+// again isn't saved by accident.
+function readFields(p) {
+  const body = {};
+  FIELDS.forEach(f => body[f] = document.getElementById(`${p}-${f}`).value.trim());
+  if (!isSent(body.status)) { body.sent_to = ''; body.sent_date = ''; }
+  if (body.status !== 'sent') body.chase_date = '';
+  if (!hasPo(body.status)) body.po_number = '';
+  const note = document.getElementById(`${p}-note`);
+  if (note) body.note = note.value.trim();
+  return body;
+}
+
+function fillFields(p, q) {
+  FIELDS.forEach(f => {
+    const value = q[f] == null ? '' : String(q[f]);
+    document.getElementById(`${p}-${f}`).value = f.endsWith('_date') ? value.slice(0, 10) : value;
+  });
+  showStatusFields(p);
+}
+
+function resetAddForm() {
+  document.getElementById('add-form').reset();
+  document.getElementById('add-received_date').value = todayISO();
+  document.getElementById('add-status').value = 'received';
+  showStatusFields('add');
+}
+
+// ---------------------------------------------------------------------------
+// The list
+// ---------------------------------------------------------------------------
 async function loadQuotes() {
   try {
     const res = await fetch('/api/quotes');
     const d = await res.json();
     if (d.error) throw new Error(d.error);
 
-    // The status list comes from the server (quotes.py), so the page
-    // never has its own copy to forget to update.
-    // It arrives as an ordered list, so the drop-down follows the real
-    // order (received -> sent -> approved ...), not the alphabet.
-    if (!Object.keys(STATUSES).length) {
+    // First load: the stage list comes from the server (quotes.py), in
+    // order, so the page never has its own copy to forget to update.
+    if (!STATUS_LIST.length) {
+      STATUS_LIST = d.statuses;
       d.statuses.forEach(s => STATUSES[s.key] = s.label);
-      const select = document.getElementById('q-status');
-      select.innerHTML = d.statuses
-        .map(s => `<option value="${esc(s.key)}">${esc(s.label)}</option>`).join('');
-      document.querySelectorAll('#chase-days, .chase-days')
-        .forEach(el => el.textContent = d.chase_after_working_days);
-      resetForm();
+      document.getElementById('add-fields').innerHTML = fieldsHTML('add', true);
+      document.getElementById('edit-fields').innerHTML = fieldsHTML('edit', false);
+      document.querySelectorAll('.chase-days').forEach(el => el.textContent = d.chase_after_working_days);
+      resetAddForm();
     }
-    renderQuotes(d.quotes);
+    ALL_QUOTES = d.quotes;
+    renderQuotes();
   } catch (e) {
     document.getElementById('quotes-empty').textContent = 'Could not load quotes: ' + e.message;
   }
 }
 
-function renderQuotes(quotes) {
+function renderQuotes() {
   const today = todayISO();
-  document.getElementById('quote-count').textContent = quotes.length ? `${quotes.length} saved` : '';
-  document.getElementById('quotes-empty').hidden = quotes.length > 0;
+  const showFinished = document.getElementById('show-finished').checked;
+  const finished = ALL_QUOTES.filter(q => FINISHED.includes(q.status)).length;
+  const quotes = showFinished ? ALL_QUOTES : ALL_QUOTES.filter(q => !FINISHED.includes(q.status));
+
+  document.getElementById('quote-count').textContent = ALL_QUOTES.length
+    ? `${ALL_QUOTES.length - finished} open · ${finished} finished` : '';
+  const empty = document.getElementById('quotes-empty');
+  empty.hidden = quotes.length > 0;
+  empty.textContent = ALL_QUOTES.length
+    ? 'No open quotes. Tick "Show done and cancelled" to see finished ones.'
+    : 'No quotes saved yet. Add your first one above.';
   document.getElementById('quotes-table').hidden = quotes.length === 0;
 
   document.getElementById('quotes-body').innerHTML = quotes.map(q => {
     // A chase date only matters while we're waiting for approval.
     let chaseClass = '';
-    if (q.status === 'sent' && q.chase_date) {
-      chaseClass = q.chase_date <= today ? 'chase-due' : 'chase-later';
-    }
+    if (q.status === 'sent' && q.chase_date) chaseClass = q.chase_date <= today ? 'chase-due' : '';
+    const chase = q.status === 'sent' ? ukDate(q.chase_date) : '';
     // Only real web links become clickable (the server checks this too).
     const link = /^https?:\/\//i.test(q.file_link || '')
       ? `<a href="${esc(q.file_link)}" target="_blank" rel="noopener noreferrer">Open</a>` : '';
     const notes = q.latest_note
       ? esc(q.latest_note) + (q.note_count > 1 ? ` <span class="muted">(+${q.note_count - 1} more)</span>` : '')
       : '';
-    return `<tr>
+    return `<tr class="${FINISHED.includes(q.status) ? 'finished' : ''}">
       <td>${ukDate(q.received_date)}</td>
       <td>${esc(q.supplier)}</td>
       <td>${esc(q.description)}${q.quote_ref ? `<div class="muted">Ref: ${esc(q.quote_ref)}</div>` : ''}</td>
@@ -392,57 +521,150 @@ function renderQuotes(quotes) {
       <td><span class="pill pill-${esc(q.status)}">${esc(STATUSES[q.status] || q.status)}</span>
           ${q.po_number ? `<div class="muted">${esc(q.po_number)}</div>` : ''}</td>
       <td>${esc(q.sent_to)}${q.sent_date ? `<div class="muted">${ukDate(q.sent_date)}</div>` : ''}</td>
-      <td class="${chaseClass}">${ukDate(q.chase_date)}</td>
+      <td class="${chaseClass}">${chase}</td>
       <td>${link}</td>
       <td class="note-col">${notes}</td>
+      <td><button type="button" class="row-btn" onclick="openEdit(${Number(q.id)})">Update</button></td>
     </tr>`;
   }).join('');
 }
 
-async function saveQuote(event) {
+async function saveNewQuote(event) {
   event.preventDefault();
-  const btn = document.getElementById('save-btn');
-  const statusEl = document.getElementById('form-status');
-  const val = id => document.getElementById(id).value.trim();
-  const status = val('q-status');
-  const sent = status !== 'received' && status !== 'cancelled';
-
-  const body = {
-    supplier: val('q-supplier'),
-    description: val('q-description'),
-    asset_no: val('q-asset'),
-    amount: val('q-amount'),
-    quote_ref: val('q-ref'),
-    received_date: val('q-received'),
-    status: status,
-    file_link: val('q-link'),
-    sent_to: sent ? val('q-sent-to') : '',
-    sent_date: sent ? val('q-sent-date') : '',
-    chase_date: sent ? val('q-chase') : '',
-    po_number: (status === 'po_raised' || status === 'done') ? val('q-po') : '',
-    note: val('q-note'),
-  };
-
+  const btn = document.getElementById('add-save-btn');
   btn.disabled = true;
-  statusEl.textContent = 'Saving…';
-  statusEl.className = 'form-status';
+  setStatus('add-msg', 'Saving…');
   try {
     const res = await fetch('/api/quotes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(readFields('add')),
     });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
-    statusEl.textContent = '✓ Saved' + (d.chase_date ? ` — chase on ${ukDate(d.chase_date)}` : '');
-    statusEl.className = 'form-status ok';
-    resetForm();
+    setStatus('add-msg', '✓ Saved' + (d.chase_date ? ` — chase on ${ukDate(d.chase_date)}` : ''), 'ok');
+    resetAddForm();
     loadQuotes();
   } catch (e) {
-    statusEl.textContent = 'Not saved: ' + e.message;
-    statusEl.className = 'form-status bad';
+    setStatus('add-msg', 'Not saved: ' + e.message, 'bad');
   }
   btn.disabled = false;
+}
+
+// ---------------------------------------------------------------------------
+// The Update window
+// ---------------------------------------------------------------------------
+async function openEdit(id) {
+  EDIT_ID = id;
+  setStatus('edit-msg', '');
+  setStatus('note-msg', '');
+  document.getElementById('note-text').value = '';
+  document.getElementById('note-date').value = todayISO();
+  if (await loadEdit()) document.getElementById('edit-dialog').showModal();
+}
+
+// Fetch the open quote again and fill the window. Used when it opens and
+// after a note is added or deleted, so the notes list is always current.
+async function loadEdit(keepFields) {
+  try {
+    const res = await fetch(`/api/quotes/${EDIT_ID}`);
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    const q = d.quote;
+    document.getElementById('edit-title').textContent = `${q.supplier} — ${q.description}`;
+    if (!keepFields) fillFields('edit', q);
+    renderNotes(q.notes);
+    return true;
+  } catch (e) {
+    setStatus('list-msg', 'Could not open the quote: ' + e.message, 'bad');
+    return false;
+  }
+}
+
+function closeEdit() {
+  document.getElementById('edit-dialog').close();
+}
+
+function renderNotes(notes) {
+  document.getElementById('notes-list').innerHTML = notes.length
+    ? notes.map(n => `<li>
+        <span class="note-date">${ukDate(n.note_date)}</span>
+        <span class="note-text">${esc(n.note)}</span>
+        <button type="button" class="note-del" title="Delete this note" onclick="deleteNote(${Number(n.id)})">&times;</button>
+      </li>`).join('')
+    : '<li class="muted">No notes yet.</li>';
+}
+
+async function saveEdit(event) {
+  event.preventDefault();
+  const btn = document.getElementById('edit-save-btn');
+  btn.disabled = true;
+  setStatus('edit-msg', 'Saving…');
+  try {
+    const res = await fetch(`/api/quotes/${EDIT_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(readFields('edit')),
+    });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    closeEdit();
+    setStatus('list-msg', '✓ Changes saved' + (d.chase_date ? ` — chase on ${ukDate(d.chase_date)}` : ''), 'ok');
+    loadQuotes();
+  } catch (e) {
+    setStatus('edit-msg', 'Not saved: ' + e.message, 'bad');
+  }
+  btn.disabled = false;
+}
+
+async function deleteQuote() {
+  if (!confirm('Delete this quote and all its notes? This cannot be undone.')) return;
+  try {
+    const res = await fetch(`/api/quotes/${EDIT_ID}`, { method: 'DELETE' });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    closeEdit();
+    setStatus('list-msg', '✓ Quote deleted', 'ok');
+    loadQuotes();
+  } catch (e) {
+    setStatus('edit-msg', 'Not deleted: ' + e.message, 'bad');
+  }
+}
+
+// Notes are saved straight away — no need to press "Save changes".
+// The boxes above keep whatever you've typed (loadEdit(true)).
+async function addNote() {
+  const text = document.getElementById('note-text').value.trim();
+  if (!text) { setStatus('note-msg', 'Type a note first.', 'bad'); return; }
+  try {
+    const res = await fetch(`/api/quotes/${EDIT_ID}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: text, note_date: document.getElementById('note-date').value }),
+    });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    document.getElementById('note-text').value = '';
+    setStatus('note-msg', '✓ Note added', 'ok');
+    await loadEdit(true);
+    loadQuotes();
+  } catch (e) {
+    setStatus('note-msg', 'Not added: ' + e.message, 'bad');
+  }
+}
+
+async function deleteNote(noteId) {
+  if (!confirm('Delete this note?')) return;
+  try {
+    const res = await fetch(`/api/quotes/${EDIT_ID}/notes/${noteId}`, { method: 'DELETE' });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    setStatus('note-msg', '✓ Note deleted', 'ok');
+    await loadEdit(true);
+    loadQuotes();
+  } catch (e) {
+    setStatus('note-msg', 'Not deleted: ' + e.message, 'bad');
+  }
 }
 
 loadQuotes();

@@ -148,8 +148,10 @@ def clean_quote(data):
             quote['sent_date'] = london_today()
         if quote['chase_date'] is None:
             quote['chase_date'] = chase_date_after(quote['sent_date'])
-    elif status == 'received':
-        # Not sent yet, so nothing to chase.
+    else:
+        # Not sent yet, or already past waiting (approved, PO raised, done,
+        # cancelled): nothing to chase, so no chase date. Moving a quote
+        # back to "sent" gives it a fresh one.
         quote['chase_date'] = None
 
     note = _text(data, 'note')
@@ -158,3 +160,28 @@ def clean_quote(data):
     quote['note'] = note
 
     return quote, problems
+
+
+def clean_note(data):
+    """Check a note added to an existing quote.
+
+    Returns (note, note_date, problems). The date defaults to today if
+    it was left empty.
+    """
+    problems = []
+    note = _text(data, 'note')
+    if not note:
+        problems.append('Type a note first.')
+    elif len(note) > 1000:
+        problems.append('Note is too long (max 1000 characters).')
+    note_date = _date(data, 'note_date', problems, 'Note date') or london_today()
+    return note, note_date, problems
+
+
+def status_change_note(old_status, new_status):
+    """The note logged automatically when a quote's status changes, e.g.
+    'Status: Sent for approval -> Approved'. None if it didn't change."""
+    if old_status == new_status:
+        return None
+    return (f'Status: {STATUSES.get(old_status, old_status)} → '
+            f'{STATUSES.get(new_status, new_status)}')

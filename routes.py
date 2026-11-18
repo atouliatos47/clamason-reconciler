@@ -882,6 +882,80 @@ def add_quote():
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/api/quotes/<int:quote_id>', methods=['GET'])
+def get_quote(quote_id):
+    """One quote with all its notes, for the Update window."""
+    try:
+        quote = db.get_quote(quote_id)
+        if quote is None:
+            return jsonify({'error': 'Quote not found.'}), 404
+        return jsonify({'quote': quote})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/quotes/<int:quote_id>', methods=['PUT'])
+def update_quote(quote_id):
+    """Save changes from the Update window. Same checks as a new quote.
+    If the status changed, that's logged as a note automatically, dated
+    today, so the notes show when each stage happened."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        quote, problems = quotes_rules.clean_quote(data)
+        if problems:
+            return jsonify({'error': ' '.join(problems), 'problems': problems}), 400
+        old_status = db.update_quote(quote_id, quote)
+        if old_status is None:
+            return jsonify({'error': 'Quote not found.'}), 404
+        change = quotes_rules.status_change_note(old_status, quote['status'])
+        if change:
+            db.add_quote_note(quote_id, quotes_rules.london_today(), change)
+        return jsonify({
+            'saved': True,
+            'chase_date': quote['chase_date'].isoformat() if quote['chase_date'] else None,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/quotes/<int:quote_id>', methods=['DELETE'])
+def delete_quote(quote_id):
+    """Delete a quote and all its notes."""
+    try:
+        if not db.delete_quote(quote_id):
+            return jsonify({'error': 'Quote not found.'}), 404
+        return jsonify({'deleted': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/quotes/<int:quote_id>/notes', methods=['POST'])
+def add_quote_note(quote_id):
+    """Add a note to a quote ('Chased Paul')."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        note, note_date, problems = quotes_rules.clean_note(data)
+        if problems:
+            return jsonify({'error': ' '.join(problems), 'problems': problems}), 400
+        note_id = db.add_quote_note(quote_id, note_date, note)
+        if note_id is None:
+            return jsonify({'error': 'Quote not found.'}), 404
+        return jsonify({'saved': True, 'id': note_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/quotes/<int:quote_id>/notes/<int:note_id>', methods=['DELETE'])
+def delete_quote_note(quote_id, note_id):
+    """Delete one note (e.g. one typed by mistake)."""
+    try:
+        if not db.delete_quote_note(quote_id, note_id):
+            return jsonify({'error': 'Note not found.'}), 404
+        return jsonify({'deleted': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @bp.route('/splash')
 def splash_view():
     return send_from_directory('public', 'splash.html')
