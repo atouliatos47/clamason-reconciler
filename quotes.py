@@ -51,26 +51,23 @@ APPROVERS = [
     'Gurdeep Sahota',
 ]
 
-# The general options in the "What it's for" drop-down list. Set by
-# Claude, 18 Nov 2026, for Andreas to adjust. The box still takes any
-# text (pick an option, add detail after it, or type something new),
+# The general options in the "What it's for" drop-down list — short,
+# general types (Andreas, 18 Nov 2026: "service, repair, consumables etc").
+# The box still takes any text (pick an option, add detail after it, or
+# type something new),
 # and the page adds the descriptions used on recent quotes under these,
 # so the list grows with what's actually typed — nothing to maintain.
 PURPOSES = [
+    'Service',
+    'Repair',
     'Spare parts',
-    'Breakdown repair',
-    'Engineer call-out',
-    'Planned service / PPM',
-    'Statutory inspection (LOLER / PUWER / pressure)',
-    'LEV service / filters',
-    'Calibration',
-    'Electrical works',
-    'Hydraulic / pneumatic repair',
-    'Building and facilities',
-    'Health and safety equipment',
     'Consumables',
-    'Hire equipment',
-    'Contractor works / installation',
+    'Engineer call-out',
+    'Inspection / testing',
+    'Calibration',
+    'Installation / contractor works',
+    'Hire',
+    'Health and safety',
 ]
 
 # Stages where we're still waiting on someone else's approval — the only
