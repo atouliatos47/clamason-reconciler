@@ -18,6 +18,7 @@ The quote file itself is never uploaded. It stays in the Purchase Orders
 folder on Clamason's OneDrive, and the quote stores the "Copy link" web
 address to it (file_link).
 """
+import re
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -399,3 +400,28 @@ def outlook_web_link(quote, hub_url):
     }
     # url_quote writes a space as %20 (not '+', which Outlook can show as '+').
     return OUTLOOK_WEB_COMPOSE + '?' + urlencode(params, quote_via=url_quote)
+
+
+# Characters Windows doesn't allow in a file name ( \ / : * ? " < > | ),
+# plus control characters.
+_BAD_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+def pdf_download_name(stored):
+    """The name a kept quote PDF gets when it's opened or saved from the
+    Hub: 'Lapis Tek - P-100075.pdf' (supplier, then the PO number, or the
+    quote ref if there's no PO yet, or what it's for if neither). The
+    original upload name is often useless ('pdf.pdf'). '/' in a PO number
+    becomes '-', because Windows doesn't allow '/' in file names. A quote
+    with more than one PDF (a revised quote) adds the date each was added,
+    so the names don't clash: 'Lapis Tek - P-100075 (18-11-2026).pdf'.
+
+    stored: from db.get_quote_file — supplier, po_number, quote_ref,
+    description, uploaded_at, file_count."""
+    second = stored.get('po_number') or stored.get('quote_ref') or stored.get('description') or ''
+    name = ' - '.join(part for part in (stored.get('supplier'), second) if part)
+    if stored.get('file_count', 1) > 1 and stored.get('uploaded_at'):
+        name += f" ({stored['uploaded_at']:%d-%m-%Y})"
+    name = _BAD_FILENAME_CHARS.sub('-', name)
+    name = re.sub(r'\s+', ' ', name).strip(' .-') or 'Quote'
+    return name[:120] + '.pdf'

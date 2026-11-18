@@ -1403,18 +1403,26 @@ def add_quote_file(quote_id, filename, data):
 
 
 def get_quote_file(quote_id, file_id):
-    """One stored PDF: {'filename', 'data' (bytes)}, or None. Both ids must
-    match, so a file can only be opened through its own quote."""
+    """One stored PDF, or None. Both ids must match, so a file can only be
+    opened through its own quote. Returns its data (bytes) and original
+    filename, plus what quotes.pdf_download_name() needs to give it a
+    useful name: the quote's supplier, PO number, quote ref and
+    description, when this PDF was added, and how many PDFs the quote has."""
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                SELECT filename, data FROM quote_files
-                WHERE id = %(file_id)s AND quote_id = %(quote_id)s
+                SELECT f.filename, f.data, f.uploaded_at,
+                       q.supplier, q.po_number, q.quote_ref, q.description,
+                       (SELECT count(*) FROM quote_files c WHERE c.quote_id = q.id) AS file_count
+                FROM quote_files f JOIN quotes q ON q.id = f.quote_id
+                WHERE f.id = %(file_id)s AND f.quote_id = %(quote_id)s
             """, {'file_id': file_id, 'quote_id': quote_id})
             row = cur.fetchone()
     if not row:
         return None
-    return {'filename': row['filename'], 'data': bytes(row['data'])}
+    stored = dict(row)
+    stored['data'] = bytes(row['data'])
+    return stored
 
 
 def delete_quote_file(quote_id, file_id):

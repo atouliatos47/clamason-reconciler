@@ -1144,8 +1144,11 @@ def open_quote_file(quote_id, file_id):
         stored = db.get_quote_file(quote_id, file_id)
         if stored is None:
             return jsonify({'error': 'File not found.'}), 404
+        # Named from the quote ('Lapis Tek - P-100075.pdf'), not the upload's
+        # own name, which is often just 'pdf.pdf'.
         response = send_file(io.BytesIO(stored['data']), mimetype='application/pdf',
-                             as_attachment=False, download_name=stored['filename'])
+                             as_attachment=False,
+                             download_name=quotes_rules.pdf_download_name(stored))
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Cache-Control'] = 'private, max-age=0'
         return response
