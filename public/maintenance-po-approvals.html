@@ -118,6 +118,10 @@
   .add-note input:focus { outline: none; border-color: #95C11F; }
   #note-msg { margin-top: 6px; }
 
+  .import-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px dashed #d6dbe2; }
+  .field input.filled { background: #f2f8e8; border-color: #95C11F; }
+  #add-panel.drop-hover { outline: 3px dashed #95C11F; outline-offset: -8px; background: #f2f8e8; }
+
   @media (max-width: 1000px) {
     .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
@@ -235,8 +239,14 @@ function toggleNavGroup(name) {
   <div class="dept-bar">
     <span class="name">ADD A QUOTE</span><span class="num">MAINTENANCE</span>
   </div>
-  <div class="panel with-dept-bar">
+  <div class="panel with-dept-bar" id="add-panel">
     <form id="add-form" autocomplete="off" onsubmit="saveNewQuote(event)">
+      <div class="import-bar">
+        <button type="button" class="plain-btn" onclick="document.getElementById('pdf-input').click()">Import from PDF</button>
+        <input type="file" id="pdf-input" accept=".pdf,application/pdf" hidden onchange="importPdf(this.files[0]); this.value = '';">
+        <span class="hint">or drag a quote PDF onto this box. The Hub fills in what it finds &mdash; always check before saving.</span>
+        <span class="form-status" id="import-msg"></span>
+      </div>
       <div id="add-fields"></div>
       <div class="form-actions">
         <button type="submit" class="save-btn" id="add-save-btn">Save quote</button>
@@ -455,6 +465,8 @@ function fillFields(p, q) {
 
 function resetAddForm() {
   document.getElementById('add-form').reset();
+  document.querySelectorAll('#add-fields .filled').forEach(el => el.classList.remove('filled'));
+  setStatus('import-msg', '');
   document.getElementById('add-received_date').value = todayISO();
   document.getElementById('add-status').value = 'received';
   showStatusFields('add');
@@ -550,6 +562,66 @@ async function saveNewQuote(event) {
   }
   btn.disabled = false;
 }
+
+// ---------------------------------------------------------------------------
+// Import from PDF: the server reads the quote and sends back what it found;
+// those boxes are filled in and turn green. Nothing is saved until you
+// press "Save quote", so you can check and correct them first.
+// ---------------------------------------------------------------------------
+const IMPORT_LABELS = { supplier: 'Supplier', quote_ref: 'Quote ref', received_date: 'Date received', amount: 'Amount' };
+
+async function importPdf(file) {
+  if (!file) return;
+  if (!/\.pdf$/i.test(file.name)) { setStatus('import-msg', 'That is not a PDF file.', 'bad'); return; }
+  setStatus('import-msg', `Reading ${file.name}…`);
+  const form = new FormData();
+  form.append('pdf', file);
+  try {
+    const res = await fetch('/api/quotes/read-pdf', { method: 'POST', body: form });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    if (!d.text_found) {
+      setStatus('import-msg', `${file.name} has no text to read (it may be a scan). Please type the details.`, 'bad');
+      return;
+    }
+    // Go through the boxes in the form's own order (the server's reply
+    // has its keys sorted alphabetically).
+    const filled = [];
+    Object.keys(IMPORT_LABELS).forEach(key => {
+      const value = d.fields[key];
+      const box = document.getElementById(`add-${key}`);
+      if (!value || !box) return;
+      box.value = value;
+      box.classList.add('filled');
+      filled.push(IMPORT_LABELS[key]);
+    });
+    if (!filled.length) {
+      setStatus('import-msg', `Couldn't find the details in ${file.name}. Please type them.`, 'bad');
+    } else {
+      setStatus('import-msg', `Filled from ${file.name}: ${filled.join(', ')}. Check them, then add what it's for.`, 'ok');
+      document.getElementById('add-description').focus();
+    }
+  } catch (e) {
+    setStatus('import-msg', 'Could not read the PDF: ' + e.message, 'bad');
+  }
+}
+
+// A green box goes back to normal once you change it yourself.
+document.addEventListener('input', e => {
+  if (e.target.classList && e.target.classList.contains('filled')) e.target.classList.remove('filled');
+});
+
+// Drag and drop a PDF onto the Add a Quote box.
+(function () {
+  const panel = document.getElementById('add-panel');
+  panel.addEventListener('dragover', e => { e.preventDefault(); panel.classList.add('drop-hover'); });
+  panel.addEventListener('dragleave', e => { if (!panel.contains(e.relatedTarget)) panel.classList.remove('drop-hover'); });
+  panel.addEventListener('drop', e => {
+    e.preventDefault();
+    panel.classList.remove('drop-hover');
+    importPdf(e.dataTransfer.files[0]);
+  });
+})();
 
 // ---------------------------------------------------------------------------
 // The Update window

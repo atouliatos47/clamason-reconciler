@@ -47,6 +47,7 @@ from parsers.sfc_daily_downtime_pdf import parse_daily_downtime_pdf
 from parsers.sfc_daily_unplanned_pdf import parse_daily_unplanned_pdf, merge_machine_breakdown
 from parsers.production_plan_xlsx import parse_production_plan
 from parsers.open_jobs_parser import summarise_open_jobs
+from parsers.quote_pdf import extract_quote_fields
 import db
 import quotes as quotes_rules  # PO Approvals rules; named so it isn't mistaken for a list of quotes
 
@@ -880,6 +881,33 @@ def add_quote():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+QUOTE_PDF_MAX_MB = 20
+
+
+@bp.route('/api/quotes/read-pdf', methods=['POST'])
+def read_quote_pdf():
+    """Import from PDF: reads a quote PDF and sends back the details it
+    found (supplier, quote ref, date, net total) for the page to put into
+    the Add a Quote boxes. Nothing is saved — the person checks the boxes
+    and presses Save as usual."""
+    try:
+        pdf_file = request.files.get('pdf')
+        if not pdf_file or not pdf_file.filename:
+            return jsonify({'error': 'Choose a PDF file first.'}), 400
+        if request.content_length and request.content_length > QUOTE_PDF_MAX_MB * 1024 * 1024:
+            return jsonify({'error': f'That file is too big (max {QUOTE_PDF_MAX_MB} MB).'}), 400
+        # Every real PDF starts with the bytes "%PDF", whatever its name.
+        if pdf_file.stream.read(4) != b'%PDF':
+            return jsonify({'error': 'That file is not a PDF.'}), 400
+        pdf_file.stream.seek(0)
+        with saved_upload(pdf_file, 'quote_pdf') as path:
+            result = extract_quote_fields(path)
+        result['filename'] = pdf_file.filename
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': f'Could not read that PDF ({e}).'}), 500
 
 
 @bp.route('/api/quotes/<int:quote_id>', methods=['GET'])
