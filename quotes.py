@@ -39,6 +39,18 @@ STATUSES = {
     'cancelled': 'Cancelled',
 }
 
+# The people quotes are sent to for approval — the "Sent to" drop-down.
+# Set by Andreas, 18 Nov 2026. The page also offers "Other…" for anyone
+# not on the list, so a name missing here never blocks a save; add them
+# here if they come up often.
+APPROVERS = [
+    'Ian Ford',
+    'Paul Edwards',
+    'James Hadley',
+    'Clare Whitehouse',
+    'Gurdeep Sahota',
+]
+
 # Stages where we're still waiting on someone else's approval — the only
 # ones that get a chase date.
 WAITING_STATUSES = {'sent'}

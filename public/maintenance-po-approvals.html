@@ -318,6 +318,8 @@ let STATUSES = {};       // key -> label, e.g. 'sent' -> 'Sent for approval'
 let STATUS_LIST = [];    // the same, in order, for the drop-downs
 let ALL_QUOTES = [];     // everything from the server; the tick box filters it
 let EDIT_ID = null;      // the quote open in the Update window
+let APPROVERS = [];      // the "Sent to" names, from quotes.py
+const OTHER = '__other'; // the "Other…" choice in that list
 const FINISHED = ['done', 'cancelled'];
 
 // Today on this computer, as '2026-11-18'. Built from the local date on
@@ -393,14 +395,19 @@ function fieldsHTML(p, withNote) {
     </div>
 
     <div class="field full">
-      <label for="${p}-file_link">Quote file (OneDrive link)</label>
+      <label for="${p}-file_link">Quote file (OneDrive link, optional)</label>
       <input type="url" id="${p}-file_link" placeholder="https://...">
       <div class="hint">In your Purchase Orders folder, right-click the quote file and choose <b>Copy link</b>, then paste it here.</div>
     </div>
 
     <div class="field sent-only">
-      <label for="${p}-sent_to">Sent to</label>
-      <input type="text" id="${p}-sent_to" placeholder="e.g. Paul Edwards / Purchasing">
+      <label for="${p}-sent_to_pick">Sent to</label>
+      <select id="${p}-sent_to_pick" onchange="pickApprover('${p}')">
+        <option value="">— choose —</option>
+        ${APPROVERS.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
+        <option value="${OTHER}">Other…</option>
+      </select>
+      <input type="text" id="${p}-sent_to" placeholder="Type the name" hidden>
     </div>
     <div class="field sent-only">
       <label for="${p}-sent_date">Date sent</label>
@@ -425,6 +432,39 @@ function fieldsHTML(p, withNote) {
 
 const FIELDS = ['supplier', 'description', 'asset_no', 'amount', 'quote_ref', 'received_date',
                 'status', 'file_link', 'sent_to', 'sent_date', 'chase_date', 'po_number'];
+
+// "Sent to" is a drop-down of names, but the name itself is kept in the
+// text box under it (${p}-sent_to) — that's what gets saved. Picking a
+// name copies it into the box and keeps the box hidden; picking "Other…"
+// shows the box so any name can be typed.
+function pickApprover(p) {
+  const pick = document.getElementById(`${p}-sent_to_pick`).value;
+  const box = document.getElementById(`${p}-sent_to`);
+  if (pick === OTHER) {
+    box.value = '';
+    box.hidden = false;
+    box.focus();
+  } else {
+    box.value = pick;
+    box.hidden = true;
+  }
+}
+
+// The other way round: after a quote is loaded into the boxes, set the
+// drop-down to match its name — or to "Other…" with the name showing,
+// for a name that isn't on the list.
+function syncApproverPick(p) {
+  const name = document.getElementById(`${p}-sent_to`).value;
+  const pick = document.getElementById(`${p}-sent_to_pick`);
+  const box = document.getElementById(`${p}-sent_to`);
+  if (!name || APPROVERS.includes(name)) {
+    pick.value = name;
+    box.hidden = true;
+  } else {
+    pick.value = OTHER;
+    box.hidden = false;
+  }
+}
 
 function isSent(status) { return status !== 'received' && status !== 'cancelled'; }
 function hasPo(status) { return status === 'po_raised' || status === 'done'; }
@@ -460,6 +500,7 @@ function fillFields(p, q) {
     const value = q[f] == null ? '' : String(q[f]);
     document.getElementById(`${p}-${f}`).value = f.endsWith('_date') ? value.slice(0, 10) : value;
   });
+  syncApproverPick(p);
   showStatusFields(p);
 }
 
@@ -469,6 +510,7 @@ function resetAddForm() {
   setStatus('import-msg', '');
   document.getElementById('add-received_date').value = todayISO();
   document.getElementById('add-status').value = 'received';
+  syncApproverPick('add');
   showStatusFields('add');
 }
 
@@ -486,6 +528,7 @@ async function loadQuotes() {
     if (!STATUS_LIST.length) {
       STATUS_LIST = d.statuses;
       d.statuses.forEach(s => STATUSES[s.key] = s.label);
+      APPROVERS = d.approvers || [];
       document.getElementById('add-fields').innerHTML = fieldsHTML('add', true);
       document.getElementById('edit-fields').innerHTML = fieldsHTML('edit', false);
       document.querySelectorAll('.chase-days').forEach(el => el.textContent = d.chase_after_working_days);

@@ -857,6 +857,7 @@ def list_quotes():
         return jsonify({
             'quotes': db.get_quotes(),
             'statuses': [{'key': k, 'label': v} for k, v in quotes_rules.STATUSES.items()],
+            'approvers': quotes_rules.APPROVERS,
             'chase_after_working_days': quotes_rules.CHASE_AFTER_WORKING_DAYS,
         })
     except Exception as e:
