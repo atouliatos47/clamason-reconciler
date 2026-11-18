@@ -576,10 +576,15 @@ function openPurposeList(p) {
 }
 
 function isSent(status) { return status !== 'received' && status !== 'cancelled'; }
-function hasPo(status) { return status === 'po_raised' || status === 'done'; }
+// The PO number exists from the moment a quote is sent for approval — at
+// Clamason the PO is raised first and then waits for a director's or
+// Purchasing's approval ("PO Approval Required - P/100075"). So the box is
+// there for every stage except a quote that's only just been received.
+function hasPo(status) { return status !== 'received'; }
 
 // Show "Sent to / Date sent" once a quote has been sent, "Chase date"
-// only while it's waiting for approval, and "PO number" once a PO exists.
+// only while it's waiting for approval, and "PO number" from "Sent for
+// approval" on (see hasPo).
 function showStatusFields(p) {
   const status = document.getElementById(`${p}-status`).value;
   const box = document.getElementById(`${p}-fields`);
