@@ -83,7 +83,6 @@
   .pill-cancelled { background: #f1f1f1; color: #888; }
 
   .bar-right { display: flex; align-items: center; gap: 16px; }
-  .toggle { font-size: 11px; display: flex; align-items: center; gap: 5px; cursor: pointer; opacity: 0.9; }
   .row-btn { padding: 4px 10px; background: white; border: 1px solid #ccc; border-radius: 5px; font-size: 11.5px; color: #243547; cursor: pointer; white-space: nowrap; }
   .row-btn:hover { border-color: #95C11F; background: #f2f8e8; }
   .quotes-table tr.finished td { color: #999; }
@@ -118,6 +117,16 @@
   .add-note input:focus { outline: none; border-color: #95C11F; }
   #note-msg { margin-top: 6px; }
 
+  .view-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+  .view-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .view-tab { padding: 6px 12px; background: white; border: 1px solid #d6dbe2; border-radius: 16px; font-size: 12.5px; color: #243547; cursor: pointer; }
+  .view-tab:hover { border-color: #95C11F; }
+  .view-tab.active { background: #243547; border-color: #243547; color: white; font-weight: bold; }
+  .view-n { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 3px; border-radius: 9px; background: #eef1f5; color: #243547; font-size: 11px; font-weight: bold; text-align: center; }
+  .view-tab.active .view-n { background: #95C11F; color: #243547; }
+  .view-tab.urgent .view-n { background: #c0392b; color: white; }
+  #quote-search { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; width: 260px; max-width: 100%; font-family: Arial, sans-serif; }
+  #quote-search:focus { outline: none; border-color: #95C11F; }
   .to-chase { background: #fdf0ee; border: 1px solid #f1c4bd; color: #8a2a1d; border-radius: 6px; padding: 8px 12px; font-size: 12.5px; margin-bottom: 10px; }
   .quotes-table tr.row-chase td { background: #fff7f5; }
   .btn-col { white-space: nowrap; }
@@ -298,11 +307,14 @@ function toggleNavGroup(name) {
   <div class="dept-bar list-bar">
     <span class="name">QUOTES</span>
     <span class="bar-right">
-      <label class="toggle"><input type="checkbox" id="show-finished" onchange="renderQuotes()"> Show done and cancelled</label>
       <span class="num" id="quote-count"></span>
     </span>
   </div>
   <div class="panel with-dept-bar list-panel">
+    <div class="view-bar">
+      <div class="view-tabs" id="view-tabs"></div>
+      <input type="search" id="quote-search" placeholder="Search supplier, ref, PO number…" oninput="renderQuotes()" aria-label="Search quotes">
+    </div>
     <div class="form-status" id="list-msg"></div>
     <div class="to-chase" id="to-chase" hidden></div>
     <div id="quotes-empty" class="empty">No quotes saved yet. Add your first one above.</div>
@@ -666,18 +678,64 @@ async function loadQuotes() {
   }
 }
 
+// Which quotes the list shows. Each button is one of these; its test()
+// says whether a quote belongs in it. Done and cancelled quotes are never
+// deleted — they wait under their own buttons, for reference.
+const VIEWS = [
+  { key: 'open',      label: 'Open',      empty: 'No open quotes.',
+    test: (q, today) => !FINISHED.includes(q.status) },
+  { key: 'chase',     label: 'To chase',  empty: 'Nothing to chase today.',
+    test: (q, today) => isToChase(q, today) },
+  { key: 'done',      label: 'Done',      empty: 'No done quotes yet.',
+    test: (q, today) => q.status === 'done' },
+  { key: 'cancelled', label: 'Cancelled', empty: 'No cancelled quotes.',
+    test: (q, today) => q.status === 'cancelled' },
+  { key: 'all',       label: 'All',       empty: 'No quotes saved yet.',
+    test: (q, today) => true },
+];
+
+// The chosen button is remembered in this browser for next time
+// (localStorage). If the browser won't allow it, "Open" is used.
+let VIEW = 'open';
+try { VIEW = localStorage.getItem('poApprovalsView') || 'open'; } catch (e) { /* use Open */ }
+if (!VIEWS.some(v => v.key === VIEW)) VIEW = 'open';
+
+function setView(key) {
+  VIEW = key;
+  try { localStorage.setItem('poApprovalsView', key); } catch (e) { /* not remembered, that's fine */ }
+  renderQuotes();
+}
+
+// Does a quote match what's typed in the search box? Looks in supplier,
+// what it's for, quote ref, PO number, asset, sent to and latest note.
+function matchesSearch(q, words) {
+  if (!words.length) return true;
+  const text = [q.supplier, q.description, q.quote_ref, q.po_number, q.asset_no, q.sent_to, q.latest_note]
+    .filter(Boolean).join(' ').toLowerCase();
+  return words.every(w => text.includes(w));
+}
+
 function renderQuotes() {
   const today = todayISO();
-  const showFinished = document.getElementById('show-finished').checked;
   const finished = ALL_QUOTES.filter(q => FINISHED.includes(q.status)).length;
-  let quotes = showFinished ? ALL_QUOTES : ALL_QUOTES.filter(q => !FINISHED.includes(q.status));
+  const view = VIEWS.find(v => v.key === VIEW) || VIEWS[0];
+
+  document.getElementById('view-tabs').innerHTML = VIEWS.map(v => {
+    const n = ALL_QUOTES.filter(q => v.test(q, today)).length;
+    const urgent = v.key === 'chase' && n > 0 ? ' urgent' : '';
+    return `<button type="button" class="view-tab${v.key === view.key ? ' active' : ''}${urgent}"
+      onclick="setView('${v.key}')">${esc(v.label)} <span class="view-n">${n}</span></button>`;
+  }).join('');
+
+  const words = document.getElementById('quote-search').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  let quotes = ALL_QUOTES.filter(q => view.test(q, today) && matchesSearch(q, words));
   // Quotes to chase go to the top, the longest-waiting first; the rest keep
   // the server's order (newest received first).
   const toChase = quotes.filter(q => isToChase(q, today))
     .sort((a, b) => a.chase_date.localeCompare(b.chase_date));
   quotes = toChase.concat(quotes.filter(q => !isToChase(q, today)));
   const chaseLine = document.getElementById('to-chase');
-  chaseLine.hidden = toChase.length === 0;
+  chaseLine.hidden = toChase.length === 0 || !['open', 'chase'].includes(view.key);
   chaseLine.textContent = toChase.length
     ? `${toChase.length} quote${toChase.length === 1 ? '' : 's'} to chase (at the top, in red). ` +
       `When you've chased one, click "Chased today" and its next chase date moves on.`
@@ -690,9 +748,11 @@ function renderQuotes() {
   document.getElementById('quote-count').textContent = countText;
   const empty = document.getElementById('quotes-empty');
   empty.hidden = quotes.length > 0;
-  empty.textContent = ALL_QUOTES.length
-    ? 'No open quotes. Tick "Show done and cancelled" to see finished ones.'
-    : 'No quotes saved yet. Add your first one above.';
+  empty.textContent = !ALL_QUOTES.length
+    ? 'No quotes saved yet. Add your first one above.'
+    : (words.length
+        ? `No ${view.key === 'all' ? '' : view.label.toLowerCase() + ' '}quotes match "${document.getElementById('quote-search').value.trim()}".`
+        : view.empty);
   document.getElementById('quotes-table').hidden = quotes.length === 0;
 
   document.getElementById('quotes-body').innerHTML = quotes.map(q => {
@@ -715,7 +775,9 @@ function renderQuotes() {
       ? esc(q.latest_note) + (q.note_count > 1 ? ` <span class="muted">(+${q.note_count - 1} more)</span>` : '')
       : '';
     const due = isToChase(q, today);
-    const rowClass = FINISHED.includes(q.status) ? 'finished' : (due ? 'row-chase' : '');
+    // Finished quotes are greyed only on "All", where they're mixed with
+    // open ones; on "Done" or "Cancelled" they're the whole list.
+    const rowClass = (FINISHED.includes(q.status) && view.key === 'all') ? 'finished' : (due ? 'row-chase' : '');
     const outlook = (q.status === 'sent' && q.chase_date)
       ? `<div><a class="small-link" href="/api/quotes/${Number(q.id)}/outlook-web" target="_blank" rel="noopener" title="Add a reminder for this chase date to your Outlook calendar">Outlook</a></div>` : '';
     const chasedBtn = due
