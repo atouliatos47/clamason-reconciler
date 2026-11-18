@@ -1266,8 +1266,9 @@ def _quote_row(row):
 
 def get_quotes():
     """Every quote, newest first, each with its latest note and how many
-    notes it has, and how many PDFs it has plus the id of the newest one
-    (for the list's PDF link). The PDF data itself is never read here."""
+    notes it has, and — separately for quote PDFs and PO PDFs — how many
+    there are and the id of the newest one (for the list's Quote and PO
+    links). The PDF data itself is never read here."""
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
@@ -1278,10 +1279,15 @@ def get_quotes():
                          WHERE n.quote_id = q.id
                          ORDER BY n.note_date DESC, n.id DESC LIMIT 1) AS latest_note,
                        (SELECT count(*) FROM quote_files f
-                         WHERE f.quote_id = q.id) AS file_count,
+                         WHERE f.quote_id = q.id AND f.kind = 'quote') AS file_count,
                        (SELECT f.id FROM quote_files f
-                         WHERE f.quote_id = q.id
-                         ORDER BY f.uploaded_at DESC, f.id DESC LIMIT 1) AS latest_file_id
+                         WHERE f.quote_id = q.id AND f.kind = 'quote'
+                         ORDER BY f.uploaded_at DESC, f.id DESC LIMIT 1) AS latest_file_id,
+                       (SELECT count(*) FROM quote_files f
+                         WHERE f.quote_id = q.id AND f.kind = 'po') AS po_file_count,
+                       (SELECT f.id FROM quote_files f
+                         WHERE f.quote_id = q.id AND f.kind = 'po'
+                         ORDER BY f.uploaded_at DESC, f.id DESC LIMIT 1) AS latest_po_file_id
                 FROM quotes q
                 ORDER BY q.received_date DESC, q.id DESC
             """)
@@ -1304,7 +1310,7 @@ def get_quote(quote_id):
             """, {'id': quote_id})
             notes = cur.fetchall()
             cur.execute("""
-                SELECT id, filename, size_bytes, uploaded_at FROM quote_files
+                SELECT id, kind, filename, size_bytes, uploaded_at FROM quote_files
                 WHERE quote_id = %(id)s ORDER BY uploaded_at, id
             """, {'id': quote_id})
             files = cur.fetchall()
@@ -1381,10 +1387,11 @@ def delete_quote_note(quote_id, note_id):
     return deleted
 
 
-def add_quote_file(quote_id, filename, data):
-    """Saves a copy of a quote's PDF. Returns the new file's id, or None if
-    there's no quote with that id. psycopg2.Binary tells the database the
-    value is raw bytes, not text."""
+def add_quote_file(quote_id, filename, data, kind='quote'):
+    """Saves a copy of a quote's PDF — kind 'quote' (the supplier's quote)
+    or 'po' (the approved purchase order). Returns the new file's id, or
+    None if there's no quote with that id. psycopg2.Binary tells the
+    database the value is raw bytes, not text."""
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE quotes SET updated_at = now() WHERE id = %(id)s",
@@ -1392,10 +1399,10 @@ def add_quote_file(quote_id, filename, data):
             if cur.rowcount == 0:
                 return None
             cur.execute("""
-                INSERT INTO quote_files (quote_id, filename, size_bytes, data)
-                VALUES (%(quote_id)s, %(filename)s, %(size)s, %(data)s)
+                INSERT INTO quote_files (quote_id, kind, filename, size_bytes, data)
+                VALUES (%(quote_id)s, %(kind)s, %(filename)s, %(size)s, %(data)s)
                 RETURNING id
-            """, {'quote_id': quote_id, 'filename': filename,
+            """, {'quote_id': quote_id, 'kind': kind, 'filename': filename,
                   'size': len(data), 'data': psycopg2.Binary(data)})
             file_id = cur.fetchone()[0]
         conn.commit()
@@ -1411,9 +1418,10 @@ def get_quote_file(quote_id, file_id):
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                SELECT f.filename, f.data, f.uploaded_at,
+                SELECT f.filename, f.data, f.uploaded_at, f.kind,
                        q.supplier, q.po_number, q.quote_ref, q.description,
-                       (SELECT count(*) FROM quote_files c WHERE c.quote_id = q.id) AS file_count
+                       (SELECT count(*) FROM quote_files c
+                         WHERE c.quote_id = q.id AND c.kind = f.kind) AS file_count
                 FROM quote_files f JOIN quotes q ON q.id = f.quote_id
                 WHERE f.id = %(file_id)s AND f.quote_id = %(quote_id)s
             """, {'file_id': file_id, 'quote_id': quote_id})

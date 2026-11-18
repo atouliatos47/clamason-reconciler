@@ -402,24 +402,34 @@ def outlook_web_link(quote, hub_url):
     return OUTLOOK_WEB_COMPOSE + '?' + urlencode(params, quote_via=url_quote)
 
 
+# The two kinds of PDF a quote can keep: the supplier's quote, and
+# Clamason's approved purchase order. Key = saved in quote_files.kind.
+FILE_KINDS = {'quote': 'Quote', 'po': 'PO'}
+
+# The stages that mean the PO has been approved — moving a quote to one of
+# these is when the page asks for the PO PDF, if there isn't one yet.
+PO_STAGES = ['approved', 'po_sent', 'done']
+
 # Characters Windows doesn't allow in a file name ( \ / : * ? " < > | ),
 # plus control characters.
 _BAD_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 
 def pdf_download_name(stored):
-    """The name a kept quote PDF gets when it's opened or saved from the
-    Hub: 'Lapis Tek - P-100075.pdf' (supplier, then the PO number, or the
-    quote ref if there's no PO yet, or what it's for if neither). The
+    """The name a kept PDF gets when it's opened or saved from the Hub:
+    'Lapis Tek - P-100075 - Quote.pdf' or '... - PO.pdf' (supplier, then
+    the PO number, or the quote ref if there's no PO yet, or what it's for
+    if neither, then which kind of PDF it is). The
     original upload name is often useless ('pdf.pdf'). '/' in a PO number
     becomes '-', because Windows doesn't allow '/' in file names. A quote
     with more than one PDF (a revised quote) adds the date each was added,
-    so the names don't clash: 'Lapis Tek - P-100075 (18-11-2026).pdf'.
+    so the names don't clash: 'Lapis Tek - P-100075 - Quote (18-11-2026).pdf'.
 
     stored: from db.get_quote_file — supplier, po_number, quote_ref,
-    description, uploaded_at, file_count."""
+    description, kind, uploaded_at, file_count (PDFs of the same kind)."""
     second = stored.get('po_number') or stored.get('quote_ref') or stored.get('description') or ''
-    name = ' - '.join(part for part in (stored.get('supplier'), second) if part)
+    kind = FILE_KINDS.get(stored.get('kind') or 'quote', 'Quote')
+    name = ' - '.join(part for part in (stored.get('supplier'), second, kind) if part)
     if stored.get('file_count', 1) > 1 and stored.get('uploaded_at'):
         name += f" ({stored['uploaded_at']:%d-%m-%Y})"
     name = _BAD_FILENAME_CHARS.sub('-', name)

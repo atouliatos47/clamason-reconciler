@@ -163,6 +163,14 @@ def find_supplier(text):
     return None
 
 
+def find_po_number(text):
+    """A Clamason purchase order number in the text — 'P/' and 5 to 7
+    digits, e.g. P/100075 (older ones look like P/098359). None if there
+    isn't one."""
+    match = re.search(r'\bP/\d{5,7}\b', text)
+    return match.group(0) if match else None
+
+
 # --- all together ----------------------------------------------------------------
 
 def extract_quote_fields(path):

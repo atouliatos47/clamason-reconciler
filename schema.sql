@@ -617,3 +617,9 @@ CREATE TABLE IF NOT EXISTS quote_files (
 );
 
 CREATE INDEX IF NOT EXISTS idx_quote_files_quote ON quote_files (quote_id);
+
+-- 18 Nov 2026: each kept PDF is either the supplier's quote ('quote') or
+-- Clamason's approved purchase order ('po'), so a finished quote can hold
+-- both. Files kept before this column existed were all quotes, which is
+-- what the DEFAULT gives them.
+ALTER TABLE quote_files ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'quote';

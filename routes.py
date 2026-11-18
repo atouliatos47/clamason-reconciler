@@ -45,7 +45,7 @@ from daily_trend import (
 from parsers.sfc_daily_downtime_pdf import parse_daily_downtime_pdf
 from parsers.sfc_daily_unplanned_pdf import parse_daily_unplanned_pdf, merge_machine_breakdown
 from parsers.open_jobs_parser import summarise_open_jobs
-from parsers.quote_pdf import extract_quote_fields
+from parsers.quote_pdf import extract_quote_fields, read_pdf_text, find_po_number
 import db
 import quotes as quotes_rules  # PO Approvals rules; named so it isn't mistaken for a list of quotes
 
@@ -857,6 +857,7 @@ def list_quotes():
                 if d not in quotes_rules.PURPOSES],
             'files_usage': db.get_quote_files_usage(),
             'file_max_mb': QUOTE_FILE_MAX_MB,
+            'po_stages': quotes_rules.PO_STAGES,
             'chase_after_working_days': quotes_rules.CHASE_AFTER_WORKING_DAYS,
         })
     except Exception as e:
@@ -1116,8 +1117,15 @@ def _clean_filename(name):
 
 @bp.route('/api/quotes/<int:quote_id>/files', methods=['POST'])
 def add_quote_file(quote_id):
-    """Keep a copy of a quote's PDF in the Hub."""
+    """Keep a copy of a PDF with a quote: the supplier's quote (kind
+    'quote', the default) or the approved purchase order (kind 'po'). For
+    a PO, if the quote has no PO number yet, it's read from the PDF
+    ('P/100075') and filled in — sent back as po_number_filled."""
+    import io
     try:
+        kind = request.form.get('kind') or 'quote'
+        if kind not in quotes_rules.FILE_KINDS:
+            return jsonify({'error': f'Unknown kind of PDF "{kind}".'}), 400
         pdf_file = request.files.get('pdf')
         if not pdf_file or not pdf_file.filename:
             return jsonify({'error': 'Choose a PDF file first.'}), 400
@@ -1127,10 +1135,17 @@ def add_quote_file(quote_id):
             return jsonify({'error': f'That PDF is too big to keep (max {QUOTE_FILE_MAX_MB} MB).'}), 400
         if not data.startswith(b'%PDF'):
             return jsonify({'error': 'That file is not a PDF.'}), 400
-        file_id = db.add_quote_file(quote_id, _clean_filename(pdf_file.filename), data)
+        file_id = db.add_quote_file(quote_id, _clean_filename(pdf_file.filename), data, kind)
         if file_id is None:
             return jsonify({'error': 'Quote not found.'}), 404
-        return jsonify({'saved': True, 'id': file_id})
+        po_number_filled = None
+        if kind == 'po':
+            quote = db.get_quote(quote_id)
+            if not quote.get('po_number'):
+                po_number_filled = find_po_number(read_pdf_text(io.BytesIO(data)))
+                if po_number_filled:
+                    db.set_quote_fields(quote_id, {'po_number': po_number_filled})
+        return jsonify({'saved': True, 'id': file_id, 'po_number_filled': po_number_filled})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

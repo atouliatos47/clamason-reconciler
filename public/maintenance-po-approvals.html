@@ -138,6 +138,11 @@
   .chase-bar.late { background: #fdf0ee; border-color: #f1c4bd; color: #8a2a1d; }
   .chase-bar > span:first-child { flex: 1 1 300px; }
   .chase-bar a.plain-btn { text-decoration: none; display: inline-block; }
+  .po-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: #fff8e6; border: 1px solid #f0c36d; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-size: 13px; color: #5c4400; }
+  .po-prompt > span { flex: 1 1 300px; }
+  .kind-tag { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 10.5px; font-weight: bold; white-space: nowrap; }
+  .kind-quote { background: #eef1f5; color: #243547; }
+  .kind-po { background: #d9ecff; color: #1d4f86; }
   .dup-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: #fff8e6; border: 1px solid #f0c36d; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; font-size: 13px; color: #5c4400; }
   .dup-text { flex: 1 1 380px; }
   .combo { position: relative; }
@@ -323,7 +328,7 @@ function toggleNavGroup(name) {
           <tr>
             <th>Received</th><th>Supplier</th><th>What it's for</th><th>Asset</th>
             <th class="num-col">Amount</th><th>Status</th><th>Sent to</th>
-            <th>Chase date</th><th>Quote</th><th>Latest note</th><th></th>
+            <th>Chase date</th><th>PDFs</th><th>Latest note</th><th></th>
           </tr>
         </thead>
         <tbody id="quotes-body"></tbody>
@@ -354,10 +359,16 @@ function toggleNavGroup(name) {
     </form>
 
     <div class="notes-section">
-      <div class="field-title">Quote PDFs</div>
+      <div class="field-title">PDFs &mdash; quote and PO</div>
+      <div class="po-prompt" id="po-prompt" hidden>
+        <span><b>Got the PO?</b> Upload the approved PO here, so it's kept with the quote.</span>
+        <button type="button" class="save-btn" onclick="pickPdf('po')">Upload PO PDF</button>
+        <button type="button" class="plain-btn" onclick="poNotNow()">Not now</button>
+      </div>
       <ul class="notes-list" id="files-list"></ul>
-      <button type="button" class="plain-btn" onclick="document.getElementById('edit-pdf-input').click()">Attach a PDF</button>
-      <input type="file" id="edit-pdf-input" accept=".pdf,application/pdf" hidden onchange="attachPdf(this.files[0]); this.value = '';">
+      <button type="button" class="plain-btn" onclick="pickPdf('quote')">Attach quote PDF</button>
+      <button type="button" class="plain-btn" onclick="pickPdf('po')">Attach PO PDF</button>
+      <input type="file" id="edit-pdf-input" accept=".pdf,application/pdf" hidden onchange="attachPdf(this.files[0], PICK_KIND); this.value = '';">
       <span class="form-status" id="file-msg"></span>
     </div>
 
@@ -388,6 +399,9 @@ let APPROVERS = [];      // the "Sent to" names, from quotes.py
 let IMPORTED_FILE = null; // the PDF imported into the Add form, kept on Save
 let FILE_MAX_MB = 10;     // largest PDF the Hub keeps (from routes.py)
 let FILES_USAGE = null;   // how many PDFs are kept and their total size
+let PO_STAGES = ['approved', 'po_sent', 'done'];  // from quotes.py: the PO has been approved
+let CURRENT_QUOTE = null; // the quote open in the Update window, as last loaded
+let PICK_KIND = 'quote';  // which kind of PDF the file picker is choosing
 let DUP_MATCH = null;     // a saved quote with the same reference, if any
 let DUP_FROM_SAVE = false; // true if Save (not Import) found that match
 let ALLOW_DUP = false;    // you chose "Add as a new quote" anyway
@@ -676,6 +690,7 @@ async function loadQuotes() {
     ALL_QUOTES = d.quotes;
     FILES_USAGE = d.files_usage;
     FILE_MAX_MB = d.file_max_mb || FILE_MAX_MB;
+    PO_STAGES = d.po_stages || PO_STAGES;
     renderQuotes();
   } catch (e) {
     document.getElementById('quotes-empty').textContent = 'Could not load quotes: ' + e.message;
@@ -768,8 +783,12 @@ function renderQuotes() {
     // OneDrive. Only real web links become clickable (the server checks too).
     const links = [];
     if (q.latest_file_id) {
-      links.push(`<a href="/api/quotes/${Number(q.id)}/files/${Number(q.latest_file_id)}" target="_blank" rel="noopener">PDF</a>`
+      links.push(`<a href="/api/quotes/${Number(q.id)}/files/${Number(q.latest_file_id)}" target="_blank" rel="noopener">Quote</a>`
         + (q.file_count > 1 ? ` <span class="muted">(${Number(q.file_count)})</span>` : ''));
+    }
+    if (q.latest_po_file_id) {
+      links.push(`<a href="/api/quotes/${Number(q.id)}/files/${Number(q.latest_po_file_id)}" target="_blank" rel="noopener">PO</a>`
+        + (q.po_file_count > 1 ? ` <span class="muted">(${Number(q.po_file_count)})</span>` : ''));
     }
     if (/^https?:\/\//i.test(q.file_link || '')) {
       links.push(`<a href="${esc(q.file_link)}" target="_blank" rel="noopener noreferrer">Link</a>`);
@@ -975,9 +994,10 @@ function clearImportedFile() {
 
 // Send one PDF to be kept with quote `quoteId`. Throws with the server's
 // message if it's refused (too big, not a PDF).
-async function uploadPdf(quoteId, file) {
+async function uploadPdf(quoteId, file, kind) {
   const form = new FormData();
   form.append('pdf', file);
+  form.append('kind', kind || 'quote');
   const res = await fetch(`/api/quotes/${quoteId}/files`, { method: 'POST', body: form });
   const d = await res.json();
   if (d.error) throw new Error(d.error);
@@ -1009,6 +1029,7 @@ async function openEdit(id) {
   setStatus('edit-msg', '');
   setStatus('note-msg', '');
   setStatus('file-msg', '');
+  document.getElementById('po-prompt').hidden = true;
   document.getElementById('note-text').value = '';
   document.getElementById('note-date').value = todayISO();
   if (await loadEdit()) document.getElementById('edit-dialog').showModal();
@@ -1022,6 +1043,7 @@ async function loadEdit(keepFields) {
     const d = await res.json();
     if (d.error) throw new Error(d.error);
     const q = d.quote;
+    CURRENT_QUOTE = q;
     document.getElementById('edit-title').textContent = `${q.supplier} — ${q.description}`;
     if (!keepFields) fillFields('edit', q);
     renderChaseBar(q);
@@ -1080,10 +1102,19 @@ async function chasedToday(id) {
   }
 }
 
+// "Not now" on the PO prompt: the changes are already saved, so just
+// close the window. The PO can be attached later with "Attach PO PDF".
+function poNotNow() {
+  document.getElementById('po-prompt').hidden = true;
+  closeEdit();
+  setStatus('list-msg', '✓ Changes saved — add the PO later with Update → Attach PO PDF.', 'ok');
+}
+
 function renderFiles(files) {
   document.getElementById('files-list').innerHTML = files.length
     ? files.map(f => `<li>
         <span class="note-date">${ukDate(f.uploaded_at)}</span>
+        <span class="kind-tag kind-${f.kind === 'po' ? 'po' : 'quote'}">${f.kind === 'po' ? 'PO' : 'Quote'}</span>
         <span class="note-text"><a href="/api/quotes/${Number(EDIT_ID)}/files/${Number(f.id)}" target="_blank" rel="noopener">${esc(f.filename)}</a>
           <span class="muted">${sizeText(f.size_bytes)}</span></span>
         <button type="button" class="note-del" title="Delete this PDF" onclick="deleteFile(${Number(f.id)})">&times;</button>
@@ -1091,13 +1122,25 @@ function renderFiles(files) {
     : '<li class="muted">No PDF kept for this quote.</li>';
 }
 
-async function attachPdf(file) {
+// Open the file picker for one kind of PDF ('quote' or 'po').
+function pickPdf(kind) {
+  PICK_KIND = kind;
+  document.getElementById('edit-pdf-input').click();
+}
+
+async function attachPdf(file, kind) {
   if (!file) return;
+  kind = kind || 'quote';
   setStatus('file-msg', `Saving ${file.name}…`);
   try {
-    await uploadPdf(EDIT_ID, file);
-    setStatus('file-msg', '✓ PDF kept', 'ok');
-    await loadEdit(true);
+    const d = await uploadPdf(EDIT_ID, file, kind);
+    let message = kind === 'po' ? '✓ PO kept' : '✓ Quote PDF kept';
+    if (d.po_number_filled) message += ` — PO number ${d.po_number_filled} filled in from the PDF`;
+    setStatus('file-msg', message, 'ok');
+    if (kind === 'po') document.getElementById('po-prompt').hidden = true;
+    // A PO number read from the PDF has to reach the box too, so the
+    // boxes are refilled from what's saved (Save changes has already run).
+    await loadEdit(!d.po_number_filled);
     loadQuotes();
   } catch (e) {
     setStatus('file-msg', 'Not kept: ' + e.message, 'bad');
@@ -1141,6 +1184,23 @@ async function saveEdit(event) {
     });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
+
+    // Moved to Approved / PO sent / Done and no PO kept yet? Keep the
+    // window open and ask for the PO, so the finished quote has both.
+    const before = CURRENT_QUOTE ? CURRENT_QUOTE.status : null;
+    const after = document.getElementById('edit-status').value;
+    const hasPoPdf = CURRENT_QUOTE && CURRENT_QUOTE.files.some(f => f.kind === 'po');
+    if (after !== before && PO_STAGES.includes(after) && !hasPoPdf) {
+      await loadEdit(false);
+      setStatus('edit-msg', '✓ Changes saved', 'ok');
+      const prompt = document.getElementById('po-prompt');
+      prompt.hidden = false;
+      prompt.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      loadQuotes();
+      btn.disabled = false;
+      return;
+    }
+
     closeEdit();
     if (d.chase_date) setStatusWithOutlook('list-msg', `✓ Changes saved — chase on ${ukDate(d.chase_date)}.`, 'ok', EDIT_ID);
     else setStatus('list-msg', '✓ Changes saved', 'ok');
