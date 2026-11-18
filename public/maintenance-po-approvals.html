@@ -118,6 +118,17 @@
   .add-note input:focus { outline: none; border-color: #95C11F; }
   #note-msg { margin-top: 6px; }
 
+  .to-chase { background: #fdf0ee; border: 1px solid #f1c4bd; color: #8a2a1d; border-radius: 6px; padding: 8px 12px; font-size: 12.5px; margin-bottom: 10px; }
+  .quotes-table tr.row-chase td { background: #fff7f5; }
+  .btn-col { white-space: nowrap; }
+  .btn-col .row-btn + .row-btn { margin-left: 6px; }
+  .chase-btn { border-color: #e3b4ae; color: #c0392b; font-weight: bold; }
+  .small-link { font-size: 11px; color: #1d4f86 !important; font-weight: normal !important; }
+  .outlook-link { color: #1d4f86; font-weight: bold; }
+  .chase-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: #fff8e6; border: 1px solid #f0c36d; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; font-size: 13px; color: #5c4400; }
+  .chase-bar.late { background: #fdf0ee; border-color: #f1c4bd; color: #8a2a1d; }
+  .chase-bar > span:first-child { flex: 1 1 300px; }
+  .chase-bar a.plain-btn { text-decoration: none; display: inline-block; }
   .dup-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: #fff8e6; border: 1px solid #f0c36d; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; font-size: 13px; color: #5c4400; }
   .dup-text { flex: 1 1 380px; }
   .money-box { position: relative; }
@@ -278,6 +289,7 @@ function toggleNavGroup(name) {
   </div>
   <div class="panel with-dept-bar list-panel">
     <div class="form-status" id="list-msg"></div>
+    <div class="to-chase" id="to-chase" hidden></div>
     <div id="quotes-empty" class="empty">No quotes saved yet. Add your first one above.</div>
     <div class="table-wrap">
       <table id="quotes-table" class="quotes-table" hidden>
@@ -304,6 +316,7 @@ function toggleNavGroup(name) {
     <button type="button" class="dialog-close" onclick="closeEdit()" aria-label="Close">&times;</button>
   </div>
   <div class="dialog-body">
+    <div class="chase-bar" id="chase-bar" hidden></div>
     <form id="edit-form" autocomplete="off" onsubmit="saveEdit(event)">
       <div id="edit-fields"></div>
       <div class="form-actions">
@@ -380,6 +393,21 @@ function money(amount) {
 function sizeText(bytes) {
   if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + ' KB';
   return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+// A status message followed by an "Add reminder to Outlook" link for a
+// quote — the link downloads a calendar file for its chase date.
+function setStatusWithOutlook(id, text, kind, quoteId) {
+  setStatus(id, text + ' ', kind);
+  const a = document.createElement('a');
+  a.href = `/api/quotes/${Number(quoteId)}/outlook-reminder`;
+  a.textContent = 'Add reminder to Outlook';
+  a.className = 'outlook-link';
+  document.getElementById(id).appendChild(a);
+}
+
+function isToChase(q, today) {
+  return q.status === 'sent' && q.chase_date && q.chase_date <= today;
 }
 
 function setStatus(id, text, kind) {
@@ -554,6 +582,9 @@ function resetAddForm() {
 // The list
 // ---------------------------------------------------------------------------
 async function loadQuotes() {
+  // After the first load, a reload means something changed: ask the
+  // sidebar to check its reminders again too (reminders.js).
+  if (STATUS_LIST.length && window.refreshReminders) window.refreshReminders();
   try {
     const res = await fetch('/api/quotes');
     const d = await res.json();
@@ -583,7 +614,18 @@ function renderQuotes() {
   const today = todayISO();
   const showFinished = document.getElementById('show-finished').checked;
   const finished = ALL_QUOTES.filter(q => FINISHED.includes(q.status)).length;
-  const quotes = showFinished ? ALL_QUOTES : ALL_QUOTES.filter(q => !FINISHED.includes(q.status));
+  let quotes = showFinished ? ALL_QUOTES : ALL_QUOTES.filter(q => !FINISHED.includes(q.status));
+  // Quotes to chase go to the top, the longest-waiting first; the rest keep
+  // the server's order (newest received first).
+  const toChase = quotes.filter(q => isToChase(q, today))
+    .sort((a, b) => a.chase_date.localeCompare(b.chase_date));
+  quotes = toChase.concat(quotes.filter(q => !isToChase(q, today)));
+  const chaseLine = document.getElementById('to-chase');
+  chaseLine.hidden = toChase.length === 0;
+  chaseLine.textContent = toChase.length
+    ? `${toChase.length} quote${toChase.length === 1 ? '' : 's'} to chase (at the top, in red). ` +
+      `When you've chased one, click "Chased today" and its next chase date moves on.`
+    : '';
 
   let countText = ALL_QUOTES.length ? `${ALL_QUOTES.length - finished} open · ${finished} finished` : '';
   if (FILES_USAGE && FILES_USAGE.count) {
@@ -616,7 +658,13 @@ function renderQuotes() {
     const notes = q.latest_note
       ? esc(q.latest_note) + (q.note_count > 1 ? ` <span class="muted">(+${q.note_count - 1} more)</span>` : '')
       : '';
-    return `<tr class="${FINISHED.includes(q.status) ? 'finished' : ''}">
+    const due = isToChase(q, today);
+    const rowClass = FINISHED.includes(q.status) ? 'finished' : (due ? 'row-chase' : '');
+    const outlook = (q.status === 'sent' && q.chase_date)
+      ? `<div><a class="small-link" href="/api/quotes/${Number(q.id)}/outlook-reminder" title="Add a reminder for this chase date to your Outlook calendar">Outlook</a></div>` : '';
+    const chasedBtn = due
+      ? `<button type="button" class="row-btn chase-btn" onclick="chasedToday(${Number(q.id)})">Chased today</button>` : '';
+    return `<tr class="${rowClass}">
       <td>${ukDate(q.received_date)}</td>
       <td>${esc(q.supplier)}</td>
       <td>${esc(q.description)}${q.quote_ref ? `<div class="muted">Ref: ${esc(q.quote_ref)}</div>` : ''}</td>
@@ -625,10 +673,10 @@ function renderQuotes() {
       <td><span class="pill pill-${esc(q.status)}">${esc(STATUSES[q.status] || q.status)}</span>
           ${q.po_number ? `<div class="muted">${esc(q.po_number)}</div>` : ''}</td>
       <td>${esc(q.sent_to)}${q.sent_date ? `<div class="muted">${ukDate(q.sent_date)}</div>` : ''}</td>
-      <td class="${chaseClass}">${chase}</td>
+      <td class="${chaseClass}">${chase}${outlook}</td>
       <td>${link}</td>
       <td class="note-col">${notes}</td>
-      <td><button type="button" class="row-btn" onclick="openEdit(${Number(q.id)})">Update</button></td>
+      <td class="btn-col">${chasedBtn}<button type="button" class="row-btn" onclick="openEdit(${Number(q.id)})">Update</button></td>
     </tr>`;
   }).join('');
 }
@@ -666,7 +714,8 @@ async function saveNewQuote(event) {
       }
     }
     resetAddForm();
-    setStatus('add-msg', message, kind);
+    if (d.chase_date && kind === 'ok') setStatusWithOutlook('add-msg', message + '.', kind, d.id);
+    else setStatus('add-msg', message, kind);
     loadQuotes();
   } catch (e) {
     setStatus('add-msg', 'Not saved: ' + e.message, 'bad');
@@ -852,6 +901,7 @@ async function loadEdit(keepFields) {
     const q = d.quote;
     document.getElementById('edit-title').textContent = `${q.supplier} — ${q.description}`;
     if (!keepFields) fillFields('edit', q);
+    renderChaseBar(q);
     renderFiles(q.files);
     renderNotes(q.notes);
     return true;
@@ -863,6 +913,48 @@ async function loadEdit(keepFields) {
 
 function closeEdit() {
   document.getElementById('edit-dialog').close();
+}
+
+// The chase bar shows while the saved quote is waiting for approval:
+// its chase date, "Chased today" and "Add reminder to Outlook".
+function renderChaseBar(q) {
+  const bar = document.getElementById('chase-bar');
+  if (q.status !== 'sent' || !q.chase_date) { bar.hidden = true; return; }
+  const late = q.chase_date <= todayISO();
+  bar.className = 'chase-bar' + (late ? ' late' : '');
+  bar.innerHTML = `
+    <span>Waiting for approval${q.sent_to ? ' from <b>' + esc(q.sent_to) + '</b>' : ''}.
+      Chase ${late ? '<b>now</b> — due ' : 'on '}<b>${ukDate(q.chase_date)}</b>.</span>
+    <button type="button" class="save-btn" onclick="chasedToday(${Number(q.id)})">Chased today</button>
+    <a class="plain-btn" href="/api/quotes/${Number(q.id)}/outlook-reminder">Add reminder to Outlook</a>
+    <span class="form-status" id="chase-msg"></span>`;
+  bar.hidden = false;
+}
+
+// "Chased today": logs 'Chased <name>' and moves the chase date on
+// 2 working days. Works from the list or from the Update window.
+async function chasedToday(id) {
+  const inWindow = document.getElementById('edit-dialog').open && EDIT_ID === id;
+  try {
+    const res = await fetch(`/api/quotes/${Number(id)}/chased`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    const text = `✓ ${d.note} — next chase on ${ukDate(d.chase_date)}.`;
+    if (inWindow) {
+      document.getElementById('edit-chase_date').value = d.chase_date;
+      await loadEdit(true);
+      setStatusWithOutlook('chase-msg', text, 'ok', id);
+    } else {
+      setStatusWithOutlook('list-msg', text, 'ok', id);
+    }
+    loadQuotes();
+  } catch (e) {
+    setStatus(inWindow ? 'chase-msg' : 'list-msg', 'Not saved: ' + e.message, 'bad');
+  }
 }
 
 function renderFiles(files) {
@@ -927,7 +1019,8 @@ async function saveEdit(event) {
     const d = await res.json();
     if (d.error) throw new Error(d.error);
     closeEdit();
-    setStatus('list-msg', '✓ Changes saved' + (d.chase_date ? ` — chase on ${ukDate(d.chase_date)}` : ''), 'ok');
+    if (d.chase_date) setStatusWithOutlook('list-msg', `✓ Changes saved — chase on ${ukDate(d.chase_date)}.`, 'ok', EDIT_ID);
+    else setStatus('list-msg', '✓ Changes saved', 'ok');
     loadQuotes();
   } catch (e) {
     setStatus('edit-msg', 'Not saved: ' + e.message, 'bad');

@@ -1040,6 +1040,49 @@ def add_quote_new_version(quote_id):
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/api/quotes/<int:quote_id>/chased', methods=['POST'])
+def quote_chased(quote_id):
+    """The "Chased today" button: logs the chase as a note ('Chased Paul
+    Edwards', or the text typed) and moves the chase date on by
+    CHASE_AFTER_WORKING_DAYS working days from today."""
+    try:
+        quote = db.get_quote(quote_id)
+        if quote is None:
+            return jsonify({'error': 'Quote not found.'}), 404
+        if quote['status'] not in quotes_rules.WAITING_STATUSES:
+            return jsonify({'error': 'Only a quote waiting for approval can be chased.'}), 400
+        data = request.get_json(force=True, silent=True) or {}
+        today = quotes_rules.london_today()
+        next_chase, note = quotes_rules.chased_today(quote, data.get('note'), today)
+        db.set_quote_fields(quote_id, {'chase_date': next_chase})
+        db.add_quote_note(quote_id, today, note)
+        return jsonify({'saved': True, 'chase_date': next_chase.isoformat(), 'note': note})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/quotes/<int:quote_id>/outlook-reminder', methods=['GET'])
+def quote_outlook_reminder(quote_id):
+    """Downloads a calendar file (.ics) for the quote's chase date. Opened
+    on the work laptop, Outlook shows the event — Save & Close adds it to
+    the calendar with a pop-up reminder at 8:30 that day."""
+    from flask import Response
+    try:
+        quote = db.get_quote(quote_id)
+        if quote is None:
+            return jsonify({'error': 'Quote not found.'}), 404
+        if quote['status'] not in quotes_rules.WAITING_STATUSES or not quote.get('chase_date'):
+            return jsonify({'error': 'This quote has no chase date (it is not waiting for approval).'}), 400
+        ics = quotes_rules.outlook_reminder_ics(quote, request.host_url)
+        name = re.sub(r'[^A-Za-z0-9 _-]', '', f"Chase {quote.get('quote_ref') or quote['supplier']}").strip() or 'Chase quote'
+        return Response(ics, mimetype='text/calendar', headers={
+            'Content-Disposition': f'attachment; filename="{name[:60]}.ics"',
+            'Cache-Control': 'no-store',
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # Stored quote PDFs. Kept smaller than the 20 MB the reader accepts: every
 # stored file uses up the database's space, and quote PDFs are rarely
 # more than 1-2 MB.
@@ -1232,12 +1275,13 @@ def maintenance_sfc_vs_agility_view():
 
 @bp.after_app_request
 def _forget_reminders_after_a_post(response):
-    """Every save in the hub is a POST, so after any POST the remembered
-    reminder answer is thrown away — the sidebar badges reflect an upload
+    """Every save in the hub is a POST — or, on PO Approvals, a PUT (change
+    a quote) or DELETE (delete one) — so after any of those the remembered
+    reminder answer is thrown away: the sidebar badges reflect the change
     on the very next page, not up to a minute later (reminders.clear_cache).
     Checks that only read are POSTs too; clearing after those costs one
     extra full check, nothing more."""
-    if request.method == 'POST':
+    if request.method in ('POST', 'PUT', 'DELETE'):
         from reminders import clear_cache
         clear_cache()
     return response

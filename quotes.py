@@ -233,3 +233,104 @@ def new_version_changes(existing, found, filename):
     note = f'New version of the quote added ({filename})'
     note += ': ' + ', '.join(parts) if parts else ' — amount and date unchanged'
     return changes, note
+
+
+def chased_today(quote, note=None, today=None):
+    """The "Chased today" button: you've chased the approval, so wait
+    another CHASE_AFTER_WORKING_DAYS working days before the next chase.
+    Returns (new_chase_date, note_text). The note defaults to
+    'Chased Paul Edwards' (whoever it was sent to)."""
+    today = today or london_today()
+    text = (note or '').strip()[:1000]
+    if not text:
+        text = f"Chased {quote['sent_to']}" if quote.get('sent_to') else 'Chased'
+    return chase_date_after(today), text
+
+
+# --- Outlook reminder ----------------------------------------------------------
+#
+# A calendar file (.ics — the standard format Outlook, Google and Apple
+# calendars all open) for a quote's chase date. Opening it in Outlook shows
+# the event, and "Save & Close" puts it in the calendar with a pop-up
+# reminder. Nothing is sent anywhere: it's a file for you to open.
+
+# When the chase reminder appears on the chase date (UK time).
+OUTLOOK_REMINDER_TIME = (8, 30)
+OUTLOOK_REMINDER_MINUTES = 15
+
+
+def _ics_text(value):
+    """Calendar files give ',', ';', '\\' and new lines a special meaning,
+    so they're escaped inside any text."""
+    text = str(value or '')
+    text = text.replace('\\', '\\\\')          # a backslash first, so the ones added below aren't doubled
+    text = text.replace(';', '\\;')
+    text = text.replace(',', '\\,')
+    text = text.replace('\r\n', '\n')
+    text = text.replace('\n', '\\n')
+    return text
+
+
+def _ics_fold(line):
+    """Calendar files want lines of at most 75 bytes; longer ones carry on
+    on the next line, which starts with a space."""
+    out, current = [], ''
+    for ch in line:
+        if len((current + ch).encode('utf-8')) > 75:
+            out.append(current)
+            current = ' ' + ch
+        else:
+            current += ch
+    out.append(current)
+    return '\r\n'.join(out)
+
+
+def outlook_reminder_ics(quote, hub_url):
+    """The .ics file for one quote's chase date, as text."""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    chase = date.fromisoformat(str(quote['chase_date'])[:10])
+    hour, minute = OUTLOOK_REMINDER_TIME
+    # 8:30 in the UK, written as UTC (the 'Z' times) so every calendar
+    # shows it at the right moment in summer and winter time alike.
+    start = datetime(chase.year, chase.month, chase.day, hour, minute,
+                     tzinfo=ZoneInfo('Europe/London')).astimezone(timezone.utc)
+    end = start + timedelta(minutes=OUTLOOK_REMINDER_MINUTES)
+    stamp = datetime.now(timezone.utc)
+    fmt = '%Y%m%dT%H%M%SZ'
+
+    ref = f" ({quote['quote_ref']})" if quote.get('quote_ref') else ''
+    summary = f"Chase PO approval: {quote['supplier']} \u2014 {quote['description']}{ref}"
+    details = [f"Waiting for approval: {quote['supplier']} \u2014 {quote['description']}{ref}"]
+    if quote.get('sent_to'):
+        sent = f" on {date.fromisoformat(str(quote['sent_date'])[:10]):%d/%m/%Y}" if quote.get('sent_date') else ''
+        details.append(f"Sent to {quote['sent_to']}{sent}.")
+    if quote.get('amount') not in (None, ''):
+        details.append(f"Amount: {_money_text(quote['amount'])} (net).")
+    details.append(f"PO Approvals in the Hub: {hub_url.rstrip('/')}/maintenance-po-approvals")
+
+    lines = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Clamason//Performance Hub PO Approvals//EN',
+        'METHOD:PUBLISH',
+        'BEGIN:VEVENT',
+        # Same id for the same quote and chase date, so opening the file twice
+        # updates the one event instead of adding a second.
+        f"UID:quote-{quote['id']}-chase-{chase.isoformat()}@clamason-performance-hub",
+        f'DTSTAMP:{stamp.strftime(fmt)}',
+        f'DTSTART:{start.strftime(fmt)}',
+        f'DTEND:{end.strftime(fmt)}',
+        f'SUMMARY:{_ics_text(summary)}',
+        f"DESCRIPTION:{_ics_text(chr(10).join(details))}",
+        'TRANSP:TRANSPARENT',          # shows you as free, not busy
+        'BEGIN:VALARM',
+        'ACTION:DISPLAY',
+        f'DESCRIPTION:{_ics_text(summary)}',
+        'TRIGGER:-PT0M',               # pop up at the start time
+        'END:VALARM',
+        'END:VEVENT',
+        'END:VCALENDAR',
+    ]
+    return '\r\n'.join(_ics_fold(line) for line in lines) + '\r\n'

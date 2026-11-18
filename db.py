@@ -1546,3 +1546,18 @@ def set_quote_fields(quote_id, fields):
             found = cur.rowcount > 0
         conn.commit()
     return found
+
+
+def get_quotes_to_chase(today, statuses):
+    """Quotes waiting for approval (status in `statuses`) whose chase date
+    is today or already past — for the PO Approvals sidebar reminder.
+    Each is {'id', 'chase_date' (a date)}, oldest chase date first."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, chase_date FROM quotes
+                WHERE status = ANY(%(statuses)s)
+                  AND chase_date IS NOT NULL AND chase_date <= %(today)s
+                ORDER BY chase_date, id
+            """, {'statuses': list(statuses), 'today': today})
+            return [dict(r) for r in cur.fetchall()]

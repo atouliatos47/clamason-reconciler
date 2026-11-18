@@ -7,7 +7,8 @@ into its own table, one row per date), so instead of a fixed alarm
 the report and the reminder clears itself; forget a day and it stays
 until that day is saved.
 
-Three kinds of rule, all of which skip weekends and NON_WORKING_DAYS:
+Three kinds of upload rule, all of which skip weekends and NON_WORKING_DAYS
+(plus one for PO Approvals, at the end):
 
 DAILY — each working day should have a saved row
 ------------------------------------------------
@@ -41,6 +42,11 @@ MONTHLY — last month should be saved by the Nth working day
 -----------------------------------------------------------
 "Due" from the month's first working day until MONTHLY_DEADLINE_WORKING_DAY,
 "overdue" after that.
+
+PO APPROVALS — quotes waiting for approval whose chase date has come
+--------------------------------------------------------------------
+Not an upload: "due" when a quote's chase date is today, "overdue" once it
+has passed. Shows the NUMBER of quotes on the menu item. See check_quotes().
 
 ADDING A REMINDER
 -----------------
@@ -430,6 +436,42 @@ def check_monthly(reminder, today):
     return _result(reminder, 'overdue', [month_name], f'{month_name} not saved (was due {_short(deadline)})')
 
 
+# --- PO approvals to chase -------------------------------------------------------
+#
+# Not an upload: a quote sent for approval whose chase date has come. "Due"
+# (amber) when a chase date is today, "overdue" (red) once one has passed.
+# Cleared by chasing it ("Chased today" moves the chase date on) or by the
+# quote moving on (approved, PO raised...). 'count' tells reminders.js to
+# show the NUMBER of quotes on the menu item instead of a plain dot.
+
+QUOTE_REMINDERS = [
+    {
+        'id': 'maintenance-po-approvals',
+        'dept': 'maintenance',
+        'label': 'PO Approvals',
+        'href': '/maintenance-po-approvals',
+    },
+]
+
+
+def check_quotes(reminder, today):
+    """Status of the PO Approvals reminder: 'ok', 'due' or 'overdue'."""
+    from quotes import WAITING_STATUSES   # here, not at the top: quotes.py imports this file
+    to_chase = db.get_quotes_to_chase(today, WAITING_STATUSES)
+    if not to_chase:
+        return _result(reminder, 'ok', [], '', count=0)
+    overdue = [q for q in to_chase if q['chase_date'] < today]
+    n, n_late = len(to_chase), len(overdue)
+    parts = []
+    if n_late:
+        parts.append(f'{n_late} overdue')
+    if n - n_late:
+        parts.append(f'{n - n_late} due today')
+    detail = f"{n} quote{'s' if n != 1 else ''} to chase: {', '.join(parts)}"
+    return _result(reminder, 'overdue' if overdue else 'due',
+                   [q['chase_date'].isoformat() for q in to_chase], detail, count=n)
+
+
 # --- all together ---------------------------------------------------------------
 
 def all_reminders(today=None):
@@ -439,7 +481,7 @@ def all_reminders(today=None):
     today = today or london_today()
     out = []
     for checker, reminders in ((check, DAILY_REMINDERS), (check_weekly, WEEKLY_REMINDERS),
-                               (check_monthly, MONTHLY_REMINDERS)):
+                               (check_monthly, MONTHLY_REMINDERS), (check_quotes, QUOTE_REMINDERS)):
         for r in reminders:
             try:
                 out.append(checker(r, today))

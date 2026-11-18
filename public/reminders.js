@@ -2,8 +2,9 @@
 //
 // Asks /api/reminders what's due or missed (rules in reminders.py), then:
 //   - puts a number on the department tab: amber = due today, red = missed;
-//   - puts a dot on the menu item that needs doing, with a one-line reason
-//     underneath (visible when the tab is open);
+//   - puts a dot on the menu item that needs doing (or a number, for a
+//     reminder that counts things — PO Approvals' quotes to chase), with a
+//     one-line reason underneath (visible when the tab is open);
 //   - a daily reminder gets an "Ignore <day>" button per missing day, for a
 //     day that has no report at all (asks first; rules in skip_day());
 //   - a reminder with no menu item of its own gets its own line at the bottom
@@ -95,6 +96,16 @@
     note.appendChild(row);
   }
 
+  // A reminder that counts things (PO Approvals: quotes to chase) shows the
+  // number on its menu item instead of a dot.
+  function makeCount(item, cls) {
+    const badge = document.createElement('span');
+    badge.className = 'rem-badge ' + cls;
+    badge.textContent = item.count;
+    badge.title = item.detail;
+    return badge;
+  }
+
   function makeDot(item, cls) {
     const dot = document.createElement('span');
     dot.className = 'rem-dot ' + cls;
@@ -149,7 +160,7 @@
         const cls = i.status === 'overdue' ? 'rem-overdue' : 'rem-due';
         if (!i.href) { addOwnLine(dept, i, cls); return; }
         document.querySelectorAll(`a.nav-item[href="${i.href}"]`).forEach(link => {
-          link.appendChild(makeDot(i, cls));
+          link.appendChild(i.count ? makeCount(i, cls) : makeDot(i, cls));
           const note = makeNote(i, cls);
           addSkipButtons(note, i);
           link.insertAdjacentElement('afterend', note);
