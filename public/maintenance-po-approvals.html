@@ -143,6 +143,9 @@
   .attach-chip button { background: none; border: none; color: #888; font-size: 15px; line-height: 1; cursor: pointer; }
   .attach-chip button:hover { color: #c0392b; }
   #file-msg { margin-left: 10px; }
+  #add-form:not(.open) .import-bar { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  #add-done { margin-top: 10px; }
+  #add-done:empty { display: none; }
   .import-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px dashed #d6dbe2; }
   .field input.filled { background: #f2f8e8; border-color: #95C11F; }
   #add-panel.drop-hover { outline: 3px dashed #95C11F; outline-offset: -8px; background: #f2f8e8; }
@@ -267,20 +270,27 @@ function toggleNavGroup(name) {
   <div class="panel with-dept-bar" id="add-panel">
     <form id="add-form" autocomplete="off" onsubmit="saveNewQuote(event)">
       <div class="import-bar">
-        <button type="button" class="plain-btn" onclick="document.getElementById('pdf-input').click()">Import from PDF</button>
+        <button type="button" class="save-btn" onclick="document.getElementById('pdf-input').click()">Import from PDF</button>
         <input type="file" id="pdf-input" accept=".pdf,application/pdf" hidden onchange="importPdf(this.files[0]); this.value = '';">
-        <span class="hint">or drag a quote PDF onto this box. The Hub fills in what it finds &mdash; always check before saving.</span>
+        <button type="button" class="plain-btn" onclick="openAddForm(true)">Add new quote</button>
+        <span class="hint">Import a quote PDF (or drag one onto this box) and the Hub fills in what it finds &mdash; or add a new quote by typing it in.</span>
         <span class="form-status" id="import-msg"></span>
         <span class="attach-chip" id="add-attach" hidden>
           <span id="add-attach-name"></span> will be kept with this quote
           <button type="button" title="Don't keep this PDF" onclick="clearImportedFile()">&times;</button>
         </span>
       </div>
-      <div class="dup-banner" id="dup-banner" hidden></div>
-      <div id="add-fields"></div>
-      <div class="form-actions">
-        <button type="submit" class="save-btn" id="add-save-btn">Save quote</button>
-        <span class="form-status" id="add-msg"></span>
+      <div class="form-status" id="add-done"></div>
+      <!-- The quote boxes: closed until "Import from PDF" or "Add new quote"
+           is pressed, and closed again after Save or Cancel. -->
+      <div id="add-body" hidden>
+        <div class="dup-banner" id="dup-banner" hidden></div>
+        <div id="add-fields"></div>
+        <div class="form-actions">
+          <button type="submit" class="save-btn" id="add-save-btn">Save quote</button>
+          <button type="button" class="plain-btn" onclick="closeAddForm()">Cancel</button>
+          <span class="form-status" id="add-msg"></span>
+        </div>
       </div>
     </form>
   </div>
@@ -592,6 +602,23 @@ function fillFields(p, q) {
   showStatusFields(p);
 }
 
+// Show the quote boxes (after "Add new quote", or once an import has
+// been read). `focusFirst`: put the cursor in Supplier, ready to type.
+function openAddForm(focusFirst) {
+  document.getElementById('add-body').hidden = false;
+  document.getElementById('add-form').classList.add('open');
+  setStatus('add-done', '');
+  if (focusFirst) document.getElementById('add-supplier').focus();
+}
+
+// Empty the boxes and close them again (Cancel, or after saving).
+function closeAddForm() {
+  resetAddForm();
+  setStatus('add-msg', '');
+  document.getElementById('add-body').hidden = true;
+  document.getElementById('add-form').classList.remove('open');
+}
+
 function resetAddForm() {
   document.getElementById('add-form').reset();
   document.querySelectorAll('#add-fields .filled').forEach(el => el.classList.remove('filled'));
@@ -742,9 +769,9 @@ async function saveNewQuote(event) {
         kind = 'bad';
       }
     }
-    resetAddForm();
-    if (d.chase_date && kind === 'ok') setStatusWithOutlook('add-msg', message + '.', kind, d.id);
-    else setStatus('add-msg', message, kind);
+    closeAddForm();
+    if (d.chase_date && kind === 'ok') setStatusWithOutlook('add-done', message + '.', kind, d.id);
+    else setStatus('add-done', message, kind);
     loadQuotes();
   } catch (e) {
     setStatus('add-msg', 'Not saved: ' + e.message, 'bad');
@@ -771,6 +798,7 @@ async function importPdf(file) {
     const res = await fetch('/api/quotes/read-pdf', { method: 'POST', body: form });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
+    openAddForm(false);
     keepImportedFile(file);
     if (!d.text_found) {
       setStatus('import-msg', `${file.name} has no text to read (it may be a scan). Please type the details.`, 'bad');
@@ -843,8 +871,8 @@ async function updateWithNewVersion() {
     const res = await fetch(`/api/quotes/${Number(match.id)}/new-version`, { method: 'POST', body: form });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
-    resetAddForm();
-    setStatus('add-msg', `✓ ${match.supplier} ${match.quote_ref} updated. ${d.note}.`, 'ok');
+    closeAddForm();
+    setStatus('add-done', `✓ ${match.supplier} ${match.quote_ref} updated. ${d.note}.`, 'ok');
     await loadQuotes();
     openEdit(Number(match.id));
   } catch (e) {
