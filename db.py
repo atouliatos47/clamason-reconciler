@@ -1504,3 +1504,45 @@ def get_quote_files_usage():
             cur.execute("SELECT count(*), coalesce(sum(size_bytes), 0) FROM quote_files")
             count, total = cur.fetchone()
     return {'count': count, 'bytes': int(total)}
+
+
+def find_quote_by_ref(quote_ref):
+    """The most recent quote with this quote reference, or None. Spaces and
+    capitals are ignored, so 'fs 32264' finds 'FS32264'. Returns just
+    what the page needs to say which quote it found."""
+    if not quote_ref or not quote_ref.strip():
+        return None
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, supplier, description, quote_ref, amount, received_date, status
+                FROM quotes
+                WHERE upper(regexp_replace(quote_ref, '\\s', '', 'g'))
+                    = upper(regexp_replace(%(ref)s, '\\s', '', 'g'))
+                ORDER BY received_date DESC, id DESC
+                LIMIT 1
+            """, {'ref': quote_ref})
+            row = cur.fetchone()
+    return _quote_row(row) if row else None
+
+
+def set_quote_fields(quote_id, fields):
+    """Changes just the given columns of a quote (e.g. amount and
+    received_date when a new version of the quote arrives), leaving
+    everything else — status, chase date — exactly as it was. Only real
+    quote columns are accepted. Returns True if the quote exists."""
+    fields = {k: v for k, v in fields.items() if k in _QUOTE_COLUMNS}
+    if not fields:
+        return True
+    params = dict(fields, id=quote_id)
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                UPDATE quotes SET
+                    {', '.join(c + ' = %(' + c + ')s' for c in fields)},
+                    updated_at = now()
+                WHERE id = %(id)s
+            """, params)
+            found = cur.rowcount > 0
+        conn.commit()
+    return found

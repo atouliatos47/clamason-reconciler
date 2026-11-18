@@ -197,3 +197,39 @@ def status_change_note(old_status, new_status):
         return None
     return (f'Status: {STATUSES.get(old_status, old_status)} → '
             f'{STATUSES.get(new_status, new_status)}')
+
+
+def _money_text(amount):
+    return f'£{Decimal(str(amount)):,.2f}' if amount not in (None, '') else 'none'
+
+
+def _uk_date_text(iso):
+    return date.fromisoformat(str(iso)[:10]).strftime('%d/%m/%Y') if iso else 'none'
+
+
+def new_version_changes(existing, found, filename):
+    """A new version of a quote we already have (same quote reference) has
+    arrived as a PDF. Works out what to change on the saved quote and the
+    note to log.
+
+    Only the amount and the quote's date are taken from the new PDF —
+    the details that change when a supplier revises a quote. Status,
+    "sent to" and chase date stay as they were: the approval is still
+    in progress.
+
+    existing: the saved quote (from db.get_quote); found: what
+    parsers/quote_pdf.py read from the new PDF. Returns (changes, note).
+    """
+    changes, parts = {}, []
+    new_amount = found.get('amount')
+    if new_amount and (existing.get('amount') is None
+                       or Decimal(str(new_amount)) != Decimal(str(existing['amount']))):
+        changes['amount'] = Decimal(str(new_amount))
+        parts.append(f"amount {_money_text(existing.get('amount'))} → {_money_text(new_amount)}")
+    new_date = found.get('received_date')
+    if new_date and new_date != (existing.get('received_date') or '')[:10]:
+        changes['received_date'] = date.fromisoformat(new_date)
+        parts.append(f"date {_uk_date_text(existing.get('received_date'))} → {_uk_date_text(new_date)}")
+    note = f'New version of the quote added ({filename})'
+    note += ': ' + ', '.join(parts) if parts else ' — amount and date unchanged'
+    return changes, note

@@ -870,12 +870,22 @@ def list_quotes():
 def add_quote():
     """Save a new quote from the Add Quote form. Anything wrong with what
     was typed comes back as 'problems' (a list of messages) with status 400
-    and nothing saved."""
+    and nothing saved. If a quote with the same quote reference already
+    exists, it comes back as 'duplicate' with status 409 (Conflict) and
+    nothing saved — unless the page sends allow_duplicate, which it does
+    once the person has chosen "Add as a new quote"."""
     try:
         data = request.get_json(force=True, silent=True) or {}
         quote, problems = quotes_rules.clean_quote(data)
         if problems:
             return jsonify({'error': ' '.join(problems), 'problems': problems}), 400
+        if not data.get('allow_duplicate'):
+            match = _quote_match(quote['quote_ref'])
+            if match:
+                return jsonify({
+                    'error': f"You already have a quote with reference {match['quote_ref']}.",
+                    'duplicate': match,
+                }), 409
         quote_id = db.add_quote(quote)
         return jsonify({
             'saved': True,
@@ -908,6 +918,9 @@ def read_quote_pdf():
         with saved_upload(pdf_file, 'quote_pdf') as path:
             result = extract_quote_fields(path)
         result['filename'] = pdf_file.filename
+        # Already have a quote with this reference? The page then offers
+        # to update that one instead of adding the same quote twice.
+        result['match'] = _quote_match(result['fields'].get('quote_ref'))
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': f'Could not read that PDF ({e}).'}), 500
@@ -983,6 +996,46 @@ def delete_quote_note(quote_id, note_id):
         if not db.delete_quote_note(quote_id, note_id):
             return jsonify({'error': 'Note not found.'}), 404
         return jsonify({'deleted': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _quote_match(quote_ref):
+    """The saved quote with this reference, with its status as words, or
+    None. Used to spot the same quote being added twice."""
+    match = db.find_quote_by_ref(quote_ref)
+    if match:
+        match['status_label'] = quotes_rules.STATUSES.get(match['status'], match['status'])
+    return match
+
+
+@bp.route('/api/quotes/<int:quote_id>/new-version', methods=['POST'])
+def add_quote_new_version(quote_id):
+    """A revised quote (same reference) has arrived as a PDF: keep the new
+    PDF with the quote we already have, update its amount and date from
+    the PDF, and log what changed as a note. Status, sent to and chase
+    date are left alone — the approval is still in progress."""
+    import io
+    try:
+        existing = db.get_quote(quote_id)
+        if existing is None:
+            return jsonify({'error': 'Quote not found.'}), 404
+        pdf_file = request.files.get('pdf')
+        if not pdf_file or not pdf_file.filename:
+            return jsonify({'error': 'Choose a PDF file first.'}), 400
+        limit = QUOTE_FILE_MAX_MB * 1024 * 1024
+        data = pdf_file.stream.read(limit + 1)
+        if len(data) > limit:
+            return jsonify({'error': f'That PDF is too big to keep (max {QUOTE_FILE_MAX_MB} MB).'}), 400
+        if not data.startswith(b'%PDF'):
+            return jsonify({'error': 'That file is not a PDF.'}), 400
+        filename = _clean_filename(pdf_file.filename)
+        found = extract_quote_fields(io.BytesIO(data))['fields']
+        changes, note = quotes_rules.new_version_changes(existing, found, filename)
+        db.set_quote_fields(quote_id, changes)
+        db.add_quote_file(quote_id, filename, data)
+        db.add_quote_note(quote_id, quotes_rules.london_today(), note)
+        return jsonify({'saved': True, 'note': note})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

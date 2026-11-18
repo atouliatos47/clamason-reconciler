@@ -118,6 +118,8 @@
   .add-note input:focus { outline: none; border-color: #95C11F; }
   #note-msg { margin-top: 6px; }
 
+  .dup-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: #fff8e6; border: 1px solid #f0c36d; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; font-size: 13px; color: #5c4400; }
+  .dup-text { flex: 1 1 380px; }
   .money-box { position: relative; }
   .money-box span { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; font-weight: bold; color: #243547; pointer-events: none; }
   .field .money-box input { padding-left: 24px; }
@@ -258,6 +260,7 @@ function toggleNavGroup(name) {
           <button type="button" title="Don't keep this PDF" onclick="clearImportedFile()">&times;</button>
         </span>
       </div>
+      <div class="dup-banner" id="dup-banner" hidden></div>
       <div id="add-fields"></div>
       <div class="form-actions">
         <button type="submit" class="save-btn" id="add-save-btn">Save quote</button>
@@ -341,6 +344,9 @@ let APPROVERS = [];      // the "Sent to" names, from quotes.py
 let IMPORTED_FILE = null; // the PDF imported into the Add form, kept on Save
 let FILE_MAX_MB = 10;     // largest PDF the Hub keeps (from routes.py)
 let FILES_USAGE = null;   // how many PDFs are kept and their total size
+let DUP_MATCH = null;     // a saved quote with the same reference, if any
+let DUP_FROM_SAVE = false; // true if Save (not Import) found that match
+let ALLOW_DUP = false;    // you chose "Add as a new quote" anyway
 const OTHER = '__other'; // the "Other…" choice in that list
 const FINISHED = ['done', 'cancelled'];
 
@@ -536,6 +542,8 @@ function resetAddForm() {
   document.querySelectorAll('#add-fields .filled').forEach(el => el.classList.remove('filled'));
   setStatus('import-msg', '');
   clearImportedFile();
+  hideDuplicate();
+  ALLOW_DUP = false;
   document.getElementById('add-received_date').value = todayISO();
   document.getElementById('add-status').value = 'received';
   syncApproverPick('add');
@@ -626,7 +634,7 @@ function renderQuotes() {
 }
 
 async function saveNewQuote(event) {
-  event.preventDefault();
+  if (event) event.preventDefault();
   const btn = document.getElementById('add-save-btn');
   btn.disabled = true;
   setStatus('add-msg', 'Saving…');
@@ -634,9 +642,16 @@ async function saveNewQuote(event) {
     const res = await fetch('/api/quotes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(readFields('add')),
+      body: JSON.stringify(Object.assign(readFields('add'), { allow_duplicate: ALLOW_DUP })),
     });
     const d = await res.json();
+    if (res.status === 409 && d.duplicate) {
+      // Same quote reference as one we already have: nothing was saved.
+      showDuplicate(d.duplicate, true);
+      setStatus('add-msg', 'Not saved yet — choose what to do in the yellow box above.', 'bad');
+      btn.disabled = false;
+      return;
+    }
     if (d.error) throw new Error(d.error);
     let message = '✓ Saved' + (d.chase_date ? ` — chase on ${ukDate(d.chase_date)}` : '');
     let kind = 'ok';
@@ -669,6 +684,8 @@ const IMPORT_LABELS = { supplier: 'Supplier', quote_ref: 'Quote ref', received_d
 async function importPdf(file) {
   if (!file) return;
   if (!/\.pdf$/i.test(file.name)) { setStatus('import-msg', 'That is not a PDF file.', 'bad'); return; }
+  hideDuplicate();          // a new import starts fresh
+  ALLOW_DUP = false;
   setStatus('import-msg', `Reading ${file.name}…`);
   const form = new FormData();
   form.append('pdf', file);
@@ -692,8 +709,13 @@ async function importPdf(file) {
       box.classList.add('filled');
       filled.push(IMPORT_LABELS[key]);
     });
+    if (d.match) {
+      showDuplicate(d.match, false);
+    }
     if (!filled.length) {
       setStatus('import-msg', `Couldn't find the details in ${file.name}. Please type them.`, 'bad');
+    } else if (d.match) {
+      setStatus('import-msg', `Filled from ${file.name}: ${filled.join(', ')}.`, 'ok');
     } else {
       setStatus('import-msg', `Filled from ${file.name}: ${filled.join(', ')}. Check them, then add what it's for.`, 'ok');
       document.getElementById('add-description').focus();
@@ -701,6 +723,65 @@ async function importPdf(file) {
   } catch (e) {
     setStatus('import-msg', 'Could not read the PDF: ' + e.message, 'bad');
   }
+}
+
+// ---------------------------------------------------------------------------
+// Same quote twice. A quote reference we already have means this is either
+// the same quote again or a revised version of it. With a PDF, the Hub can
+// add it to the saved quote as its newest version; without one, it offers
+// to open the saved quote. Either way you can still add it as a new quote.
+// ---------------------------------------------------------------------------
+function showDuplicate(match, fromSave) {
+  DUP_MATCH = match;
+  DUP_FROM_SAVE = fromSave;
+  const details = [match.quote_ref, match.status_label,
+                   match.amount ? money(match.amount) : '', ukDate(match.received_date)]
+    .filter(Boolean).map(esc).join(' · ');
+  const main = IMPORTED_FILE
+    ? `<button type="button" class="save-btn" onclick="updateWithNewVersion()">Update that quote with this PDF</button>`
+    : `<button type="button" class="save-btn" onclick="openEdit(${Number(match.id)})">Open that quote</button>`;
+  const banner = document.getElementById('dup-banner');
+  banner.innerHTML = `
+    <span class="dup-text">You already have this quote: <b>${esc(match.supplier)} — ${esc(match.description)}</b>
+      <span class="muted">(${details})</span></span>
+    ${main}
+    <button type="button" class="plain-btn" onclick="addAsNew()">Add as a new quote</button>`;
+  banner.hidden = false;
+}
+
+function hideDuplicate() {
+  DUP_MATCH = null;
+  document.getElementById('dup-banner').hidden = true;
+}
+
+// Keep this PDF as the newest version of the quote we already have. The
+// server updates its amount and date from the PDF and logs the changes.
+async function updateWithNewVersion() {
+  const match = DUP_MATCH;
+  if (!match || !IMPORTED_FILE) return;
+  const form = new FormData();
+  form.append('pdf', IMPORTED_FILE);
+  try {
+    const res = await fetch(`/api/quotes/${Number(match.id)}/new-version`, { method: 'POST', body: form });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    resetAddForm();
+    setStatus('add-msg', `✓ ${match.supplier} ${match.quote_ref} updated. ${d.note}.`, 'ok');
+    await loadQuotes();
+    openEdit(Number(match.id));
+  } catch (e) {
+    setStatus('add-msg', 'Not updated: ' + e.message, 'bad');
+  }
+}
+
+// It really is a different quote: save it as a new one. If Save is what
+// found the match, save straight away; after an import, just carry on.
+function addAsNew() {
+  ALLOW_DUP = true;
+  const fromSave = DUP_FROM_SAVE;
+  hideDuplicate();
+  setStatus('add-msg', '');
+  if (fromSave) saveNewQuote();
 }
 
 // The imported PDF is kept with the quote when it's saved. Bigger than

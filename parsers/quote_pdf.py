@@ -43,7 +43,9 @@ _MONEY = r'([\d]{1,3}(?:,\d{3})*(?:\.\d{2})|\d+\.\d{2})'
 
 
 def read_pdf_text(path):
-    """All the text in the first MAX_PAGES pages, or '' if there is none."""
+    """All the text in the first MAX_PAGES pages, or '' if there is none.
+    `path` can be a file's path or the file itself held in memory
+    (io.BytesIO) — pdfplumber reads either."""
     with pdfplumber.open(path) as pdf:
         parts = [(page.extract_text() or '') for page in pdf.pages[:MAX_PAGES]]
     return '\n'.join(parts)
@@ -164,7 +166,8 @@ def find_supplier(text):
 # --- all together ----------------------------------------------------------------
 
 def extract_quote_fields(path):
-    """Everything this file can find in one quote PDF.
+    """Everything this file can find in one quote PDF (a path, or the file
+    in memory as io.BytesIO).
 
     Returns {'text_found': bool, 'fields': {...}} where fields only holds
     the details that were found: supplier, quote_ref, received_date
