@@ -37,7 +37,6 @@ from daily_trend import (
     weekly_rollup, monthly_rollup,
     sfc_daily_rollup, sfc_weekly_rollup, sfc_monthly_rollup,
     oee_daily_rollup, oee_weekly_rollup, oee_monthly_rollup,
-    attach_production_plan,
     apply_sfc_monthly_history, load_production_sfc_history,
     sfc_yearly_rollup_with_history,
     apply_oee_monthly_history, load_daily_oee_history,
@@ -45,7 +44,6 @@ from daily_trend import (
 )
 from parsers.sfc_daily_downtime_pdf import parse_daily_downtime_pdf
 from parsers.sfc_daily_unplanned_pdf import parse_daily_unplanned_pdf, merge_machine_breakdown
-from parsers.production_plan_xlsx import parse_production_plan
 from parsers.open_jobs_parser import summarise_open_jobs
 from parsers.quote_pdf import extract_quote_fields
 import db
@@ -648,7 +646,6 @@ def daily_oee_trend():
         end = request.args.get('end') or None
         snapshots = db.get_oee_daily_snapshots(start_date=start, end_date=end)
         weekly = oee_weekly_rollup(snapshots)
-        attach_production_plan(weekly, db.get_production_plan_weeks())
         # Monthly also gets the whole-month history (history/daily_oee_monthly.json,
         # months from before the Daily OEE uploads) — see
         # daily_trend.apply_oee_monthly_history.
@@ -756,11 +753,6 @@ def delete_daily_oee_month():
         return jsonify({'error': str(e), 'trace': traceback.format_exc()})
 
 
-@bp.route('/production-plan')
-def production_plan_view():
-    return send_from_directory('public', 'production-plan.html')
-
-
 @bp.route('/tpm-schedule')
 def tpm_schedule_view():
     return send_from_directory('public', 'tpm-schedule.html')
@@ -772,7 +764,7 @@ def maintenance_personnel_view():
 
 
 # --- Open Jobs (Maintenance, weekly) ------------------------------------------
-# Same check-then-save shape as the Production Plan: /api/open-jobs-check
+# Same check-then-save shape as Daily OEE: /api/open-jobs-check
 # only reads the file and shows the result; /api/save-open-jobs is the only
 # route that writes, and reads the file again itself rather than trusting
 # what the browser already has. Both read it "as of" today at Clamason, and
@@ -1177,70 +1169,6 @@ def splash_view():
     return send_from_directory('public', 'splash.html')
 
 
-@bp.route('/api/production-plan-check', methods=['POST'])
-def production_plan_check():
-    """Weekly Production Plan check — same shape as /api/daily-oee-check:
-    parses and returns a preview, never saves. /api/save-production-plan
-    below is the only route that writes.
-
-    Deliberately does not touch the workbook's own Hours Required
-    column (broken — wrong lookup table, see the WK30 investigation)
-    or the OEE-adjusted OEE HRS REQ'D column. Sums Planned and
-    Available Run Hrs directly, which is what was actually asked for
-    and what parse_production_plan() computes."""
-    try:
-        plan_file = request.files.get('production_plan')
-        if not plan_file:
-            return jsonify({'error': 'Production Plan file is required'})
-
-        with saved_upload(plan_file, 'production_plan') as path:
-            result = parse_production_plan(path)
-        result['filename'] = plan_file.filename
-        return jsonify(result)
-    except ValueError as e:
-        return jsonify({'error': str(e)})
-    except Exception as e:
-        import traceback
-        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
-
-
-@bp.route('/api/save-production-plan', methods=['POST'])
-def save_production_plan():
-    """Deliberately separate from /api/production-plan-check, same
-    reasoning as /api/save-daily-oee: never auto-saves, and recomputes
-    from the uploaded file rather than trusting whatever the browser
-    already has, so the saved row can never drift from a fresh check.
-
-    Whatever date is picked gets snapped to that week's Monday before
-    saving — same convention _week_key() in daily_trend.py already
-    uses for every other weekly bucket in this app. Picking Wednesday
-    of the intended week still saves correctly."""
-    try:
-        from datetime import date as date_cls, timedelta
-        week_start_raw = request.form.get('week_start', '').strip()
-        if not week_start_raw:
-            return jsonify({'error': 'week_start is required (YYYY-MM-DD, any day in the plan week)'})
-        picked = date_cls.fromisoformat(week_start_raw)
-        week_start = (picked - timedelta(days=picked.weekday())).isoformat()
-
-        plan_file = request.files.get('production_plan')
-        if not plan_file:
-            return jsonify({'error': 'Production Plan file is required'})
-
-        with saved_upload(plan_file, 'production_plan') as path:
-            result = parse_production_plan(path)
-        db.save_production_plan_week(result, week_start, plan_file.filename)
-        return jsonify({
-            'saved': True, 'week_start': week_start,
-            'plan_quantity': result['plan_quantity'], 'plan_hours': result['plan_hours'],
-        })
-    except ValueError as e:
-        return jsonify({'error': str(e)})
-    except Exception as e:
-        import traceback
-        return jsonify({'error': str(e), 'trace': traceback.format_exc()})
-
-
 @bp.route('/board-review')
 def board_review_view():
     return send_from_directory('public', 'board-review.html')
@@ -1509,7 +1437,7 @@ def _parse_personnel_uploads():
 
 @bp.route('/api/personnel-check', methods=['POST'])
 def personnel_check():
-    """Personnel PPM performance — same shape as /api/production-plan-check:
+    """Personnel PPM performance — same shape as /api/daily-oee-check:
     parses and returns a preview, never saves. /api/save-personnel below
     is the only route that writes. period/period_label come back too,
     read from the file itself, so the page can show which month this

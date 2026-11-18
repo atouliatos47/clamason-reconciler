@@ -432,6 +432,11 @@ CREATE TABLE IF NOT EXISTS oee_daily_snapshots (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_oee_daily_snapshots_date ON oee_daily_snapshots (date);
 
+-- NO LONGER USED since 18 Nov 2026: the Production Plan page was removed
+-- (Matt no longer needs it). The table and the weeks already saved are
+-- kept on purpose — nothing reads or writes them now, and deleting data
+-- can't be undone. The page's code is in git history if it's wanted back.
+--
 -- Matt's WK30-style production plan workbook, imported once a week.
 -- One row per week, not per day — the source is already a weekly
 -- figure, so there's no daily granularity to roll up the way OEE

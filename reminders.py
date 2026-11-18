@@ -29,8 +29,8 @@ from the start of the report's own period instead — see oee_production_days().
 
 WEEKLY — each week should have a row for its Monday
 ---------------------------------------------------
-The Production Plan page snaps whatever day is picked to that week's
-Monday. "Due" on the week's first working day (normally Monday), "overdue"
+Saved under the week's Monday (Open Jobs files each upload under the
+current week's Monday). "Due" on the week's first working day (normally Monday), "overdue"
 after that. A week with no working days at all (Christmas) is skipped.
 A reminder the hub can't check by itself, because nothing is uploaded for
 it, can have a "Mark as done" button instead ('ack': True); mark_done()
@@ -177,14 +177,6 @@ DAILY_REMINDERS = [
 ]
 
 WEEKLY_REMINDERS = [
-    {
-        'id': 'production-plan',
-        'dept': 'production',
-        'label': 'Production Plan',
-        'href': '/production-plan',
-        'saved_weeks': lambda start_date, end_date: [
-            r['week_start'] for r in db.get_production_plan_weeks(start_date=start_date, end_date=end_date)],
-    },
     {
         # Monday look at open and overdue jobs in Agility (Selective Work
         # Orders, all statuses, due 01/01/2025 -> 31/12 this year), saved on
