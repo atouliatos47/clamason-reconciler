@@ -406,9 +406,11 @@ function sizeText(bytes) {
 }
 
 // A status message followed by "Add reminder to Outlook" for a quote.
-// The main link opens Outlook on the web in a new tab, with the chase
-// appointment already filled in, in your own calendar — click Save. The
-// small "download file" link is the backup: a calendar file (.ics).
+// The link opens Outlook on the web in a new tab, with the chase
+// appointment already filled in, in your own calendar — click Save.
+// (A calendar-file download used to sit next to it as a backup; removed
+// 18 Nov 2026 because opening .ics files on the work laptop wasn't
+// reliable. The route /api/quotes/<id>/outlook-reminder still exists.)
 function setStatusWithOutlook(id, text, kind, quoteId) {
   setStatus(id, text + ' ', kind);
   document.getElementById(id).insertAdjacentHTML('beforeend', outlookLinks(quoteId));
@@ -416,8 +418,7 @@ function setStatusWithOutlook(id, text, kind, quoteId) {
 
 function outlookLinks(quoteId) {
   const q = Number(quoteId);
-  return `<a class="outlook-link" href="/api/quotes/${q}/outlook-web" target="_blank" rel="noopener">Add reminder to Outlook</a>
-    <a class="small-link" href="/api/quotes/${q}/outlook-reminder" title="Backup: a calendar file to open in Outlook">(download file)</a>`;
+  return `<a class="outlook-link" href="/api/quotes/${q}/outlook-web" target="_blank" rel="noopener">Add reminder to Outlook</a>`;
 }
 
 function isToChase(q, today) {
@@ -955,7 +956,6 @@ function renderChaseBar(q) {
       Chase ${late ? '<b>now</b> — due ' : 'on '}<b>${ukDate(q.chase_date)}</b>.</span>
     <button type="button" class="save-btn" onclick="chasedToday(${Number(q.id)})">Chased today</button>
     <a class="plain-btn" href="/api/quotes/${Number(q.id)}/outlook-web" target="_blank" rel="noopener">Add reminder to Outlook</a>
-    <a class="small-link" href="/api/quotes/${Number(q.id)}/outlook-reminder" title="Backup: a calendar file to open in Outlook">(download file)</a>
     <span class="form-status" id="chase-msg"></span>`;
   bar.hidden = false;
 }
