@@ -433,7 +433,7 @@ def check_monthly(reminder, today):
 # Not an upload: a quote sent for approval whose chase date has come. "Due"
 # (amber) when a chase date is today, "overdue" (red) once one has passed.
 # Cleared by chasing it ("Chased today" moves the chase date on) or by the
-# quote moving on (approved, PO raised...). 'count' tells reminders.js to
+# quote moving on (approved, PO sent...). 'count' tells reminders.js to
 # show the NUMBER of quotes on the menu item instead of a plain dot.
 
 QUOTE_REMINDERS = [

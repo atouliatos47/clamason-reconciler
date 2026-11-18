@@ -35,7 +35,7 @@ STATUSES = {
     'received':  'Quote received',
     'sent':      'Sent for approval',
     'approved':  'Approved',
-    'po_raised': 'PO raised',
+    'po_sent':   'PO sent to supplier',
     'done':      'Done',
     'cancelled': 'Cancelled',
 }
@@ -181,7 +181,7 @@ def clean_quote(data):
         if quote['chase_date'] is None:
             quote['chase_date'] = chase_date_after(quote['sent_date'])
     else:
-        # Not sent yet, or already past waiting (approved, PO raised, done,
+        # Not sent yet, or already past waiting (approved, PO sent, done,
         # cancelled): nothing to chase, so no chase date. Moving a quote
         # back to "sent" gives it a fresh one.
         quote['chase_date'] = None

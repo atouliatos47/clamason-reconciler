@@ -548,7 +548,8 @@ CREATE TABLE IF NOT EXISTS open_jobs_weekly (
 --
 -- status is plain text, checked in Python rather than by the database, so a
 -- new stage can be added later without changing this table. The stages:
---   received -> sent (for approval) -> approved -> po_raised -> done
+--   received -> sent (for approval) -> approved -> po_sent (PO sent to
+--   the supplier) -> done
 --   cancelled  (the quote isn't going ahead)
 -- chase_date is when to chase the approval. The app fills it in as
 -- sent_date + 2 working days when a quote is marked "sent", and it can be
@@ -574,6 +575,12 @@ CREATE TABLE IF NOT EXISTS quotes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_quotes_status_chase ON quotes (status, chase_date);
+
+-- 18 Nov 2026: the stage 'po_raised' ("PO raised") became 'po_sent' ("PO sent
+-- to supplier") — at Clamason the PO exists before approval, so the step
+-- after approval is sending it to the supplier. Moves any quote still on the
+-- old name; after the first run there are none, so it changes nothing.
+UPDATE quotes SET status = 'po_sent' WHERE status = 'po_raised';
 
 -- quote_notes — the log of what was done with each quote ("18/11 chased
 -- Paul"). Many notes per quote, so they live in their own table and point
