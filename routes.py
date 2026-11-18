@@ -858,6 +858,8 @@ def list_quotes():
             'quotes': db.get_quotes(),
             'statuses': [{'key': k, 'label': v} for k, v in quotes_rules.STATUSES.items()],
             'approvers': quotes_rules.APPROVERS,
+            'files_usage': db.get_quote_files_usage(),
+            'file_max_mb': QUOTE_FILE_MAX_MB,
             'chase_after_working_days': quotes_rules.CHASE_AFTER_WORKING_DAYS,
         })
     except Exception as e:
@@ -980,6 +982,72 @@ def delete_quote_note(quote_id, note_id):
     try:
         if not db.delete_quote_note(quote_id, note_id):
             return jsonify({'error': 'Note not found.'}), 404
+        return jsonify({'deleted': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# Stored quote PDFs. Kept smaller than the 20 MB the reader accepts: every
+# stored file uses up the database's space, and quote PDFs are rarely
+# more than 1-2 MB.
+QUOTE_FILE_MAX_MB = 10
+
+
+def _clean_filename(name):
+    """Just the file's own name — no folder path (some browsers send
+    'C:\\Users\\...\\quote.pdf'), no control characters, not too long."""
+    name = (name or '').replace('\\', '/').rsplit('/', 1)[-1]
+    name = re.sub(r'[\x00-\x1f\x7f]', '', name).strip() or 'quote.pdf'
+    if not name.lower().endswith('.pdf'):
+        name += '.pdf'
+    return name[-200:]
+
+
+@bp.route('/api/quotes/<int:quote_id>/files', methods=['POST'])
+def add_quote_file(quote_id):
+    """Keep a copy of a quote's PDF in the Hub."""
+    try:
+        pdf_file = request.files.get('pdf')
+        if not pdf_file or not pdf_file.filename:
+            return jsonify({'error': 'Choose a PDF file first.'}), 400
+        limit = QUOTE_FILE_MAX_MB * 1024 * 1024
+        data = pdf_file.stream.read(limit + 1)
+        if len(data) > limit:
+            return jsonify({'error': f'That PDF is too big to keep (max {QUOTE_FILE_MAX_MB} MB).'}), 400
+        if not data.startswith(b'%PDF'):
+            return jsonify({'error': 'That file is not a PDF.'}), 400
+        file_id = db.add_quote_file(quote_id, _clean_filename(pdf_file.filename), data)
+        if file_id is None:
+            return jsonify({'error': 'Quote not found.'}), 404
+        return jsonify({'saved': True, 'id': file_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/quotes/<int:quote_id>/files/<int:file_id>', methods=['GET'])
+def open_quote_file(quote_id, file_id):
+    """Open a stored PDF in the browser's own PDF viewer. 'nosniff' tells
+    the browser to treat it strictly as a PDF and nothing else."""
+    import io
+    try:
+        stored = db.get_quote_file(quote_id, file_id)
+        if stored is None:
+            return jsonify({'error': 'File not found.'}), 404
+        response = send_file(io.BytesIO(stored['data']), mimetype='application/pdf',
+                             as_attachment=False, download_name=stored['filename'])
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['Cache-Control'] = 'private, max-age=0'
+        return response
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/quotes/<int:quote_id>/files/<int:file_id>', methods=['DELETE'])
+def delete_quote_file(quote_id, file_id):
+    """Delete one stored PDF."""
+    try:
+        if not db.delete_quote_file(quote_id, file_id):
+            return jsonify({'error': 'File not found.'}), 404
         return jsonify({'deleted': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500

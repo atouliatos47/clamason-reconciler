@@ -118,6 +118,13 @@
   .add-note input:focus { outline: none; border-color: #95C11F; }
   #note-msg { margin-top: 6px; }
 
+  .money-box { position: relative; }
+  .money-box span { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; font-weight: bold; color: #243547; pointer-events: none; }
+  .field .money-box input { padding-left: 24px; }
+  .attach-chip { display: inline-flex; align-items: center; gap: 6px; background: #eef1f5; border: 1px solid #d6dbe2; border-radius: 14px; padding: 3px 6px 3px 12px; font-size: 12px; color: #243547; }
+  .attach-chip button { background: none; border: none; color: #888; font-size: 15px; line-height: 1; cursor: pointer; }
+  .attach-chip button:hover { color: #c0392b; }
+  #file-msg { margin-left: 10px; }
   .import-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px dashed #d6dbe2; }
   .field input.filled { background: #f2f8e8; border-color: #95C11F; }
   #add-panel.drop-hover { outline: 3px dashed #95C11F; outline-offset: -8px; background: #f2f8e8; }
@@ -246,6 +253,10 @@ function toggleNavGroup(name) {
         <input type="file" id="pdf-input" accept=".pdf,application/pdf" hidden onchange="importPdf(this.files[0]); this.value = '';">
         <span class="hint">or drag a quote PDF onto this box. The Hub fills in what it finds &mdash; always check before saving.</span>
         <span class="form-status" id="import-msg"></span>
+        <span class="attach-chip" id="add-attach" hidden>
+          <span id="add-attach-name"></span> will be kept with this quote
+          <button type="button" title="Don't keep this PDF" onclick="clearImportedFile()">&times;</button>
+        </span>
       </div>
       <div id="add-fields"></div>
       <div class="form-actions">
@@ -301,6 +312,14 @@ function toggleNavGroup(name) {
     </form>
 
     <div class="notes-section">
+      <div class="field-title">Quote PDFs</div>
+      <ul class="notes-list" id="files-list"></ul>
+      <button type="button" class="plain-btn" onclick="document.getElementById('edit-pdf-input').click()">Attach a PDF</button>
+      <input type="file" id="edit-pdf-input" accept=".pdf,application/pdf" hidden onchange="attachPdf(this.files[0]); this.value = '';">
+      <span class="form-status" id="file-msg"></span>
+    </div>
+
+    <div class="notes-section">
       <div class="field-title">Notes</div>
       <ul class="notes-list" id="notes-list"></ul>
       <div class="add-note">
@@ -319,6 +338,9 @@ let STATUS_LIST = [];    // the same, in order, for the drop-downs
 let ALL_QUOTES = [];     // everything from the server; the tick box filters it
 let EDIT_ID = null;      // the quote open in the Update window
 let APPROVERS = [];      // the "Sent to" names, from quotes.py
+let IMPORTED_FILE = null; // the PDF imported into the Add form, kept on Save
+let FILE_MAX_MB = 10;     // largest PDF the Hub keeps (from routes.py)
+let FILES_USAGE = null;   // how many PDFs are kept and their total size
 const OTHER = '__other'; // the "Other…" choice in that list
 const FINISHED = ['done', 'cancelled'];
 
@@ -347,6 +369,11 @@ function ukDate(iso) {
 function money(amount) {
   if (amount == null || amount === '') return '';
   return '£' + Number(amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function sizeText(bytes) {
+  if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
 
 function setStatus(id, text, kind) {
@@ -378,8 +405,8 @@ function fieldsHTML(p, withNote) {
     </div>
 
     <div class="field">
-      <label for="${p}-amount">Amount (£, net)</label>
-      <input type="text" id="${p}-amount" inputmode="decimal" placeholder="e.g. 1250.00">
+      <label for="${p}-amount">Amount (net)</label>
+      <div class="money-box"><span>£</span><input type="text" id="${p}-amount" inputmode="decimal" placeholder="1250.00"></div>
     </div>
     <div class="field">
       <label for="${p}-quote_ref">Quote ref</label>
@@ -508,6 +535,7 @@ function resetAddForm() {
   document.getElementById('add-form').reset();
   document.querySelectorAll('#add-fields .filled').forEach(el => el.classList.remove('filled'));
   setStatus('import-msg', '');
+  clearImportedFile();
   document.getElementById('add-received_date').value = todayISO();
   document.getElementById('add-status').value = 'received';
   syncApproverPick('add');
@@ -535,6 +563,8 @@ async function loadQuotes() {
       resetAddForm();
     }
     ALL_QUOTES = d.quotes;
+    FILES_USAGE = d.files_usage;
+    FILE_MAX_MB = d.file_max_mb || FILE_MAX_MB;
     renderQuotes();
   } catch (e) {
     document.getElementById('quotes-empty').textContent = 'Could not load quotes: ' + e.message;
@@ -547,8 +577,11 @@ function renderQuotes() {
   const finished = ALL_QUOTES.filter(q => FINISHED.includes(q.status)).length;
   const quotes = showFinished ? ALL_QUOTES : ALL_QUOTES.filter(q => !FINISHED.includes(q.status));
 
-  document.getElementById('quote-count').textContent = ALL_QUOTES.length
-    ? `${ALL_QUOTES.length - finished} open · ${finished} finished` : '';
+  let countText = ALL_QUOTES.length ? `${ALL_QUOTES.length - finished} open · ${finished} finished` : '';
+  if (FILES_USAGE && FILES_USAGE.count) {
+    countText += ` · ${FILES_USAGE.count} PDF${FILES_USAGE.count === 1 ? '' : 's'} kept (${sizeText(FILES_USAGE.bytes)})`;
+  }
+  document.getElementById('quote-count').textContent = countText;
   const empty = document.getElementById('quotes-empty');
   empty.hidden = quotes.length > 0;
   empty.textContent = ALL_QUOTES.length
@@ -561,9 +594,17 @@ function renderQuotes() {
     let chaseClass = '';
     if (q.status === 'sent' && q.chase_date) chaseClass = q.chase_date <= today ? 'chase-due' : '';
     const chase = q.status === 'sent' ? ukDate(q.chase_date) : '';
-    // Only real web links become clickable (the server checks this too).
-    const link = /^https?:\/\//i.test(q.file_link || '')
-      ? `<a href="${esc(q.file_link)}" target="_blank" rel="noopener noreferrer">Open</a>` : '';
+    // The newest kept PDF opens from the Hub; a OneDrive link opens from
+    // OneDrive. Only real web links become clickable (the server checks too).
+    const links = [];
+    if (q.latest_file_id) {
+      links.push(`<a href="/api/quotes/${Number(q.id)}/files/${Number(q.latest_file_id)}" target="_blank" rel="noopener">PDF</a>`
+        + (q.file_count > 1 ? ` <span class="muted">(${Number(q.file_count)})</span>` : ''));
+    }
+    if (/^https?:\/\//i.test(q.file_link || '')) {
+      links.push(`<a href="${esc(q.file_link)}" target="_blank" rel="noopener noreferrer">Link</a>`);
+    }
+    const link = links.join('<br>');
     const notes = q.latest_note
       ? esc(q.latest_note) + (q.note_count > 1 ? ` <span class="muted">(+${q.note_count - 1} more)</span>` : '')
       : '';
@@ -597,8 +638,20 @@ async function saveNewQuote(event) {
     });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
-    setStatus('add-msg', '✓ Saved' + (d.chase_date ? ` — chase on ${ukDate(d.chase_date)}` : ''), 'ok');
+    let message = '✓ Saved' + (d.chase_date ? ` — chase on ${ukDate(d.chase_date)}` : '');
+    let kind = 'ok';
+    // The quote is saved first, so it has an id; then its PDF goes with it.
+    if (IMPORTED_FILE) {
+      try {
+        await uploadPdf(d.id, IMPORTED_FILE);
+        message += ', with its PDF';
+      } catch (e) {
+        message += `, but the PDF wasn't kept: ${e.message} You can attach it with Update.`;
+        kind = 'bad';
+      }
+    }
     resetAddForm();
+    setStatus('add-msg', message, kind);
     loadQuotes();
   } catch (e) {
     setStatus('add-msg', 'Not saved: ' + e.message, 'bad');
@@ -623,6 +676,7 @@ async function importPdf(file) {
     const res = await fetch('/api/quotes/read-pdf', { method: 'POST', body: form });
     const d = await res.json();
     if (d.error) throw new Error(d.error);
+    keepImportedFile(file);
     if (!d.text_found) {
       setStatus('import-msg', `${file.name} has no text to read (it may be a scan). Please type the details.`, 'bad');
       return;
@@ -649,6 +703,34 @@ async function importPdf(file) {
   }
 }
 
+// The imported PDF is kept with the quote when it's saved. Bigger than
+// the Hub keeps? Then it's only read, not kept, and the chip says nothing.
+function keepImportedFile(file) {
+  if (file.size > FILE_MAX_MB * 1024 * 1024) {
+    clearImportedFile();
+    return;
+  }
+  IMPORTED_FILE = file;
+  document.getElementById('add-attach-name').textContent = `${file.name} (${sizeText(file.size)})`;
+  document.getElementById('add-attach').hidden = false;
+}
+
+function clearImportedFile() {
+  IMPORTED_FILE = null;
+  document.getElementById('add-attach').hidden = true;
+}
+
+// Send one PDF to be kept with quote `quoteId`. Throws with the server's
+// message if it's refused (too big, not a PDF).
+async function uploadPdf(quoteId, file) {
+  const form = new FormData();
+  form.append('pdf', file);
+  const res = await fetch(`/api/quotes/${quoteId}/files`, { method: 'POST', body: form });
+  const d = await res.json();
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
 // A green box goes back to normal once you change it yourself.
 document.addEventListener('input', e => {
   if (e.target.classList && e.target.classList.contains('filled')) e.target.classList.remove('filled');
@@ -673,6 +755,7 @@ async function openEdit(id) {
   EDIT_ID = id;
   setStatus('edit-msg', '');
   setStatus('note-msg', '');
+  setStatus('file-msg', '');
   document.getElementById('note-text').value = '';
   document.getElementById('note-date').value = todayISO();
   if (await loadEdit()) document.getElementById('edit-dialog').showModal();
@@ -688,6 +771,7 @@ async function loadEdit(keepFields) {
     const q = d.quote;
     document.getElementById('edit-title').textContent = `${q.supplier} — ${q.description}`;
     if (!keepFields) fillFields('edit', q);
+    renderFiles(q.files);
     renderNotes(q.notes);
     return true;
   } catch (e) {
@@ -698,6 +782,44 @@ async function loadEdit(keepFields) {
 
 function closeEdit() {
   document.getElementById('edit-dialog').close();
+}
+
+function renderFiles(files) {
+  document.getElementById('files-list').innerHTML = files.length
+    ? files.map(f => `<li>
+        <span class="note-date">${ukDate(f.uploaded_at)}</span>
+        <span class="note-text"><a href="/api/quotes/${Number(EDIT_ID)}/files/${Number(f.id)}" target="_blank" rel="noopener">${esc(f.filename)}</a>
+          <span class="muted">${sizeText(f.size_bytes)}</span></span>
+        <button type="button" class="note-del" title="Delete this PDF" onclick="deleteFile(${Number(f.id)})">&times;</button>
+      </li>`).join('')
+    : '<li class="muted">No PDF kept for this quote.</li>';
+}
+
+async function attachPdf(file) {
+  if (!file) return;
+  setStatus('file-msg', `Saving ${file.name}…`);
+  try {
+    await uploadPdf(EDIT_ID, file);
+    setStatus('file-msg', '✓ PDF kept', 'ok');
+    await loadEdit(true);
+    loadQuotes();
+  } catch (e) {
+    setStatus('file-msg', 'Not kept: ' + e.message, 'bad');
+  }
+}
+
+async function deleteFile(fileId) {
+  if (!confirm('Delete this PDF from the Hub? (Your copy in OneDrive is not affected.)')) return;
+  try {
+    const res = await fetch(`/api/quotes/${EDIT_ID}/files/${fileId}`, { method: 'DELETE' });
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    setStatus('file-msg', '✓ PDF deleted', 'ok');
+    await loadEdit(true);
+    loadQuotes();
+  } catch (e) {
+    setStatus('file-msg', 'Not deleted: ' + e.message, 'bad');
+  }
 }
 
 function renderNotes(notes) {

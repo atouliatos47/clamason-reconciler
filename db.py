@@ -1324,7 +1324,7 @@ def _quote_row(row):
     Flask would otherwise turn a date into a long web-style date."""
     r = dict(row)
     for key in ('received_date', 'sent_date', 'chase_date', 'note_date',
-                'created_at', 'updated_at'):
+                'created_at', 'updated_at', 'uploaded_at'):
         if r.get(key) is not None:
             r[key] = r[key].isoformat()
     if r.get('amount') is not None:
@@ -1334,7 +1334,8 @@ def _quote_row(row):
 
 def get_quotes():
     """Every quote, newest first, each with its latest note and how many
-    notes it has."""
+    notes it has, and how many PDFs it has plus the id of the newest one
+    (for the list's PDF link). The PDF data itself is never read here."""
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
@@ -1343,7 +1344,12 @@ def get_quotes():
                          WHERE n.quote_id = q.id) AS note_count,
                        (SELECT n.note FROM quote_notes n
                          WHERE n.quote_id = q.id
-                         ORDER BY n.note_date DESC, n.id DESC LIMIT 1) AS latest_note
+                         ORDER BY n.note_date DESC, n.id DESC LIMIT 1) AS latest_note,
+                       (SELECT count(*) FROM quote_files f
+                         WHERE f.quote_id = q.id) AS file_count,
+                       (SELECT f.id FROM quote_files f
+                         WHERE f.quote_id = q.id
+                         ORDER BY f.uploaded_at DESC, f.id DESC LIMIT 1) AS latest_file_id
                 FROM quotes q
                 ORDER BY q.received_date DESC, q.id DESC
             """)
@@ -1351,8 +1357,9 @@ def get_quotes():
 
 
 def get_quote(quote_id):
-    """One quote with ALL its notes (oldest first, as a 'notes' list), or
-    None if there's no quote with that id."""
+    """One quote with ALL its notes (oldest first, as a 'notes' list) and
+    its PDFs (name, size, date — not the data, as a 'files' list), or None
+    if there's no quote with that id."""
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT * FROM quotes WHERE id = %(id)s", {'id': quote_id})
@@ -1364,8 +1371,14 @@ def get_quote(quote_id):
                 WHERE quote_id = %(id)s ORDER BY note_date, id
             """, {'id': quote_id})
             notes = cur.fetchall()
+            cur.execute("""
+                SELECT id, filename, size_bytes, uploaded_at FROM quote_files
+                WHERE quote_id = %(id)s ORDER BY uploaded_at, id
+            """, {'id': quote_id})
+            files = cur.fetchall()
     quote = _quote_row(row)
     quote['notes'] = [_quote_row(n) for n in notes]
+    quote['files'] = [_quote_row(f) for f in files]
     return quote
 
 
@@ -1434,3 +1447,60 @@ def delete_quote_note(quote_id, note_id):
             deleted = cur.rowcount > 0
         conn.commit()
     return deleted
+
+
+def add_quote_file(quote_id, filename, data):
+    """Saves a copy of a quote's PDF. Returns the new file's id, or None if
+    there's no quote with that id. psycopg2.Binary tells the database the
+    value is raw bytes, not text."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE quotes SET updated_at = now() WHERE id = %(id)s",
+                        {'id': quote_id})
+            if cur.rowcount == 0:
+                return None
+            cur.execute("""
+                INSERT INTO quote_files (quote_id, filename, size_bytes, data)
+                VALUES (%(quote_id)s, %(filename)s, %(size)s, %(data)s)
+                RETURNING id
+            """, {'quote_id': quote_id, 'filename': filename,
+                  'size': len(data), 'data': psycopg2.Binary(data)})
+            file_id = cur.fetchone()[0]
+        conn.commit()
+    return file_id
+
+
+def get_quote_file(quote_id, file_id):
+    """One stored PDF: {'filename', 'data' (bytes)}, or None. Both ids must
+    match, so a file can only be opened through its own quote."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT filename, data FROM quote_files
+                WHERE id = %(file_id)s AND quote_id = %(quote_id)s
+            """, {'file_id': file_id, 'quote_id': quote_id})
+            row = cur.fetchone()
+    if not row:
+        return None
+    return {'filename': row['filename'], 'data': bytes(row['data'])}
+
+
+def delete_quote_file(quote_id, file_id):
+    """Deletes one stored PDF. Returns True if a file was deleted."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM quote_files WHERE id = %(file_id)s AND quote_id = %(quote_id)s",
+                        {'file_id': file_id, 'quote_id': quote_id})
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
+def get_quote_files_usage():
+    """How many PDFs are stored and their total size in bytes — shown on
+    the page so the Neon storage limit never comes as a surprise."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*), coalesce(sum(size_bytes), 0) FROM quote_files")
+            count, total = cur.fetchone()
+    return {'count': count, 'bytes': int(total)}

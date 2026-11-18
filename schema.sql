@@ -584,3 +584,24 @@ CREATE TABLE IF NOT EXISTS quote_notes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_quote_notes_quote ON quote_notes (quote_id, note_date);
+
+-- quote_files — copies of quote PDFs kept in the Hub (PO Approvals), so a
+-- quote can be opened straight from the list without a OneDrive link. One
+-- row per file; a quote can have more than one (e.g. a revised quote).
+-- `data` holds the whole PDF (BYTEA = raw bytes). Lists never select it —
+-- only the route that opens one file does — so pages stay quick however
+-- many PDFs are stored. size_bytes is kept separately so the page can show
+-- how much space the PDFs use (Neon's free plan has a small storage limit).
+-- Only PDFs are accepted (checked in routes.py), max 10 MB each.
+-- ON DELETE CASCADE: deleting a quote deletes its files too.
+-- A brand-new table — nothing existing is touched.
+CREATE TABLE IF NOT EXISTS quote_files (
+    id                      SERIAL PRIMARY KEY,
+    quote_id                INTEGER NOT NULL REFERENCES quotes (id) ON DELETE CASCADE,
+    filename                TEXT NOT NULL,
+    size_bytes              INTEGER NOT NULL,
+    data                    BYTEA NOT NULL,
+    uploaded_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_quote_files_quote ON quote_files (quote_id);
