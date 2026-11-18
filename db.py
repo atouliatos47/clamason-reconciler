@@ -1561,3 +1561,18 @@ def get_quotes_to_chase(today, statuses):
                 ORDER BY chase_date, id
             """, {'statuses': list(statuses), 'today': today})
             return [dict(r) for r in cur.fetchall()]
+
+
+def get_recent_quote_descriptions(limit=30):
+    """The "What it's for" texts used on quotes, most recently used first,
+    each once — added under the general options in the page's drop-down
+    list, so anything typed once can be picked next time."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT description FROM quotes
+                GROUP BY description
+                ORDER BY max(created_at) DESC
+                LIMIT %(limit)s
+            """, {'limit': limit})
+            return [row[0] for row in cur.fetchall()]

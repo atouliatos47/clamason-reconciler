@@ -858,6 +858,11 @@ def list_quotes():
             'quotes': db.get_quotes(),
             'statuses': [{'key': k, 'label': v} for k, v in quotes_rules.STATUSES.items()],
             'approvers': quotes_rules.APPROVERS,
+            # The "What it's for" list: general options first, then what's
+            # been typed on recent quotes (each once, not repeating an option).
+            'purposes': quotes_rules.PURPOSES + [
+                d for d in db.get_recent_quote_descriptions()
+                if d not in quotes_rules.PURPOSES],
             'files_usage': db.get_quote_files_usage(),
             'file_max_mb': QUOTE_FILE_MAX_MB,
             'chase_after_working_days': quotes_rules.CHASE_AFTER_WORKING_DAYS,

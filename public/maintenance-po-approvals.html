@@ -131,6 +131,11 @@
   .chase-bar a.plain-btn { text-decoration: none; display: inline-block; }
   .dup-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: #fff8e6; border: 1px solid #f0c36d; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; font-size: 13px; color: #5c4400; }
   .dup-text { flex: 1 1 380px; }
+  .combo { position: relative; }
+  .field .combo input { padding-right: 30px; }
+  .combo input::-webkit-calendar-picker-indicator { display: none !important; }  /* the browser's own faint arrow: ours replaces it */
+  .combo-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #243547; font-size: 13px; cursor: pointer; padding: 2px 6px; }
+  .combo-btn:hover { color: #95C11F; }
   .money-box { position: relative; }
   .money-box span { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; font-weight: bold; color: #243547; pointer-events: none; }
   .field .money-box input { padding-left: 24px; }
@@ -348,6 +353,11 @@ function toggleNavGroup(name) {
   </div>
 </dialog>
 
+<!-- The "What it's for" list, shared by the Add form and the Update window.
+     A <datalist> is a list of suggestions for a text box: you can pick one,
+     add words after it, or ignore it and type anything. Filled by loadQuotes(). -->
+<datalist id="purpose-options"></datalist>
+
 <script>
 let STATUSES = {};       // key -> label, e.g. 'sent' -> 'Sent for approval'
 let STATUS_LIST = [];    // the same, in order, for the drop-downs
@@ -431,7 +441,10 @@ function fieldsHTML(p, withNote) {
     </div>
     <div class="field wide">
       <label for="${p}-description">What it's for *</label>
-      <input type="text" id="${p}-description" required placeholder="e.g. BSTA 250 clutch repair">
+      <div class="combo">
+        <input type="text" id="${p}-description" required list="purpose-options" placeholder="Pick from the list, or type">
+        <button type="button" class="combo-btn" tabindex="-1" title="Show the list" onclick="openPurposeList('${p}')">&#9662;</button>
+      </div>
     </div>
     <div class="field">
       <label for="${p}-asset_no">Asset No</label>
@@ -527,6 +540,15 @@ function syncApproverPick(p) {
   }
 }
 
+// The ▾ button on "What it's for": opens the list. showPicker() is the
+// browser's own "open the list" (Edge and Chrome); if a browser doesn't
+// have it, the cursor still goes into the box and typing shows the list.
+function openPurposeList(p) {
+  const box = document.getElementById(`${p}-description`);
+  box.focus();
+  try { box.showPicker(); } catch (e) { /* typing still shows the list */ }
+}
+
 function isSent(status) { return status !== 'received' && status !== 'cancelled'; }
 function hasPo(status) { return status === 'po_raised' || status === 'done'; }
 
@@ -601,6 +623,8 @@ async function loadQuotes() {
       document.querySelectorAll('.chase-days').forEach(el => el.textContent = d.chase_after_working_days);
       resetAddForm();
     }
+    document.getElementById('purpose-options').innerHTML =
+      (d.purposes || []).map(t => `<option value="${esc(t)}"></option>`).join('');
     ALL_QUOTES = d.quotes;
     FILES_USAGE = d.files_usage;
     FILE_MAX_MB = d.file_max_mb || FILE_MAX_MB;
