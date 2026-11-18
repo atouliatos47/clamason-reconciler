@@ -533,3 +533,54 @@ CREATE TABLE IF NOT EXISTS open_jobs_weekly (
     jobs                    JSONB,
     saved_at                TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- quotes — the PO Approvals tracker (Maintenance tab). One row per supplier
+-- quote, from the day it arrives until its PO is raised (or it's dropped).
+-- The quote file itself is NOT stored here: it stays in the Purchase Orders
+-- folder on Clamason's OneDrive, and file_link holds the "Copy link" web
+-- address to it. That keeps one copy of every quote, keeps the file inside
+-- Clamason's own storage, and keeps this table tiny.
+--
+-- status is plain text, checked in Python rather than by the database, so a
+-- new stage can be added later without changing this table. The stages:
+--   received -> sent (for approval) -> approved -> po_raised -> done
+--   cancelled  (the quote isn't going ahead)
+-- chase_date is when to chase the approval. The app fills it in as
+-- sent_date + 2 working days when a quote is marked "sent", and it can be
+-- changed by hand on any quote. asset_no is TEXT, not a number, so the
+-- leading zeros in Agility asset numbers (00031) are kept.
+-- A brand-new table — nothing existing is touched.
+CREATE TABLE IF NOT EXISTS quotes (
+    id                      SERIAL PRIMARY KEY,
+    supplier                TEXT NOT NULL,
+    description             TEXT NOT NULL,
+    asset_no                TEXT,
+    amount                  NUMERIC(12, 2),
+    quote_ref               TEXT,
+    file_link               TEXT,
+    received_date           DATE NOT NULL DEFAULT CURRENT_DATE,
+    status                  TEXT NOT NULL DEFAULT 'received',
+    sent_to                 TEXT,
+    sent_date               DATE,
+    chase_date              DATE,
+    po_number               TEXT,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_quotes_status_chase ON quotes (status, chase_date);
+
+-- quote_notes — the log of what was done with each quote ("18/11 chased
+-- Paul"). Many notes per quote, so they live in their own table and point
+-- back at their quote through quote_id. ON DELETE CASCADE: deleting a quote
+-- deletes its notes too, so no note is ever left pointing at nothing.
+-- A brand-new table — nothing existing is touched.
+CREATE TABLE IF NOT EXISTS quote_notes (
+    id                      SERIAL PRIMARY KEY,
+    quote_id                INTEGER NOT NULL REFERENCES quotes (id) ON DELETE CASCADE,
+    note_date               DATE NOT NULL DEFAULT CURRENT_DATE,
+    note                    TEXT NOT NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_quote_notes_quote ON quote_notes (quote_id, note_date);
