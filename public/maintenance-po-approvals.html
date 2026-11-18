@@ -405,15 +405,19 @@ function sizeText(bytes) {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
 
-// A status message followed by an "Add reminder to Outlook" link for a
-// quote — the link downloads a calendar file for its chase date.
+// A status message followed by "Add reminder to Outlook" for a quote.
+// The main link opens Outlook on the web in a new tab, with the chase
+// appointment already filled in, in your own calendar — click Save. The
+// small "download file" link is the backup: a calendar file (.ics).
 function setStatusWithOutlook(id, text, kind, quoteId) {
   setStatus(id, text + ' ', kind);
-  const a = document.createElement('a');
-  a.href = `/api/quotes/${Number(quoteId)}/outlook-reminder`;
-  a.textContent = 'Add reminder to Outlook';
-  a.className = 'outlook-link';
-  document.getElementById(id).appendChild(a);
+  document.getElementById(id).insertAdjacentHTML('beforeend', outlookLinks(quoteId));
+}
+
+function outlookLinks(quoteId) {
+  const q = Number(quoteId);
+  return `<a class="outlook-link" href="/api/quotes/${q}/outlook-web" target="_blank" rel="noopener">Add reminder to Outlook</a>
+    <a class="small-link" href="/api/quotes/${q}/outlook-reminder" title="Backup: a calendar file to open in Outlook">(download file)</a>`;
 }
 
 function isToChase(q, today) {
@@ -685,7 +689,7 @@ function renderQuotes() {
     const due = isToChase(q, today);
     const rowClass = FINISHED.includes(q.status) ? 'finished' : (due ? 'row-chase' : '');
     const outlook = (q.status === 'sent' && q.chase_date)
-      ? `<div><a class="small-link" href="/api/quotes/${Number(q.id)}/outlook-reminder" title="Add a reminder for this chase date to your Outlook calendar">Outlook</a></div>` : '';
+      ? `<div><a class="small-link" href="/api/quotes/${Number(q.id)}/outlook-web" target="_blank" rel="noopener" title="Add a reminder for this chase date to your Outlook calendar">Outlook</a></div>` : '';
     const chasedBtn = due
       ? `<button type="button" class="row-btn chase-btn" onclick="chasedToday(${Number(q.id)})">Chased today</button>` : '';
     return `<tr class="${rowClass}">
@@ -950,7 +954,8 @@ function renderChaseBar(q) {
     <span>Waiting for approval${q.sent_to ? ' from <b>' + esc(q.sent_to) + '</b>' : ''}.
       Chase ${late ? '<b>now</b> — due ' : 'on '}<b>${ukDate(q.chase_date)}</b>.</span>
     <button type="button" class="save-btn" onclick="chasedToday(${Number(q.id)})">Chased today</button>
-    <a class="plain-btn" href="/api/quotes/${Number(q.id)}/outlook-reminder">Add reminder to Outlook</a>
+    <a class="plain-btn" href="/api/quotes/${Number(q.id)}/outlook-web" target="_blank" rel="noopener">Add reminder to Outlook</a>
+    <a class="small-link" href="/api/quotes/${Number(q.id)}/outlook-reminder" title="Backup: a calendar file to open in Outlook">(download file)</a>
     <span class="form-status" id="chase-msg"></span>`;
   bar.hidden = false;
 }

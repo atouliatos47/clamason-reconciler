@@ -353,3 +353,49 @@ def outlook_reminder_ics(quote, hub_url):
         'END:VCALENDAR',
     ]
     return '\r\n'.join(_ics_fold(line) for line in lines) + '\r\n'
+
+
+# Outlook on the web's "new appointment" link: opens the appointment form
+# in the signed-in person's OWN calendar, already filled in — one click on
+# Save and it's done. Nothing is sent: it's an ordinary web address with
+# the details in it. Times are written in UTC ('Z') — Outlook shows them
+# in the person's own time zone (UTC offsets with '+' are known to be
+# dropped, 'Z' isn't). Outlook adds the person's usual reminder (normally
+# 15 minutes before).
+OUTLOOK_WEB_COMPOSE = 'https://outlook.office.com/calendar/0/action/compose'
+
+
+def outlook_web_link(quote, hub_url):
+    """The web address that opens a filled-in chase appointment."""
+    from datetime import datetime, timezone
+    from urllib.parse import urlencode, quote as url_quote
+    from zoneinfo import ZoneInfo
+
+    chase = date.fromisoformat(str(quote['chase_date'])[:10])
+    hour, minute = OUTLOOK_REMINDER_TIME
+    start = datetime(chase.year, chase.month, chase.day, hour, minute,
+                     tzinfo=ZoneInfo('Europe/London')).astimezone(timezone.utc)
+    end = start + timedelta(minutes=OUTLOOK_REMINDER_MINUTES)
+    fmt = '%Y-%m-%dT%H:%M:%SZ'
+
+    ref = f" ({quote['quote_ref']})" if quote.get('quote_ref') else ''
+    subject = f"Chase PO approval: {quote['supplier']} — {quote['description']}{ref}"
+    lines = [f"Waiting for approval: {quote['supplier']} — {quote['description']}{ref}"]
+    if quote.get('sent_to'):
+        sent = f" on {date.fromisoformat(str(quote['sent_date'])[:10]):%d/%m/%Y}" if quote.get('sent_date') else ''
+        lines.append(f"Sent to {quote['sent_to']}{sent}.")
+    if quote.get('amount') not in (None, ''):
+        lines.append(f"Amount: {_money_text(quote['amount'])} (net).")
+    lines.append(f"PO Approvals in the Hub: {hub_url.rstrip('/')}/maintenance-po-approvals")
+
+    params = {
+        'path': '/calendar/action/compose',
+        'rru': 'addevent',
+        'subject': subject,
+        'startdt': start.strftime(fmt),
+        'enddt': end.strftime(fmt),
+        'allday': 'false',
+        'body': '\n'.join(lines),
+    }
+    # url_quote writes a space as %20 (not '+', which Outlook can show as '+').
+    return OUTLOOK_WEB_COMPOSE + '?' + urlencode(params, quote_via=url_quote)

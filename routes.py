@@ -1088,6 +1088,24 @@ def quote_outlook_reminder(quote_id):
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/api/quotes/<int:quote_id>/outlook-web', methods=['GET'])
+def quote_outlook_web(quote_id):
+    """Sends the browser to Outlook on the web's new-appointment form,
+    filled in with the quote's chase reminder, in the signed-in person's
+    own calendar (quotes.outlook_web_link). Built here, from the saved
+    quote, so the link is always for its current chase date."""
+    from flask import redirect
+    try:
+        quote = db.get_quote(quote_id)
+        if quote is None:
+            return jsonify({'error': 'Quote not found.'}), 404
+        if quote['status'] not in quotes_rules.WAITING_STATUSES or not quote.get('chase_date'):
+            return jsonify({'error': 'This quote has no chase date (it is not waiting for approval).'}), 400
+        return redirect(quotes_rules.outlook_web_link(quote, request.host_url), code=302)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # Stored quote PDFs. Kept smaller than the 20 MB the reader accepts: every
 # stored file uses up the database's space, and quote PDFs are rarely
 # more than 1-2 MB.
